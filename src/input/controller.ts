@@ -96,7 +96,7 @@ export class Controller {
       this.changed();
       return;
     }
-    const pick = this.pick(t.x, t.y);
+    const pick = this.pick(sx, sy);
     const units = this.ownUnits();
     const me = this.host.player;
 
@@ -148,14 +148,14 @@ export class Controller {
   doubleTap(sx: number, sy: number): void {
     if (this.placing) return;
     const { camera } = this.host;
-    const t = camera.screenToTile(sx, sy);
-    const pick = this.pick(t.x, t.y);
+    const pick = this.pick(sx, sy);
     if (pick.kind !== 'entity' || pick.e.kind !== 'unit' || pick.e.owner !== this.host.player) return this.tap(sx, sy);
     const type = pick.e.type;
-    const hw = camera.viewW / 2 / camera.scale, hh = camera.viewH / 2 / camera.scale;
     const ids: number[] = [];
-    for (const u of this.world.units(this.host.player))
-      if (u.type === type && Math.abs(u.x - camera.x) <= hw && Math.abs(u.y - camera.y) <= hh) ids.push(u.id);
+    for (const u of this.world.units(this.host.player)) {
+      const p = camera.tileToScreen(u.x, u.y);
+      if (u.type === type && p.x >= 0 && p.x <= camera.viewW && p.y >= 0 && p.y <= camera.viewH) ids.push(u.id);
+    }
     this.select(ids);
   }
 
@@ -169,12 +169,12 @@ export class Controller {
     this.boxEl.hidden = true;
     if (r - l < 6 && b - tp < 6) return;
     const { camera } = this.host;
-    const a = camera.screenToTile(l, tp), c = camera.screenToTile(r, b);
     const ids: number[] = [];
     for (const u of this.world.units(this.host.player)) {
       // Test the middle of the figure, which stands above its feet.
-      const my = u.y - 0.4;
-      if (u.x >= a.x && u.x <= c.x && my >= a.y && my <= c.y) ids.push(u.id);
+      const p = camera.tileToScreen(u.x, u.y);
+      const my = p.y - camera.scale * 0.6;
+      if (p.x >= l && p.x <= r && my >= tp && my <= b) ids.push(u.id);
     }
     if (ids.length) this.select(ids);
   }
@@ -225,45 +225,66 @@ export class Controller {
 
   // ---------- picking ----------
 
-  private pick(tx: number, ty: number): Pick {
+  /** Finds what is under a screen point (CSS px). Everything stands up from the ground, so hit tests run in screen space. */
+  private pick(sx: number, sy: number): Pick {
     const { world } = this;
+    const { camera } = this.host;
     const fog = world.fog[this.host.player];
+    const Z = camera.scale;
+    const t = camera.screenToTile(sx, sy);
     let best: Entity | null = null;
     let bd = Infinity;
+    // Generous hit box: about 22 CSS px around the figure so fingers can hit it.
+    const tolX = Math.max(0.45 * 1.6 * Z, 22);
     for (const e of world.entities.values()) {
-      if (e.kind === 'unit') {
-        if (e.owner !== this.host.player && !fog.isVisible(e.x, e.y)) continue;
-        // Generous hit box: about 22 CSS px around the figure so fingers can hit it, capped when zoomed out.
-        const h = unitHeight(e.type);
-        const tol = Math.min(0.9, Math.max(0.45, 22 / this.host.camera.scale));
-        if (Math.abs(tx - e.x) > tol || ty < e.y - h - tol * 0.4 || ty > e.y + tol * 0.6) continue;
-        // Own units win ties so a crowd can always be tapped into.
-        const d = Math.hypot(tx - e.x, ty - (e.y - h / 2)) - (e.owner === this.host.player ? 0.2 : 0);
-        if (d < bd) (bd = d), (best = e);
-      }
+      if (e.kind !== 'unit') continue;
+      if (e.owner !== this.host.player && !fog.isVisible(e.x, e.y)) continue;
+      const p = camera.tileToScreen(e.x, e.y);
+      const h = Math.max(unitHeight(e.type) * 1.6 * Z, 26);
+      if (Math.abs(sx - p.x) > tolX || sy < p.y - h - 8 || sy > p.y + 12) continue;
+      // Own units win ties so a crowd can always be tapped into.
+      const d = Math.hypot(sx - p.x, sy - (p.y - h / 2)) / Z - (e.owner === this.host.player ? 0.2 : 0);
+      if (d < bd) (bd = d), (best = e);
     }
     // A tap well inside a building picks the building unless a unit is right under the finger.
-    if (best && bd > 0.35) {
-      const b = this.buildingAt(tx, ty, 0.4);
+    if (best && bd > 0.5) {
+      const b = this.buildingAt(t.x, t.y, 0.4);
       if (b) return { kind: 'entity', e: b };
     }
     if (best) return { kind: 'entity', e: best };
-    for (const e of world.entities.values()) {
-      if (e.kind === 'building') {
-        if (e.owner !== this.host.player && !fog.isExplored(e.x + 1, e.y + 1)) continue;
-        if (tx >= e.x && tx <= e.x + e.size && ty >= e.y - e.size * 0.35 && ty <= e.y + e.size) return { kind: 'entity', e };
-      } else if (e.kind === 'resource') {
-        if (fog.isVisible(e.x, e.y) && Math.hypot(tx - e.x, ty - (e.y - 0.15)) < 0.6) return { kind: 'entity', e };
-      }
+    // Buildings: the footprint, or the walls and roof that rise above it on screen.
+    let bb: Building | null = null;
+    let bbd = Infinity;
+    for (const b of world.buildings()) {
+      if (b.owner !== this.host.player && !fog.isExplored(b.x + 1, b.y + 1)) continue;
+      const inside = t.x >= b.x && t.x <= b.x + b.size && t.y >= b.y && t.y <= b.y + b.size;
+      const left = camera.tileToScreen(b.x, b.y + b.size).x, right = camera.tileToScreen(b.x + b.size, b.y).x;
+      const top = camera.tileToScreen(b.x, b.y).y, mid = camera.tileToScreen(b.x + b.size, b.y).y;
+      const flat = b.type === 'farm';
+      const above = !flat && sx >= left && sx <= right && sy <= mid && sy >= top - b.size * Z * 1.4;
+      if (!inside && !above) continue;
+      // Prefer the building nearest the viewer (larger x+y) when sprites overlap.
+      const d = -(b.x + b.y + b.size) + (inside ? 0 : 0.5);
+      if (d < bbd) (bbd = d), (bb = b);
     }
+    if (bb) return { kind: 'entity', e: bb };
+    let rb: Entity | null = null;
+    let rd = 0.7;
+    for (const e of world.entities.values()) {
+      if (e.kind !== 'resource' || !fog.isVisible(e.x, e.y)) continue;
+      const p = camera.tileToScreen(e.x, e.y);
+      const d = Math.hypot(sx - p.x, sy - (p.y - 0.3 * Z)) / Math.max(Z, 26);
+      if (d < rd) (rd = d), (rb = e);
+    }
+    if (rb) return { kind: 'entity', e: rb };
     const N = world.map.size;
-    const fx = Math.floor(tx), fy = Math.floor(ty);
-    // Trees and piles stand up above their tile, so a tap just above one still hits it.
-    for (const [x, y] of [[fx, fy], [fx, fy + 1]]) {
+    const fx = Math.floor(t.x), fy = Math.floor(t.y);
+    // Trees and piles stand up above their tile, so a tap on the canopy (the tiles below it on screen) still hits it.
+    for (const [x, y] of [[fx, fy], [fx + 1, fy + 1], [fx + 1, fy], [fx, fy + 1], [fx + 2, fy + 2]]) {
       if (x < 0 || y < 0 || x >= N || y >= N || !fog.explored[y * N + x]) continue;
       if (world.map.feature[y * N + x] !== Feature.None) return { kind: 'tile', x, y };
     }
-    return { kind: 'ground', x: tx, y: ty };
+    return { kind: 'ground', x: t.x, y: t.y };
   }
 
   /** A visible building whose footprint contains the point, at least `inset` tiles from its edge. */

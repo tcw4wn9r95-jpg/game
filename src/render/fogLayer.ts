@@ -34,15 +34,4 @@ export class FogLayer {
     for (let i = 0, p = 3; i < visible.length; i++, p += 4) d[p] = visible[i] ? 0 : explored[i] ? EXPLORED_ALPHA : 255;
     this.g.putImageData(this.img, 0, 0);
   }
-
-  /** Draws the fog over the viewport. ox/oy: world device px at screen origin; S: device px per tile. */
-  draw(ctx: CanvasRenderingContext2D, ox: number, oy: number, S: number, W: number, H: number): void {
-    if (this.fog.revealed) return;
-    const N = this.fog.size;
-    const sx0 = Math.max(0, ox / S), sy0 = Math.max(0, oy / S);
-    const sx1 = Math.min(N, (ox + W) / S), sy1 = Math.min(N, (oy + H) / S);
-    if (sx1 <= sx0 || sy1 <= sy0) return;
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.canvas, sx0, sy0, sx1 - sx0, sy1 - sy0, sx0 * S - ox, sy0 * S - oy, (sx1 - sx0) * S, (sy1 - sy0) * S);
-  }
 }

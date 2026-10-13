@@ -83,13 +83,47 @@ function leafPoints(rng: Rng, cx: number, cy: number, rx: number, ry: number, n:
   return pts.sort((a, b) => a.l - b.l);
 }
 
+/**
+ * Fine foliage grain over whatever was drawn last: hundreds of tiny dark and
+ * light flecks, kept inside the canopy with 'source-atop'.
+ */
+function foliageGrain(g: CanvasRenderingContext2D, rng: Rng, x0: number, y0: number, x1: number, y1: number, count: number): void {
+  g.save();
+  g.globalCompositeOperation = 'source-atop';
+  for (let k = 0; k < count; k++) {
+    const x = x0 + rng.next() * (x1 - x0), y = y0 + rng.next() * (y1 - y0);
+    // Upper-left flecks catch light, lower-right ones fall in shade.
+    const lit = (x - x0) / (x1 - x0) + (y - y0) / (y1 - y0) < 0.9;
+    g.fillStyle = rng.next() < (lit ? 0.6 : 0.25) ? `rgba(225,240,170,${0.25 + rng.next() * 0.3})` : `rgba(5,20,5,${0.25 + rng.next() * 0.3})`;
+    const r = 0.5 + rng.next() * 0.9;
+    g.fillRect(x, y, r, r);
+  }
+  g.restore();
+}
+
+/** Long soft shadow thrown to the lower right by a tall object. */
+function castShadow(g: CanvasRenderingContext2D, x: number, y: number, len: number, w: number): void {
+  g.save();
+  g.translate(x, y);
+  g.rotate(-0.18);
+  const grad = g.createRadialGradient(len * 0.45, 0, 0, len * 0.45, 0, len * 0.6);
+  grad.addColorStop(0, 'rgba(10,16,4,0.38)');
+  grad.addColorStop(0.7, 'rgba(10,16,4,0.18)');
+  grad.addColorStop(1, 'rgba(10,16,4,0)');
+  g.fillStyle = grad;
+  g.beginPath();
+  g.ellipse(len * 0.45, 0, len * 0.6, w, 0, 0, Math.PI * 2);
+  g.fill();
+  g.restore();
+}
+
 /** Broadleaf tree: a dark under-mass, then many shaded leaf clusters, light on top. */
 function broadleaf(seed: number, leaf: RGB): Painter {
   const dark = mix(leaf, [8, 20, 6], 0.55), light = mix(leaf, [230, 235, 140], 0.38);
   return (g) => {
     const rng = new Rng(seed);
     const cx = 20, base = 44, cy = 22, rx = 13 + rng.next() * 2, ry = 11.5 + rng.next() * 2;
-    shadow(g, cx + 6, base - 1, 15, 5.5);
+    castShadow(g, cx - 2, base - 1, 34, 7);
     trunk(g, cx, base, cy + 4, 3.4);
     // Branch hints under the canopy.
     g.strokeStyle = '#4a311b';
@@ -109,6 +143,7 @@ function broadleaf(seed: number, leaf: RGB): Painter {
       const p = leafPoints(rng, cx - 4, cy - 4, rx * 0.5, ry * 0.45, 1)[0];
       circle(g, p.x, p.y, 0.9, rgb(mix(light, [255, 255, 220], 0.4), 0.8));
     }
+    foliageGrain(g, rng, cx - rx - 4, cy - ry - 4, cx + rx + 4, cy + ry + 4, 420);
   };
 }
 
@@ -118,7 +153,7 @@ function conifer(seed: number, tall: boolean, needle: RGB): Painter {
   return (g) => {
     const rng = new Rng(seed);
     const cx = 20, base = 44, top = tall ? 4 : 10;
-    shadow(g, cx + 7, base - 1, 13, 4.5);
+    castShadow(g, cx - 2, base - 1, tall ? 40 : 32, 5.5);
     trunk(g, cx, base, base - 9, 2.6);
     const tiers = tall ? 6 : 5;
     const height = base - 6 - top;
@@ -148,6 +183,78 @@ function conifer(seed: number, tall: boolean, needle: RGB): Painter {
       // Underside shade of the tier.
       g.fillStyle = rgb(dark, 0.45);
       g.fillRect(cx - half * 0.8, ty + tierH * 0.86, half * 1.6, 1.1);
+    }
+    // Needles: short dark and light strokes over the tiers.
+    g.save();
+    g.globalCompositeOperation = 'source-atop';
+    for (let k = 0; k < 260; k++) {
+      const y = top + rng.next() * (base - 6 - top), x = cx + (rng.next() - 0.5) * 26;
+      g.strokeStyle = rng.next() < (x < cx ? 0.55 : 0.2) ? 'rgba(200,230,170,0.35)' : 'rgba(0,15,5,0.4)';
+      g.lineWidth = 0.6;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x + (x < cx ? -1.4 : 1.4), y + 1.2);
+      g.stroke();
+    }
+    g.restore();
+  };
+}
+
+/** Decor: a clump of grass blades. */
+function grassTuft(seed: number): Painter {
+  return (g) => {
+    const rng = new Rng(seed);
+    shadow(g, 9, 12, 7, 2, 0.22);
+    const n = 9 + Math.floor(rng.next() * 6);
+    for (let k = 0; k < n; k++) {
+      const x = 4 + rng.next() * 10, h = 5 + rng.next() * 6, lean = (rng.next() - 0.5) * 6;
+      g.strokeStyle = rng.next() < 0.5 ? '#5f8a34' : rng.next() < 0.5 ? '#7da444' : '#c2b866';
+      g.lineWidth = 0.9;
+      g.beginPath();
+      g.moveTo(x, 12);
+      g.quadraticCurveTo(x + lean * 0.3, 12 - h * 0.6, x + lean, 12 - h);
+      g.stroke();
+    }
+  };
+}
+
+/** Decor: a low leafy shrub. */
+function shrub(seed: number): Painter {
+  return (g) => {
+    const rng = new Rng(seed);
+    const leaf: RGB = [62, 98, 44];
+    const dark = mix(leaf, [5, 15, 5], 0.55), light = mix(leaf, [215, 230, 150], 0.4);
+    castShadow(g, 12, 17, 22, 4);
+    for (const p of leafPoints(rng, 13, 11, 9, 6, 16)) circle(g, p.x, p.y + 1, 2.8, rgb(dark));
+    for (const p of leafPoints(rng, 13, 10.5, 8, 5.5, 46)) circle(g, p.x, p.y, 1.4 + rng.next() * 1.2, rgb(p.l < 0.5 ? mix(dark, leaf, p.l * 2) : mix(leaf, light, (p.l - 0.5) * 2)));
+    foliageGrain(g, rng, 3, 3, 23, 18, 160);
+  };
+}
+
+/** Decor: a few pebbles. */
+function pebbles(seed: number): Painter {
+  return (g) => {
+    const rng = new Rng(seed);
+    for (let k = 0; k < 4; k++) {
+      const x = 3 + rng.next() * 10, y = 7 + rng.next() * 4, r = 1.2 + rng.next() * 1.4;
+      circle(g, x + 0.6, y + 0.6, r, 'rgba(10,16,4,0.3)');
+      g.fillStyle = rgb(mix([110, 106, 98], [190, 186, 176], rng.next()));
+      g.beginPath();
+      g.ellipse(x, y, r, r * 0.75, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+  };
+}
+
+/** Decor: wild flowers among grass. */
+function flowers(seed: number, color: string): Painter {
+  return (g) => {
+    grassTuft(seed)(g);
+    const rng = new Rng(seed + 9);
+    for (let k = 0; k < 5; k++) {
+      const x = 4 + rng.next() * 10, y = 4 + rng.next() * 5;
+      circle(g, x, y, 1.1, color);
+      circle(g, x, y, 0.4, '#f6e27a');
     }
   };
 }
@@ -327,6 +434,8 @@ export class SpriteSet {
   readonly sheep: Sprite;
   readonly deer: Sprite;
   readonly fish: Sprite;
+  /** Small ground scatter: grass tufts, shrubs, pebbles, flowers. */
+  readonly decor: Sprite[];
 
   constructor(readonly s: number) {
     const tree = (p: Painter, flip: boolean) => make(s, 40, 48, 20, 44, p, flip);
@@ -343,5 +452,17 @@ export class SpriteSet {
     this.sheep = make(s, 22, 18, 11, 15, sheep);
     this.deer = make(s, 26, 22, 12, 19, deer);
     this.fish = make(s, 28, 20, 14, 10, fish);
+    const tuft = (p: Painter) => make(s, 18, 14, 9, 12, p);
+    this.decor = [
+      tuft(grassTuft(1)),
+      tuft(grassTuft(2)),
+      tuft(grassTuft(3)),
+      tuft(grassTuft(4)),
+      tuft(flowers(5, '#f2f0e6')),
+      tuft(flowers(6, '#d65a8a')),
+      tuft(pebbles(7)),
+      make(s, 34, 22, 13, 17, shrub(8)),
+      make(s, 34, 22, 13, 17, shrub(9)),
+    ];
   }
 }

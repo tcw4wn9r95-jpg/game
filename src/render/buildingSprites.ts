@@ -1,411 +1,296 @@
-// Procedural Age I buildings (timber and thatch) per zoom level and player colour.
-// Drawn in 32-units-per-tile space over the footprint; roofs rise above it.
-import { Rng } from '../sim/rng';
+// Isometric buildings, modelled with the iso3d toolkit and rendered once per zoom
+// level, player colour and variant. Age I style: timber, plaster, thatch and canvas.
 import type { BuildingType } from '../sim/entities';
+import { Rng } from '../sim/rng';
+import { type G, P, box, boxShadow, doorAt, gableRoof, hipRoof, line3, log, onGround, poly3, post, shadeColor, windowAt } from './iso3d';
 import { PLAYER_COLORS } from './palette';
 import type { Sprite } from './sprites';
 
-/** variant: building-specific state, e.g. a farm's crop stage (0 bare .. 3 ripe). */
-type Painter = (g: CanvasRenderingContext2D, W: number, team: string, rng: Rng, variant: number) => void;
+/** n: footprint in tiles; variant: building-specific state, e.g. a farm's crop stage (0 bare .. 3 ripe). */
+type Painter = (g: G, n: number, team: string, rng: Rng, variant: number) => void;
 
-const PAD = 8;
-/** Units of roof/structure drawn above the footprint's top edge. */
-const RISE = 50;
+/** Units of structure drawn above the footprint's north corner. */
+const RISE = 150;
+const PAD = 26;
 
-const WOOD = '#6e4b2a';
-const WOOD_DARK = '#3f2914';
-const PLASTER = '#d8c8a0';
-const STONE = '#8e8a82';
+const PLASTER = { base: '#ddcda6', frame: '#4e331b' };
+const STONE = { base: '#9a958b', stone: true };
+const PLANKS = { base: '#8a6440', planks: true };
+const THATCH = { color: '#c9a656', kind: 'thatch' as const };
 
-function shadow(g: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) {
-  g.fillStyle = 'rgba(8,14,4,0.32)';
+function flag(g: G, x: number, y: number, z: number, team: string, s = 1): void {
+  const [bx, by] = P(x, y, z);
+  g.strokeStyle = '#3a2614';
+  g.lineWidth = 1.2;
   g.beginPath();
-  g.moveTo(x0 + 6, y1);
-  g.lineTo(x1 + 6, y1);
-  g.lineTo(x1 + 10, y0 + 10);
-  g.lineTo(x1, y0 + 4);
-  g.closePath();
-  g.fill();
-}
-
-/** Thatched gable roof seen from the front and above: lit front slope, darker back slope. */
-function thatch(g: CanvasRenderingContext2D, x0: number, x1: number, back: number, ridge: number, eave: number, rng: Rng) {
-  g.fillStyle = '#7c6633';
-  g.beginPath();
-  g.moveTo(x0 + 4, ridge);
-  g.lineTo(x1 - 4, ridge);
-  g.lineTo(x1 - 2, back);
-  g.lineTo(x0 + 2, back);
-  g.closePath();
-  g.fill();
-  const grad = g.createLinearGradient(0, ridge, 0, eave);
-  grad.addColorStop(0, '#d9b864');
-  grad.addColorStop(1, '#a5833c');
-  g.fillStyle = grad;
-  g.beginPath();
-  g.moveTo(x0, eave);
-  g.lineTo(x1, eave);
-  g.lineTo(x1 - 4, ridge);
-  g.lineTo(x0 + 4, ridge);
-  g.closePath();
-  g.fill();
-  // Straw texture.
-  for (let k = 0; k < (x1 - x0) * 1.2; k++) {
-    const y = ridge + rng.next() * (eave - ridge);
-    const x = x0 + 3 + rng.next() * (x1 - x0 - 6);
-    g.strokeStyle = rng.next() < 0.5 ? 'rgba(90,64,20,0.45)' : 'rgba(255,236,160,0.4)';
-    g.lineWidth = 0.6;
-    g.beginPath();
-    g.moveTo(x, y);
-    g.lineTo(x + (rng.next() - 0.5) * 1.5, y + 2 + rng.next() * 2.5);
-    g.stroke();
-  }
-  // Ridge beam and eave shadow.
-  g.fillStyle = '#5c4720';
-  g.fillRect(x0 + 4, ridge - 1, x1 - x0 - 8, 2);
-  g.fillStyle = 'rgba(30,20,5,0.35)';
-  g.fillRect(x0, eave, x1 - x0, 1.6);
-}
-
-/** Half-timbered front wall with optional door and windows. */
-function wall(g: CanvasRenderingContext2D, x0: number, x1: number, top: number, bottom: number, opts: { door?: number; windows?: number[]; stoneBase?: boolean }) {
-  g.fillStyle = PLASTER;
-  g.fillRect(x0, top, x1 - x0, bottom - top);
-  const grad = g.createLinearGradient(x0, 0, x1, 0);
-  grad.addColorStop(0, 'rgba(255,255,255,0.12)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.18)');
-  g.fillStyle = grad;
-  g.fillRect(x0, top, x1 - x0, bottom - top);
-  g.strokeStyle = WOOD_DARK;
-  g.lineWidth = 1.4;
-  g.strokeRect(x0, top, x1 - x0, bottom - top);
-  const n = Math.max(2, Math.round((x1 - x0) / 14));
-  for (let k = 1; k < n; k++) {
-    const x = x0 + ((x1 - x0) * k) / n;
-    g.beginPath();
-    g.moveTo(x, top);
-    g.lineTo(x, bottom);
-    g.stroke();
-  }
-  g.beginPath();
-  g.moveTo(x0, (top + bottom) / 2);
-  g.lineTo(x1, (top + bottom) / 2);
-  g.stroke();
-  if (opts.stoneBase) {
-    g.fillStyle = STONE;
-    g.fillRect(x0 - 1, bottom - 4, x1 - x0 + 2, 4);
-    g.strokeStyle = 'rgba(40,36,30,0.6)';
-    g.lineWidth = 0.6;
-    for (let x = x0; x < x1; x += 4) g.strokeRect(x, bottom - 4, 4, 2), g.strokeRect(x + 2, bottom - 2, 4, 2);
-  }
-  for (const wx of opts.windows ?? []) {
-    g.fillStyle = '#2a1c10';
-    g.fillRect(wx - 2.5, top + 3, 5, 4.5);
-    g.strokeStyle = WOOD;
-    g.lineWidth = 0.8;
-    g.strokeRect(wx - 2.5, top + 3, 5, 4.5);
-  }
-  if (opts.door !== undefined) {
-    const dx = opts.door;
-    g.fillStyle = '#3a2412';
-    g.beginPath();
-    g.moveTo(dx - 3.5, bottom);
-    g.lineTo(dx - 3.5, bottom - 7);
-    g.arc(dx, bottom - 7, 3.5, Math.PI, 0);
-    g.lineTo(dx + 3.5, bottom);
-    g.closePath();
-    g.fill();
-  }
-}
-
-function flag(g: CanvasRenderingContext2D, x: number, y: number, team: string, size = 1) {
-  g.strokeStyle = WOOD_DARK;
-  g.lineWidth = 1;
-  g.beginPath();
-  g.moveTo(x, y);
-  g.lineTo(x, y - 14 * size);
+  g.moveTo(bx, by);
+  g.lineTo(bx, by - 22 * s);
   g.stroke();
   g.fillStyle = team;
-  g.strokeStyle = 'rgba(0,0,0,0.5)';
-  g.lineWidth = 0.5;
+  g.strokeStyle = 'rgba(0,0,0,0.55)';
+  g.lineWidth = 0.6;
   g.beginPath();
-  g.moveTo(x, y - 14 * size);
-  g.lineTo(x + 8 * size, y - 12 * size);
-  g.lineTo(x, y - 9 * size);
+  g.moveTo(bx, by - 22 * s);
+  g.quadraticCurveTo(bx + 7 * s, by - 23 * s, bx + 13 * s, by - 19 * s);
+  g.lineTo(bx, by - 14 * s);
   g.closePath();
   g.fill();
   g.stroke();
 }
 
-function banner(g: CanvasRenderingContext2D, x: number, y: number, team: string) {
+/** A banner hung on a wall (u along the wall, v up). */
+function banner(g: G, u: number, v: number, team: string): void {
   g.fillStyle = team;
   g.strokeStyle = 'rgba(20,10,0,0.6)';
   g.lineWidth = 0.6;
   g.beginPath();
-  g.moveTo(x - 3, y);
-  g.lineTo(x + 3, y);
-  g.lineTo(x + 3, y + 10);
-  g.lineTo(x, y + 8);
-  g.lineTo(x - 3, y + 10);
+  g.moveTo(u - 3, v);
+  g.lineTo(u + 3, v);
+  g.lineTo(u + 3, v - 11);
+  g.lineTo(u, v - 9);
+  g.lineTo(u - 3, v - 11);
   g.closePath();
   g.fill();
   g.stroke();
-  g.fillStyle = 'rgba(255,230,140,0.9)';
-  g.beginPath();
-  g.arc(x, y + 4, 1.4, 0, Math.PI * 2);
-  g.fill();
+  g.fillStyle = '#e2bc4c';
+  g.fillRect(u - 3, v - 1.5, 6, 1.5);
 }
 
-function logPile(g: CanvasRenderingContext2D, x: number, y: number, rows: number) {
-  for (let r = 0; r < rows; r++)
-    for (let k = 0; k < rows - r; k++) {
-      const lx = x + k * 4.4 + r * 2.2, ly = y - r * 3.8;
-      g.fillStyle = '#7a5530';
-      g.fillRect(lx - 10, ly - 2, 10, 4);
-      g.fillStyle = '#d6b07a';
-      g.strokeStyle = WOOD_DARK;
-      g.lineWidth = 0.6;
-      g.beginPath();
-      g.arc(lx, ly, 2.1, 0, Math.PI * 2);
-      g.fill();
-      g.stroke();
-    }
+function groundPatch(g: G, n: number, color: string, inset = 0.05): void {
+  poly3(g, [[inset, inset, 0], [n - inset, inset, 0], [n - inset, n - inset, 0], [inset, n - inset, 0]], color, null);
 }
 
-function rocks(g: CanvasRenderingContext2D, x: number, y: number, color: string) {
-  for (const [dx, dy, r] of [[0, 0, 2.6], [4, 1, 2.2], [2, -2.5, 2]]) {
-    g.fillStyle = color;
-    g.strokeStyle = 'rgba(0,0,0,0.5)';
+function crate(g: G, x: number, y: number, s = 0.35): void {
+  box(g, x, y, x + s, y + s, s * 30, { base: '#9a7040', planks: true });
+  poly3(g, [[x, y, s * 30], [x + s, y, s * 30], [x + s, y + s, s * 30], [x, y + s, s * 30]], '#b58a52');
+}
+
+function oreHeap(g: G, x: number, y: number, color: string, rng: Rng): void {
+  for (let k = 0; k < 7; k++) {
+    const [px, py] = P(x + (rng.next() - 0.5) * 0.4, y + (rng.next() - 0.5) * 0.4, 0);
+    g.fillStyle = shadeColor(color, 0.7 + rng.next() * 0.5);
+    g.strokeStyle = 'rgba(20,15,10,0.6)';
     g.lineWidth = 0.5;
     g.beginPath();
-    g.ellipse(x + dx, y + dy, r, r * 0.8, 0, 0, Math.PI * 2);
+    g.ellipse(px, py - 1.5 - k * 0.4, 2.6, 1.9, 0, 0, Math.PI * 2);
     g.fill();
     g.stroke();
   }
 }
 
-/** Ploughed field with wheat rows; fuller and more golden at higher stages. */
-const farm: Painter = (g, W, _team, rng, stage) => {
-  // Low fence of posts and rails around the field.
-  g.fillStyle = '#6e5232';
-  g.fillRect(1, 1, W - 2, W - 2);
-  const soil = g.createLinearGradient(0, 0, W, W);
-  soil.addColorStop(0, '#8a6a42');
-  soil.addColorStop(1, '#6a4c2c');
-  g.fillStyle = soil;
-  g.fillRect(4, 4, W - 8, W - 8);
-  // Furrows.
-  for (let y = 7; y < W - 6; y += 5.5) {
-    g.fillStyle = 'rgba(40,24,10,0.35)';
-    g.fillRect(5, y + 2.2, W - 10, 1.4);
-    g.fillStyle = 'rgba(190,150,100,0.25)';
-    g.fillRect(5, y, W - 10, 1);
-  }
-  // Wheat: tufts along the rows, their number and colour set by the stage.
-  const ripe = ['#7d8f3a', '#b9a83e', '#d9b84a', '#e8c95a'][stage];
-  const tip = ['#9aac4c', '#e0c860', '#f2d97a', '#fbe79a'][stage];
-  const fill = [0.15, 0.45, 0.75, 1][stage];
-  for (let y = 9; y < W - 6; y += 5.5)
-    for (let x = 7; x < W - 6; x += 3.2) {
-      if (rng.next() > fill) continue;
-      const h = 3 + stage * 1.6 + rng.next() * 2;
-      g.strokeStyle = ripe;
-      g.lineWidth = 1;
-      g.beginPath();
-      g.moveTo(x, y + 1);
-      g.lineTo(x + (rng.next() - 0.5) * 1.5, y + 1 - h);
-      g.stroke();
-      g.fillStyle = tip;
-      g.fillRect(x - 0.6, y - h, 1.4, 1.8);
-    }
-  g.strokeStyle = '#4a3218';
-  g.lineWidth = 1.2;
-  g.strokeRect(2.5, 2.5, W - 5, W - 5);
-  g.fillStyle = '#5a3d22';
-  for (const [x, y] of [[2, 2], [W - 4, 2], [2, W - 4], [W - 4, W - 4], [W / 2 - 1, 2], [W / 2 - 1, W - 4]]) g.fillRect(x, y - 3, 2.5, 5);
-};
-
-/** Timber hall with a training yard: fence, straw dummy, rack of spears and shields. */
-const barracks: Painter = (g, W, team, rng) => {
-  shadow(g, 6, 16, W - 6, W * 0.62);
-  // Yard.
-  g.fillStyle = 'rgba(130,100,62,0.55)';
-  g.fillRect(4, W * 0.6, W - 8, W * 0.38);
-  g.strokeStyle = '#5a3d22';
-  g.lineWidth = 1.4;
-  g.beginPath();
-  g.moveTo(4, W - 4);
-  g.lineTo(W - 4, W - 4);
-  g.moveTo(4, W - 7);
-  g.lineTo(W - 4, W - 7);
-  g.stroke();
-  for (let x = 4; x <= W - 4; x += 9) {
-    g.fillStyle = '#5a3d22';
-    g.fillRect(x - 1, W - 10, 2.4, 8);
-  }
-  wall(g, 8, W - 8, W * 0.3, W * 0.62, { door: W / 2, windows: [20, W - 20], stoneBase: true });
-  thatch(g, 3, W - 3, -RISE / 2, 0, W * 0.33, rng);
-  banner(g, 15, W * 0.34, team);
-  banner(g, W - 15, W * 0.34, team);
-  flag(g, W - 10, 0, team, 1.1);
-  // Training dummy.
-  const dx = 18, dy = W - 12;
-  g.fillStyle = '#5a3d22';
-  g.fillRect(dx - 1, dy - 16, 2.4, 16);
-  g.fillRect(dx - 7, dy - 12, 14, 2);
-  g.fillStyle = '#d6bf7a';
-  g.beginPath();
-  g.ellipse(dx + 0.2, dy - 9, 4, 5.5, 0, 0, Math.PI * 2);
-  g.fill();
-  g.beginPath();
-  g.arc(dx + 0.2, dy - 17, 3, 0, Math.PI * 2);
-  g.fill();
-  // Weapon rack with spears and shields in team colour.
-  const rx = W - 30, ry = W - 12;
-  g.fillStyle = '#5a3d22';
-  g.fillRect(rx, ry - 3, 20, 2.4);
-  for (let k = 0; k < 4; k++) {
-    g.strokeStyle = '#7a5430';
-    g.lineWidth = 1.2;
-    g.beginPath();
-    g.moveTo(rx + 3 + k * 5, ry + 1);
-    g.lineTo(rx + 1 + k * 5, ry - 20);
-    g.stroke();
-    g.fillStyle = '#c9d1d6';
-    g.beginPath();
-    g.moveTo(rx + k * 5, ry - 20);
-    g.lineTo(rx + 1 + k * 5, ry - 25);
-    g.lineTo(rx + 2 + k * 5, ry - 20);
-    g.fill();
-  }
-  for (const sx of [rx + 4, rx + 15]) {
-    g.fillStyle = team;
-    g.strokeStyle = 'rgba(0,0,0,0.6)';
-    g.lineWidth = 0.6;
-    g.beginPath();
-    g.arc(sx, ry - 6, 4.2, 0, Math.PI * 2);
-    g.fill();
-    g.stroke();
-    g.fillStyle = '#d9b44a';
-    g.beginPath();
-    g.arc(sx, ry - 6, 1.2, 0, Math.PI * 2);
-    g.fill();
-  }
-};
+/** Open canvas shelter on log posts with a team-coloured trim (camps). */
+function shelter(g: G, x0: number, y0: number, x1: number, y1: number, h: number, team: string): void {
+  boxShadow(g, x0, y0, x1, y1, h + 14);
+  // Dark interior floor so the open sides read as shade.
+  poly3(g, [[x0, y0, 0], [x1, y0, 0], [x1, y1, 0], [x0, y1, 0]], 'rgba(40,28,14,0.45)', null);
+  for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]] as const) post(g, x, y, h, 2.6);
+  post(g, (x0 + x1) / 2, y1, h, 2.2);
+  hipRoof(g, x0, y0, x1, y1, h, 14, { color: '#d8c79e', kind: 'canvas', trim: team }, 0.1);
+}
 
 const PAINTERS: Record<BuildingType, Painter> = {
-  farm,
-  barracks,
-  town_center: (g, W, team, rng) => {
-    shadow(g, 6, 20, W - 6, W - 4);
-    // Packed-earth yard.
-    g.fillStyle = 'rgba(120,92,56,0.35)';
-    g.beginPath();
-    g.ellipse(W / 2, W - 10, W / 2 - 2, 12, 0, 0, Math.PI * 2);
-    g.fill();
-    wall(g, 10, W - 10, W * 0.5, W - 12, { door: W / 2, windows: [24, 40, W - 40, W - 24], stoneBase: true });
-    thatch(g, 4, W - 4, -RISE + 10, 8, W * 0.52, rng);
-    // Central tower with its own little roof and the realm's colours.
-    wall(g, W / 2 - 14, W / 2 + 14, 4, W * 0.5 - 2, { windows: [W / 2] });
-    thatch(g, W / 2 - 18, W / 2 + 18, -RISE - 2, -RISE + 8, 6, rng);
-    flag(g, W / 2, -RISE + 2, team, 1.3);
-    banner(g, 20, W * 0.52 + 2, team);
-    banner(g, W - 20, W * 0.52 + 2, team);
+  town_center: (g, n, team) => {
+    groundPatch(g, n, 'rgba(120,92,56,0.45)', -0.15);
+    boxShadow(g, 0.4, 0.4, n - 0.4, n - 0.4, 70);
+    // Stone plinth, then the timber hall.
+    box(g, 0.3, 0.3, n - 0.3, n - 0.3, 6, STONE);
+    poly3(g, [[0.3, 0.3, 6], [n - 0.3, 0.3, 6], [n - 0.3, n - 0.3, 6], [0.3, n - 0.3, 6]], '#8f8a80');
+    g.save();
+    g.translate(0, -6);
+    box(g, 0.5, 0.6, n - 0.6, n - 0.5, 34, PLASTER, {
+      left: (len) => {
+        doorAt(g, len / 2, 9, 14);
+        for (const u of [len * 0.18, len * 0.34, len * 0.66, len * 0.82]) windowAt(g, u, 18, 4.5, 6);
+        banner(g, len * 0.26, 33, team);
+        banner(g, len * 0.74, 33, team);
+      },
+      right: (len) => {
+        for (const u of [len * 0.25, len * 0.5, len * 0.75]) windowAt(g, u, 18, 4.5, 6);
+      },
+    });
+    gableRoof(g, 0.5, 0.6, n - 0.6, n - 0.5, 34, 30, THATCH, 'x', 0.18, 11);
+    // Central bell tower rising through the roof.
+    const t0 = n / 2 - 0.55, t1 = n / 2 + 0.55;
+    box(g, t0, t0, t1, t1, 84, PLASTER, { left: (len) => windowAt(g, len / 2, 66, 5, 8), right: (len) => windowAt(g, len / 2, 66, 5, 8) });
+    hipRoof(g, t0, t0, t1, t1, 84, 26, { color: '#b08a44', kind: 'thatch' }, 0.15, 5);
+    flag(g, n / 2, n / 2, 110, team, 1.2);
     // Chimney.
-    g.fillStyle = STONE;
-    g.fillRect(W - 30, -14, 6, 14);
-    g.fillStyle = '#5c5850';
-    g.fillRect(W - 31, -15, 8, 2);
+    box(g, n - 1.3, 1.0, n - 1.0, 1.3, 64, STONE);
+    g.restore();
   },
-  house: (g, W, team, rng) => {
-    shadow(g, 4, 12, W - 4, W - 3);
-    wall(g, 6, W - 6, W * 0.5, W - 6, { door: W * 0.35, windows: [W * 0.7] });
-    thatch(g, 1, W - 1, -RISE / 2, 4, W * 0.52, rng);
-    flag(g, W - 6, 6, team, 0.8);
+  house: (g, n, team) => {
+    boxShadow(g, 0.25, 0.25, n - 0.2, n - 0.2, 40);
+    box(g, 0.25, 0.3, n - 0.25, n - 0.2, 22, PLASTER, {
+      left: (len) => {
+        doorAt(g, len * 0.35, 7, 11);
+        windowAt(g, len * 0.72, 10, 4, 5);
+      },
+      right: (len) => windowAt(g, len / 2, 10, 4, 5),
+    });
+    gableRoof(g, 0.25, 0.3, n - 0.25, n - 0.2, 22, 20, THATCH, 'y', 0.14, 3);
+    box(g, 0.45, 0.55, 0.7, 0.8, 48, STONE);
+    flag(g, n - 0.3, 0.3, 30, team, 0.7);
   },
-  lumber_camp: (g, W, team, rng) => {
-    shadow(g, 4, 14, W - 4, W - 3);
-    // Open shed: dark interior, posts, plank roof.
-    g.fillStyle = '#2b1d10';
-    g.fillRect(6, W * 0.42, W * 0.62, W * 0.4);
-    g.fillStyle = WOOD;
-    for (const x of [6, W * 0.37, W * 0.68 - 2]) g.fillRect(x, W * 0.42, 2.4, W * 0.42);
-    thatch(g, 2, W * 0.74, -6, 6, W * 0.45, rng);
-    logPile(g, W * 0.72, W - 8, 3);
-    // Chopping block with axe.
-    g.fillStyle = '#8a6238';
-    g.fillRect(W * 0.3, W - 12, 7, 5);
-    g.strokeStyle = WOOD_DARK;
-    g.lineWidth = 1;
-    g.beginPath();
-    g.moveTo(W * 0.3 + 3.5, W - 12);
-    g.lineTo(W * 0.3 + 8, W - 19);
-    g.stroke();
-    g.fillStyle = '#9ba3a8';
-    g.fillRect(W * 0.3 + 6.5, W - 21, 3.5, 2.5);
-    flag(g, 8, W * 0.42, team, 0.8);
+  lumber_camp: (g, n, team) => {
+    groundPatch(g, n, 'rgba(110,86,52,0.4)', 0);
+    shelter(g, 0.2, 0.2, n * 0.62, n - 0.25, 22, team);
+    // Stacked logs and a sawhorse in the open.
+    for (let r = 0; r < 3; r++) for (let k = 0; k < 3 - r; k++) log(g, [n * 0.66 + k * 0.17 + r * 0.08, 0.3], [n * 0.66 + k * 0.17 + r * 0.08, 1.3], 2 + r * 3.4, 1.7);
+    crate(g, n * 0.72, n * 0.7);
+    line3(g, [n * 0.25, n * 0.85, 0], [n * 0.25, n * 0.85, 8], '#5a3d22', 1.2);
+    line3(g, [n * 0.45, n * 0.85, 0], [n * 0.45, n * 0.85, 8], '#5a3d22', 1.2);
+    log(g, [n * 0.2, n * 0.85], [n * 0.5, n * 0.85], 8, 1.5);
   },
-  mining_camp: (g, W, team, rng) => {
-    shadow(g, 4, 14, W - 4, W - 3);
-    g.fillStyle = '#2b1d10';
-    g.fillRect(6, W * 0.42, W * 0.62, W * 0.4);
-    g.fillStyle = WOOD;
-    for (const x of [6, W * 0.37, W * 0.68 - 2]) g.fillRect(x, W * 0.42, 2.4, W * 0.42);
-    thatch(g, 2, W * 0.74, -6, 6, W * 0.45, rng);
-    // Ore cart.
-    g.fillStyle = '#5a4a3a';
-    g.fillRect(W * 0.62, W - 17, 14, 8);
-    g.strokeStyle = WOOD_DARK;
-    g.strokeRect(W * 0.62, W - 17, 14, 8);
-    g.fillStyle = '#222';
-    g.beginPath();
-    g.arc(W * 0.62 + 3, W - 8, 2.2, 0, Math.PI * 2);
-    g.arc(W * 0.62 + 11, W - 8, 2.2, 0, Math.PI * 2);
-    g.fill();
-    rocks(g, W * 0.62 + 4, W - 18, '#e8b830');
-    rocks(g, W * 0.2, W - 8, '#a9a9a4');
-    flag(g, 8, W * 0.42, team, 0.8);
+  mining_camp: (g, n, team, rng) => {
+    groundPatch(g, n, 'rgba(110,98,84,0.45)', 0);
+    shelter(g, 0.2, 0.2, n * 0.62, n - 0.25, 22, team);
+    // Ore cart with gold and a heap of stone.
+    box(g, n * 0.68, n * 0.2, n * 0.95, n * 0.5, 8, PLANKS);
+    poly3(g, [[n * 0.68, n * 0.2, 8], [n * 0.95, n * 0.2, 8], [n * 0.95, n * 0.5, 8], [n * 0.68, n * 0.5, 8]], '#5a4a3a');
+    oreHeap(g, n * 0.81, n * 0.35, '#f2c230', rng);
+    oreHeap(g, n * 0.78, n * 0.78, '#a9a9a2', rng);
+    crate(g, n * 0.3, n * 0.82, 0.3);
   },
-  mill: (g, W, team, rng) => {
-    shadow(g, 4, 12, W - 4, W - 3);
-    wall(g, 9, W - 9, W * 0.45, W - 6, { door: W / 2, windows: [W * 0.3] });
-    thatch(g, 4, W - 4, -12, 0, W * 0.47, rng);
-    // Sails.
-    const hx = W / 2, hy = W * 0.3;
+  mill: (g, n, team) => {
+    boxShadow(g, 0.3, 0.3, n - 0.3, n - 0.3, 60);
+    box(g, 0.3, 0.35, n - 0.3, n - 0.3, 18, STONE);
+    box(g, 0.45, 0.5, n - 0.45, n - 0.45, 40, PLASTER, {
+      left: (len) => {
+        doorAt(g, len * 0.4, 6, 10);
+        windowAt(g, len * 0.5, 26, 4, 5);
+      },
+      right: (len) => windowAt(g, len / 2, 26, 4, 5),
+    });
+    hipRoof(g, 0.45, 0.5, n - 0.45, n - 0.45, 40, 22, THATCH, 0.12, 9);
+    // Four sails on the south-west face.
+    const [hx, hy] = P(n / 2 - 0.1, n - 0.45, 46);
     g.save();
     g.translate(hx, hy);
-    g.rotate(0.35);
+    g.rotate(0.3);
     for (let k = 0; k < 4; k++) {
       g.rotate(Math.PI / 2);
-      g.fillStyle = WOOD_DARK;
-      g.fillRect(-0.8, 0, 1.6, 26);
-      g.fillStyle = 'rgba(238,226,196,0.95)';
-      g.fillRect(1, 6, 6, 19);
+      g.fillStyle = '#4a3218';
+      g.fillRect(-0.8, 0, 1.6, 34);
+      g.fillStyle = 'rgba(236,224,196,0.95)';
+      g.fillRect(1.2, 8, 7, 25);
       g.strokeStyle = 'rgba(80,60,30,0.6)';
       g.lineWidth = 0.4;
-      g.strokeRect(1, 6, 6, 19);
+      for (let v = 11; v < 33; v += 4) {
+        g.beginPath();
+        g.moveTo(1.2, v);
+        g.lineTo(8.2, v);
+        g.stroke();
+      }
     }
     g.restore();
-    g.fillStyle = WOOD_DARK;
+    g.fillStyle = '#2a1a0c';
     g.beginPath();
-    g.arc(hx, hy, 2.4, 0, Math.PI * 2);
+    g.arc(hx, hy, 2.6, 0, Math.PI * 2);
     g.fill();
-    // Sacks of grain.
-    for (const [x, y] of [[W - 14, W - 6], [W - 9, W - 5]]) {
+    for (const [x, y] of [[n - 0.25, n - 0.1], [n - 0.05, n - 0.35]]) {
+      const [sx, sy] = P(x, y, 0);
       g.fillStyle = '#cdb98a';
+      g.strokeStyle = 'rgba(60,40,15,0.6)';
       g.beginPath();
-      g.ellipse(x, y, 3, 3.6, 0, 0, Math.PI * 2);
+      g.ellipse(sx, sy - 3, 3.2, 3.8, 0, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+    }
+    flag(g, 0.4, 0.4, 40, team, 0.7);
+  },
+  barracks: (g, n, team) => {
+    groundPatch(g, n, 'rgba(126,98,60,0.5)', 0);
+    boxShadow(g, 0.2, 0.2, n - 0.2, n * 0.55, 46);
+    box(g, 0.2, 0.2, n - 0.2, n * 0.55, 28, PLASTER, {
+      left: (len) => {
+        doorAt(g, len / 2, 9, 14);
+        for (const u of [len * 0.2, len * 0.8]) windowAt(g, u, 14, 4.5, 6);
+        banner(g, len * 0.35, 27, team);
+        banner(g, len * 0.65, 27, team);
+      },
+      right: (len) => windowAt(g, len / 2, 14, 4.5, 6),
+    });
+    gableRoof(g, 0.2, 0.2, n - 0.2, n * 0.55, 28, 22, THATCH, 'x', 0.15, 21);
+    // Training yard fence along the front.
+    for (let x = 0.1; x <= n - 0.1; x += 0.45) post(g, x, n - 0.1, 9, 1.6);
+    line3(g, [0.1, n - 0.1, 7], [n - 0.1, n - 0.1, 7], '#6e4b2a', 1.3);
+    line3(g, [0.1, n - 0.1, 3.5], [n - 0.1, n - 0.1, 3.5], '#6e4b2a', 1.3);
+    // Straw dummy.
+    const [dx, dy] = P(0.8, n * 0.8, 0);
+    g.fillStyle = '#5a3d22';
+    g.fillRect(dx - 1, dy - 18, 2, 18);
+    g.fillRect(dx - 6, dy - 14, 12, 1.6);
+    g.fillStyle = '#d6bf7a';
+    g.beginPath();
+    g.ellipse(dx, dy - 10, 3.6, 5.2, 0, 0, Math.PI * 2);
+    g.fill();
+    g.beginPath();
+    g.arc(dx, dy - 18, 2.8, 0, Math.PI * 2);
+    g.fill();
+    // Weapon rack: spears and team shields.
+    for (let k = 0; k < 4; k++) line3(g, [n * 0.62 + k * 0.12, n * 0.78, 0], [n * 0.6 + k * 0.12, n * 0.78, 22], '#7a5430', 1.1);
+    for (const x of [n * 0.66, n * 0.86]) {
+      const [sx, sy] = P(x, n * 0.8, 8);
+      g.fillStyle = team;
+      g.strokeStyle = 'rgba(0,0,0,0.6)';
+      g.lineWidth = 0.6;
+      g.beginPath();
+      g.ellipse(sx, sy, 4, 4.4, 0, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.fillStyle = '#d9b44a';
+      g.beginPath();
+      g.arc(sx, sy, 1.2, 0, Math.PI * 2);
       g.fill();
     }
-    flag(g, W - 8, W * 0.45, team, 0.8);
+    flag(g, n - 0.25, 0.25, 40, team, 1);
+  },
+  farm: (g, n, _team, rng, stage) => {
+    // Ploughed field: furrows run along x; wheat thins as it is harvested.
+    poly3(g, [[0, 0, 0], [n, 0, 0], [n, n, 0], [0, n, 0]], '#6e5232', null);
+    onGround(g, 0, 0, () => {
+      const W = n * 32;
+      const soil = g.createLinearGradient(0, 0, W, W);
+      soil.addColorStop(0, '#8d6c44');
+      soil.addColorStop(1, '#6a4c2c');
+      g.fillStyle = soil;
+      g.fillRect(2, 2, W - 4, W - 4);
+      for (let v = 4; v < W - 3; v += 4) {
+        g.fillStyle = 'rgba(40,24,10,0.35)';
+        g.fillRect(3, v + 1.6, W - 6, 1.2);
+        g.fillStyle = 'rgba(200,160,110,0.22)';
+        g.fillRect(3, v, W - 6, 0.8);
+      }
+    });
+    const ripe = ['#7d8f3a', '#b9a83e', '#d9b84a', '#e8c95a'][stage];
+    const tip = ['#9aac4c', '#e0c860', '#f2d97a', '#fbe79a'][stage];
+    const fill = [0.1, 0.45, 0.75, 1][stage];
+    for (let y = 0.15; y < n - 0.1; y += 0.125)
+      for (let x = 0.1; x < n - 0.08; x += 0.1) {
+        if (rng.next() > fill) continue;
+        const [sx, sy] = P(x, y, 0);
+        const h = 3 + stage * 2 + rng.next() * 2;
+        g.strokeStyle = ripe;
+        g.lineWidth = 0.9;
+        g.beginPath();
+        g.moveTo(sx, sy);
+        g.lineTo(sx + (rng.next() - 0.4) * 1.6, sy - h);
+        g.stroke();
+        g.fillStyle = tip;
+        g.fillRect(sx - 0.6, sy - h - 1, 1.3, 1.8);
+      }
+    for (const [x, y] of [[0, 0], [n, 0], [0, n], [n, n], [n / 2, n], [n, n / 2]]) post(g, x, y, 7, 1.5);
+    line3(g, [0, n, 5], [n, n, 5], '#5a3d22', 1);
+    line3(g, [n, 0, 5], [n, n, 5], '#5a3d22', 1);
   },
 };
 
-/** Building sprites for one zoom level, cached per type and player. */
+/** Building sprites for one zoom level, cached per type, player and variant. */
 export class BuildingSprites {
   private readonly cache = new Map<string, Sprite>();
 
-  constructor(readonly s: number) {}
+  /** `tw`: device px across one tile diamond. */
+  constructor(readonly tw: number) {}
 
   get(type: BuildingType, size: number, player: number, variant = 0): Sprite {
     const key = `${type}|${player}|${variant}`;
@@ -417,17 +302,17 @@ export class BuildingSprites {
     return sp;
   }
 
-  private render(type: BuildingType, size: number, player: number, variant: number): Sprite {
-    const u = this.s / 32;
-    const W = size * 32;
+  private render(type: BuildingType, n: number, player: number, variant: number): Sprite {
+    const k = this.tw / 64;
+    const halfW = n * 32 + PAD;
     const c = document.createElement('canvas');
-    c.width = Math.ceil((W + PAD * 2) * u);
-    c.height = Math.ceil((W + RISE + PAD) * u);
+    c.width = Math.ceil(halfW * 2 * k);
+    c.height = Math.ceil((RISE + n * 32 + PAD) * k);
     const g = c.getContext('2d')!;
-    g.scale(u, u);
-    g.translate(PAD, RISE);
-    PAINTERS[type](g, W, PLAYER_COLORS[player % PLAYER_COLORS.length], new Rng(size * 31 + type.length), variant);
-    // Anchor = footprint top-left.
-    return { c, ax: PAD * u, ay: RISE * u };
+    g.scale(k, k);
+    g.translate(halfW, RISE);
+    PAINTERS[type](g, n, PLAYER_COLORS[player % PLAYER_COLORS.length], new Rng(n * 31 + type.length), variant);
+    // Anchor = footprint's north corner.
+    return { c, ax: halfW * k, ay: RISE * k };
   }
 }

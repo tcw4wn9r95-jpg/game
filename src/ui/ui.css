@@ -1,5 +1,6 @@
 /* Hearth & Crown UI theme: dark carved wood, gilded frames, engraved serif titles. */
 :root {
+  --mm-w: min(52vh, 204px);
   --gold-hi: #f6df98;
   --gold: #d6a849;
   --gold-lo: #8a5f1c;
@@ -206,8 +207,8 @@
 
 .minimap {
   display: block;
-  width: min(34vh, 148px);
-  height: min(34vh, 148px);
+  width: var(--mm-w);
+  height: calc(var(--mm-w) / 2);
   background: #05070d;
   touch-action: none;
 }
@@ -454,7 +455,7 @@
   position: absolute;
   left: calc(var(--safe-l) + 6px);
   bottom: calc(var(--safe-b) + 4px);
-  right: calc(var(--safe-r) + min(34vh, 148px) + 80px);
+  right: calc(var(--safe-r) + var(--mm-w) + 80px);
   display: flex;
   align-items: flex-end;
   gap: 6px;
@@ -741,7 +742,7 @@
 
 .side-btns {
   position: absolute;
-  right: calc(var(--safe-r) + min(34vh, 148px) + 30px);
+  right: calc(var(--safe-r) + var(--mm-w) + 30px);
   bottom: calc(var(--safe-b) + 6px);
   display: grid;
   grid-template-columns: 40px;

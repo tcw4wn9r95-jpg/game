@@ -1,4 +1,4 @@
-// Terrain is pre-rendered in 8x8-tile chunks per zoom level, kept in an LRU cache
+// Terrain is pre-rendered in 8x8-tile isometric chunks per zoom level, kept in an LRU cache
 // bounded by bytes so large maps stay within iOS Safari's canvas memory limits.
 import { Noise } from '../sim/noise';
 import { Rng } from '../sim/rng';
@@ -6,10 +6,12 @@ import { type GameMap, Terrain, isWater } from '../sim/terrain';
 import type { Biome } from './biome';
 import { EDGE_NOISE_RES, EDGE_NOISE_TILES, SHEET, type TerrainTextures, boundaryNoise } from './textures';
 import { GROUND_RANK, RANK_TERRAIN, tileHash } from './tiles';
+import { FOG_RGB } from './fogLayer';
 
 export const CHUNK = 8;
 const BUDGET_BYTES = 64 * 1024 * 1024;
 const POOL_PER_SIZE = 2;
+const BG = `rgb(${FOG_RGB.join(',')})`;
 
 const DIRS = [
   [0, -1],
@@ -23,7 +25,6 @@ export class ChunkCache {
   private bytes = 0;
   /** Recycled canvases from evicted chunks, keyed by pixel size. */
   private pool = new Map<number, HTMLCanvasElement[]>();
-  readonly chunksPerSide: number;
   /** One texel per tile (plus a 1-tile border): soft ground patches and water depth, drawn smoothed over each chunk. */
   private readonly tint: HTMLCanvasElement;
 
@@ -31,7 +32,6 @@ export class ChunkCache {
     private readonly map: GameMap,
     private readonly biome: Biome,
   ) {
-    this.chunksPerSide = Math.ceil(map.size / CHUNK);
     this.tint = buildTint(map, biome);
   }
 
@@ -46,34 +46,70 @@ export class ChunkCache {
     return c;
   }
 
-  /** Any cached zoom level of this chunk, for drawing scaled while the right one builds. */
-  anyLevel(cx: number, cy: number, levels: number): HTMLCanvasElement | undefined {
+  /** Tiles per chunk side at a zoom level: smaller chunks when zoomed in keep each build and upload short. */
+  static tilesPerChunk(tw: number): number {
+    return CHUNK * tw > 2048 ? CHUNK / 2 : CHUNK;
+  }
+
+  /** Any cached zoom level of this chunk with the same chunk size, for drawing scaled while the right one builds. */
+  anyLevel(cx: number, cy: number, levels: number, n: number): HTMLCanvasElement | undefined {
     for (let l = 0; l < levels; l++) {
+      if (this.levelTiles[l] !== n) continue;
       const c = this.cache.get(`${l}:${cx}:${cy}`);
       if (c) return c;
     }
     return undefined;
   }
 
-  build(level: number, cx: number, cy: number, tex: TerrainTextures): HTMLCanvasElement {
-    const px = CHUNK * tex.s;
-    const c = this.pool.get(px)?.pop() ?? document.createElement('canvas');
-    c.width = c.height = px;
+  /** Chunk size (tiles per side) last built at each zoom level. */
+  private levelTiles: number[] = [];
+
+  /**
+   * Paints an n x n tile chunk in square tile space, then projects it into an
+   * isometric diamond (tw x th device px per tile) on a canvas n*tw wide and
+   * n*th tall, whose top centre is the chunk's north corner.
+   */
+  build(level: number, cx: number, cy: number, tex: TerrainTextures, tw: number, th: number, n: number): HTMLCanvasElement {
+    this.levelTiles[level] = n;
+    const sq = n * tex.s;
+    if (!this.square || this.square.width !== sq) {
+      this.square = document.createElement('canvas');
+      this.square.width = this.square.height = sq;
+    }
+    const sg = this.square.getContext('2d')!;
+    sg.setTransform(1, 0, 0, 1, 0, 0);
+    this.paint(sg, cx * n, cy * n, tex, n);
+
+    const w = Math.round(n * tw), h = Math.round(n * th);
+    const c = this.pool.get(w)?.pop() ?? document.createElement('canvas');
+    c.width = w;
+    c.height = h;
     const g = c.getContext('2d')!;
-    this.paint(g, cx, cy, tex);
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    const k = 1 / tex.s;
+    g.setTransform((tw / 2) * k, (th / 2) * k, -(tw / 2) * k, (th / 2) * k, w / 2, 0);
+    // Grow the diamond by about a pixel past its edges so antialiased seams between chunks don't show.
+    const f = 1 + 3 / sq;
+    g.translate(sq / 2, sq / 2);
+    g.scale(f, f);
+    g.translate(-sq / 2, -sq / 2);
+    g.drawImage(this.square, 0, 0);
     const key = `${level}:${cx}:${cy}`;
     this.cache.set(key, c);
-    this.bytes += px * px * 4;
+    this.bytes += w * h * 4;
     this.evict();
     return c;
   }
 
+  private square: HTMLCanvasElement | null = null;
+
   /** Drops every cached chunk overlapping a tile (terrain changed there). */
   invalidateTile(x: number, y: number): void {
-    const cx = Math.floor(x / CHUNK), cy = Math.floor(y / CHUNK);
     for (const key of [...this.cache.keys()]) {
-      const [, kx, ky] = key.split(':').map(Number);
-      if (kx === cx && ky === cy) this.remove(key);
+      const [l, kx, ky] = key.split(':').map(Number);
+      const n = this.levelTiles[l] ?? CHUNK;
+      if (kx === Math.floor(x / n) && ky === Math.floor(y / n)) this.remove(key);
     }
   }
 
@@ -86,6 +122,7 @@ export class ChunkCache {
     this.clear();
     for (const list of this.pool.values()) for (const c of list) c.width = c.height = 0;
     this.pool.clear();
+    if (this.square) this.square.width = this.square.height = 0;
   }
 
   private evict(): void {
@@ -109,21 +146,21 @@ export class ChunkCache {
 
   private tileImg: ImageData | null = null;
 
-  private paint(g: CanvasRenderingContext2D, cx: number, cy: number, tex: TerrainTextures): void {
+  /** Paints the n x n tiles from (x0, y0) in square tile space. */
+  private paint(g: CanvasRenderingContext2D, x0: number, y0: number, tex: TerrainTextures, n: number): void {
     const { map } = this;
     const N = map.size, s = tex.s;
-    const x0 = cx * CHUNK, y0 = cy * CHUNK;
 
-    g.fillStyle = '#05070d';
-    g.fillRect(0, 0, CHUNK * s, CHUNK * s);
+    g.fillStyle = BG;
+    g.fillRect(0, 0, n * s, n * s);
     if (!this.tileImg || this.tileImg.width !== s) this.tileImg = g.createImageData(s, s);
 
-    for (let ty = 0; ty < CHUNK; ty++) {
+    for (let ty = 0; ty < n; ty++) {
       const y = y0 + ty;
-      if (y >= N) break;
-      for (let tx = 0; tx < CHUNK; tx++) {
+      if (y < 0 || y >= N) continue;
+      for (let tx = 0; tx < n; tx++) {
         const x = x0 + tx;
-        if (x >= N) break;
+        if (x < 0 || x >= N) continue;
         const t = map.terrain[y * N + x];
         // Interior tiles copy straight from the texture sheet; boundary tiles are blended per pixel.
         let uniform = true;
@@ -146,14 +183,14 @@ export class ChunkCache {
 
     // Lighting: ground patches, hill shading and water depth, smoothed across tiles and chunks.
     g.imageSmoothingEnabled = true;
-    g.drawImage(this.tint, x0, y0, CHUNK + 2, CHUNK + 2, -s, -s, (CHUNK + 2) * s, (CHUNK + 2) * s);
+    g.drawImage(this.tint, x0, y0, n + 2, n + 2, -s, -s, (n + 2) * s, (n + 2) * s);
 
-    for (let ty = 0; ty < CHUNK; ty++) {
+    for (let ty = 0; ty < n; ty++) {
       const y = y0 + ty;
-      if (y >= N) break;
-      for (let tx = 0; tx < CHUNK; tx++) {
+      if (y < 0 || y >= N) continue;
+      for (let tx = 0; tx < n; tx++) {
         const x = x0 + tx;
-        if (x >= N) break;
+        if (x < 0 || x >= N) continue;
         if (map.terrain[y * N + x] === Terrain.Grass) this.flowers(g, tx * s, ty * s, s, tileHash(x, y));
       }
     }

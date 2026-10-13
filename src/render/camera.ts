@@ -1,21 +1,23 @@
-/** CSS pixels per tile for the zoom levels, from strategic overview to close-up. */
+/**
+ * Zoom levels: Z is CSS px per tile in the isometric view, where a tile is a
+ * diamond 2Z wide and Z tall (same on-screen area as a Z x Z square).
+ */
 export const ZOOM_LEVELS = [14, 22, 32, 48] as const;
 const DEFAULT_LEVEL = 1;
 const ZOOM_ANIM_S = 0.18;
 /** Fling velocity decay per second (exponential). */
 const FRICTION = 5;
-/** Tiles of empty border the camera may show beyond the map edge. */
-const EDGE_MARGIN = 2;
 
 /**
- * Camera over the tile grid. Position is the view centre in tile units; all input
- * deltas are in CSS pixels.
+ * Isometric camera over the tile grid. Tile axes run diagonally on screen: +x
+ * toward the lower right, +y toward the lower left. Position is the tile at the
+ * view centre; input deltas are CSS pixels.
  */
 export class Camera {
   x = 0;
   y = 0;
   level = DEFAULT_LEVEL;
-  /** Current CSS px per tile (animates between zoom levels). */
+  /** Current Z, CSS px per tile (animates between zoom levels). */
   scale: number = ZOOM_LEVELS[DEFAULT_LEVEL];
   viewW = 1;
   viewH = 1;
@@ -42,9 +44,16 @@ export class Camera {
     this.clamp();
   }
 
+  /** Tile-space offset for a screen-space offset (CSS px) at the current zoom. */
+  private unproject(dx: number, dy: number): { x: number; y: number } {
+    const a = dx / this.scale, b = (2 * dy) / this.scale; // a = x - y, b = x + y
+    return { x: (a + b) / 2, y: (b - a) / 2 };
+  }
+
   panBy(dx: number, dy: number): void {
-    this.x -= dx / this.scale;
-    this.y -= dy / this.scale;
+    const d = this.unproject(dx, dy);
+    this.x -= d.x;
+    this.y -= d.y;
     this.clamp();
   }
 
@@ -73,8 +82,9 @@ export class Camera {
       a.t = Math.min(1, a.t + dt / ZOOM_ANIM_S);
       const e = 1 - (1 - a.t) ** 3;
       this.scale = a.from + (a.to - a.from) * e;
-      this.x = a.tx - (a.fx - this.viewW / 2) / this.scale;
-      this.y = a.ty - (a.fy - this.viewH / 2) / this.scale;
+      const d = this.unproject(a.fx - this.viewW / 2, a.fy - this.viewH / 2);
+      this.x = a.tx - d.x;
+      this.y = a.ty - d.y;
       if (a.t >= 1) {
         this.scale = a.to;
         this.anim = null;
@@ -91,15 +101,18 @@ export class Camera {
   }
 
   screenToTile(sx: number, sy: number): { x: number; y: number } {
-    return { x: this.x + (sx - this.viewW / 2) / this.scale, y: this.y + (sy - this.viewH / 2) / this.scale };
+    const d = this.unproject(sx - this.viewW / 2, sy - this.viewH / 2);
+    return { x: this.x + d.x, y: this.y + d.y };
+  }
+
+  tileToScreen(tx: number, ty: number): { x: number; y: number } {
+    const dx = tx - this.x, dy = ty - this.y;
+    return { x: this.viewW / 2 + (dx - dy) * this.scale, y: this.viewH / 2 + ((dx + dy) * this.scale) / 2 };
   }
 
   private clamp(): void {
     const N = this.mapSize;
-    const hw = this.viewW / 2 / this.scale, hh = this.viewH / 2 / this.scale;
-    const fit = (v: number, half: number) =>
-      half * 2 >= N + EDGE_MARGIN * 2 ? N / 2 : Math.max(half - EDGE_MARGIN, Math.min(N + EDGE_MARGIN - half, v));
-    const x = fit(this.x, hw), y = fit(this.y, hh);
+    const x = Math.max(0, Math.min(N, this.x)), y = Math.max(0, Math.min(N, this.y));
     if (x !== this.x) this.vx = 0;
     if (y !== this.y) this.vy = 0;
     this.x = x;
