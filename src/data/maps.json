@@ -18,6 +18,7 @@
     "clearRadius": 9,
     "townRadius": 4,
     "visionRadius": 10,
+    "exploredRadius": 24,
     "berries": 6,
     "gold": 7,
     "secondGold": 4,

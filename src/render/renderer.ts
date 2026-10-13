@@ -5,6 +5,7 @@ import { type Camera, ZOOM_LEVELS } from './camera';
 import { CHUNK, ChunkCache } from './chunks';
 import { FOG_RGB, FogLayer } from './fogLayer';
 import { type Sprite, SpriteSet } from './sprites';
+import { BIOMES, type Biome, pickTree } from './biome';
 import { TileArt, tileHash } from './tiles';
 
 /** Chunks built per frame after the first; the rest draw from another zoom level meanwhile. */
@@ -25,13 +26,15 @@ export class Renderer {
   private readonly fogLayer: FogLayer;
   private firstFrame = true;
   private animalRows: Animal[] = [];
+  private readonly biome: Biome;
 
   constructor(
     private readonly view: View,
     private readonly map: GameMap,
     private readonly fog: Fog,
   ) {
-    this.chunks = new ChunkCache(map);
+    this.biome = BIOMES[map.type];
+    this.chunks = new ChunkCache(map, this.biome);
     this.fogLayer = new FogLayer(fog);
   }
 
@@ -45,10 +48,14 @@ export class Renderer {
     let a = this.levels[level];
     if (!a) {
       const s = Math.round(ZOOM_LEVELS[level] * this.view.dpr);
-      a = { s, tiles: new TileArt(s), sprites: new SpriteSet(s) };
+      a = { s, tiles: new TileArt(s, this.biome), sprites: new SpriteSet(s) };
       this.levels[level] = a;
     }
     return a;
+  }
+
+  dispose(): void {
+    this.chunks.dispose();
   }
 
   draw(cam: Camera): void {
@@ -137,7 +144,7 @@ export class Renderer {
         const h = tileHash(x, y);
         if (f === Feature.Tree) {
           const jx = ((h >>> 8) % 100) / 100 - 0.5, jy = ((h >>> 16) % 100) / 100 - 0.5;
-          put(sp.trees[h & 3], x + 0.5 + jx * 0.22, y + 0.82 + jy * 0.14);
+          put(sp.trees[pickTree(this.biome, h & 1023)], x + 0.5 + jx * 0.22, y + 0.82 + jy * 0.14);
         } else {
           put(f === Feature.Gold ? sp.gold : f === Feature.Stone ? sp.stone : sp.berries, x + 0.5, y + 0.85);
         }

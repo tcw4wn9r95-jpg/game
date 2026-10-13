@@ -1,9 +1,17 @@
-import type { MapOptions } from '../sim/mapgen';
-import { MAP_SIZES, MAP_TYPES, type MapSize, type MapType } from '../sim/terrain';
+import { PLAYER_COLORS } from '../render/palette';
+import { generateMap, type MapOptions } from '../sim/mapgen';
+import { type GameMap, MAP_SIZES, MAP_TYPES, type MapSize, type MapType } from '../sim/terrain';
+import { ICONS, MAP_ICONS } from './icons';
+import { mapImage } from './mapImage';
 
 const STORAGE_KEY = 'hc.setup';
 
-const MAP_LABELS: Record<MapType, string> = { heartland: 'Heartland', coastal: 'Coastal', lakes: 'Lakes', islands: 'Islands' };
+const MAP_INFO: Record<MapType, { name: string; desc: string }> = {
+  heartland: { name: 'Heartland', desc: 'Open farmland cut by a river. Hold the fords; wall the gaps.' },
+  coastal: { name: 'Coastal', desc: 'A long shore on one flank. Rule the sea for fish and a second front.' },
+  lakes: { name: 'Lakes', desc: 'A great lake at the heart of the realm. Docks are optional, but useful.' },
+  islands: { name: 'Islands', desc: 'Every realm on its own isle. Only ships carry armies to war.' },
+};
 const SIZE_LABELS: Record<MapSize, string> = { skirmish: 'Skirmish', standard: 'Standard', epic: 'Epic' };
 const PLAYER_LABELS: Record<number, string> = { 2: '1 vs 1', 3: '1 vs 2', 4: '2 vs 2' };
 
@@ -23,10 +31,15 @@ function savePrefs(o: MapOptions): void {
   }
 }
 
-export const randomSeed = () => Math.floor(Math.random() * 1e9);
+export const randomSeed = () => Math.floor(Math.random() * 1e6);
 
-/** New-game screen. Calls onStart with the chosen options and removes itself. */
-export function showSetup(root: HTMLElement, onStart: (o: MapOptions) => void): void {
+export interface SetupHooks {
+  onPreview(map: GameMap): void;
+  onStart(opts: MapOptions, map: GameMap): void;
+}
+
+/** New-match screen with a live preview of the generated map. Removes itself on start. */
+export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
   const prefs = loadPrefs();
   const opts: MapOptions = {
     type: MAP_TYPES.includes(prefs.type as MapType) ? (prefs.type as MapType) : 'heartland',
@@ -38,40 +51,95 @@ export function showSetup(root: HTMLElement, onStart: (o: MapOptions) => void): 
   const el = document.createElement('div');
   el.className = 'setup';
   el.innerHTML = `
-    <h1>Hearth &amp; Crown</h1>
-    <div class="setup-rows"></div>
-    <button class="setup-start">Start match</button>
+    <div class="setup-main">
+      <section class="setup-left frame">
+        <header class="setup-title"><span class="crest">${ICONS.crown}</span><h1>Hearth &amp; Crown</h1></header>
+        <div class="setup-label">Map</div>
+        <div class="cards" data-row="type"></div>
+        <div class="setup-label">Size</div>
+        <div class="seg" data-row="size"></div>
+        <div class="setup-label">Players</div>
+        <div class="seg" data-row="players"></div>
+      </section>
+      <section class="setup-right frame">
+        <div class="preview-wrap"><canvas class="preview"></canvas></div>
+        <div class="map-name"></div>
+        <div class="map-desc"></div>
+        <div class="seed-row"><span class="seed"></span><button class="icon-btn" aria-label="New map">${ICONS.dice}</button></div>
+        <button class="btn btn-gold start">Start Match</button>
+      </section>
+    </div>
     <div class="setup-build">build ${__BUILD_ID__}</div>`;
-  const rows = el.querySelector('.setup-rows')!;
 
-  const row = <T extends string | number>(label: string, values: T[], names: Record<string, string>, get: () => T, set: (v: T) => void) => {
-    const r = document.createElement('div');
-    r.className = 'setup-row';
-    r.innerHTML = `<span class="setup-label">${label}</span>`;
-    const group = document.createElement('div');
-    group.className = 'seg';
-    for (const v of values) {
-      const b = document.createElement('button');
-      b.textContent = names[String(v)];
-      b.setAttribute('aria-pressed', String(get() === v));
-      b.addEventListener('click', () => {
-        set(v);
-        group.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-      });
-      group.appendChild(b);
-    }
-    r.appendChild(group);
-    rows.appendChild(r);
+  const preview = el.querySelector<HTMLCanvasElement>('.preview')!;
+  let map: GameMap | null = null;
+  let pending = 0;
+
+  const refresh = () => {
+    cancelAnimationFrame(pending);
+    // Defer a frame so the button state paints before generation runs.
+    pending = requestAnimationFrame(() => {
+      map = generateMap(opts);
+      drawPreview(preview, map);
+      el.querySelector('.map-name')!.textContent = `${MAP_INFO[opts.type].name} · ${SIZE_LABELS[opts.size]}`;
+      el.querySelector('.map-desc')!.textContent = MAP_INFO[opts.type].desc;
+      el.querySelector('.seed')!.textContent = `Seed ${opts.seed}`;
+      hooks.onPreview(map);
+    });
   };
 
-  row('Map', MAP_TYPES, MAP_LABELS, () => opts.type, (v) => (opts.type = v));
-  row('Size', MAP_SIZES, SIZE_LABELS, () => opts.size, (v) => (opts.size = v));
-  row('Players', [2, 3, 4], PLAYER_LABELS, () => opts.players, (v) => (opts.players = v));
+  const group = <T extends string | number>(row: string, values: T[], render: (v: T) => string, get: () => T, set: (v: T) => void) => {
+    const container = el.querySelector(`[data-row=${row}]`)!;
+    for (const v of values) {
+      const b = document.createElement('button');
+      b.className = row === 'type' ? 'card' : 'seg-btn';
+      b.innerHTML = render(v);
+      b.setAttribute('aria-pressed', String(get() === v));
+      b.addEventListener('click', () => {
+        if (get() === v) return;
+        set(v);
+        container.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+        refresh();
+      });
+      container.appendChild(b);
+    }
+  };
 
-  el.querySelector('.setup-start')!.addEventListener('click', () => {
-    savePrefs(opts);
-    el.remove();
-    onStart(opts);
+  group('type', MAP_TYPES, (t) => `<span class="card-art">${MAP_ICONS[t]}</span><span class="card-name">${MAP_INFO[t].name}</span>`, () => opts.type, (v) => (opts.type = v));
+  group('size', MAP_SIZES, (s) => SIZE_LABELS[s], () => opts.size, (v) => (opts.size = v));
+  group('players', [2, 3, 4], (p) => PLAYER_LABELS[p], () => opts.players, (v) => (opts.players = v));
+
+  el.querySelector('.icon-btn')!.addEventListener('click', () => {
+    opts.seed = randomSeed();
+    refresh();
   });
+  el.querySelector('.start')!.addEventListener('click', () => {
+    if (!map) return;
+    savePrefs(opts);
+    cancelAnimationFrame(pending);
+    el.remove();
+    hooks.onStart(opts, map);
+  });
+
   root.appendChild(el);
+  refresh();
+}
+
+function drawPreview(canvas: HTMLCanvasElement, map: GameMap): void {
+  const css = canvas.clientWidth || 150;
+  const px = Math.round(css * Math.min(window.devicePixelRatio || 1, 2));
+  canvas.width = canvas.height = px;
+  const g = canvas.getContext('2d')!;
+  g.imageSmoothingEnabled = false;
+  g.drawImage(mapImage(map), 0, 0, px, px);
+  const k = px / map.size;
+  map.starts.forEach((s, i) => {
+    g.fillStyle = PLAYER_COLORS[i];
+    g.strokeStyle = '#fff6dc';
+    g.lineWidth = Math.max(1.5, px / 90);
+    g.beginPath();
+    g.arc((s.x + 0.5) * k, (s.y + 0.5) * k, Math.max(4, px / 26), 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+  });
 }

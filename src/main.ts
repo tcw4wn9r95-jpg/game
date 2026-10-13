@@ -4,8 +4,11 @@ import { attachGestures } from './input/gestures';
 import { createView } from './render/canvas';
 import type { MapOptions } from './sim/mapgen';
 import { MAP_SIZES, MAP_TYPES, type MapSize, type MapType } from './sim/terrain';
+import { generateMap } from './sim/mapgen';
+import { MenuBackdrop } from './ui/backdrop';
 import { FpsCounter } from './ui/fps';
 import { randomSeed, showSetup } from './ui/setup';
+import { installTheme } from './ui/theme';
 
 function blockBrowserGestures(): void {
   // iOS Safari ignores user-scalable=no, so block pinch and double-tap zoom here.
@@ -51,53 +54,58 @@ function optionsFromUrl(params: URLSearchParams): MapOptions | null {
 }
 
 function boot(): void {
+  installTheme();
   blockBrowserGestures();
   lockLandscape();
   registerServiceWorker();
 
   const params = new URLSearchParams(location.search);
-  const debug = { reveal: params.has('reveal'), bench: params.has('bench') };
+  const debug = { reveal: params.has('reveal'), bench: params.has('bench'), fps: params.has('fps') };
   const view = createView(document.getElementById('game') as HTMLCanvasElement);
   const hud = document.getElementById('hud')!;
-  const menu = document.getElementById('menu')!;
-  const fps = new FpsCounter(document.getElementById('fps')!);
   let game: Game | null = null;
+  let backdrop: MenuBackdrop | null = null;
+  let fps: FpsCounter | null = null;
 
   attachGestures(view.ctx.canvas, () => game?.camera ?? null);
 
-  const start = (o: MapOptions) => {
-    game = new Game(o, view, hud, debug);
+  const clearBackdrop = () => {
+    backdrop?.dispose();
+    backdrop = null;
+  };
+  const start = (map: ReturnType<typeof generateMap>) => {
+    clearBackdrop();
+    game = new Game(map, view, hud, debug);
+    game.hud.onNewMatch = toSetup;
+    fps = new FpsCounter(hud.querySelector('#fps')!);
     hud.hidden = false;
   };
-  const toSetup = () => {
+  function toSetup() {
     game?.destroy();
     game = null;
     hud.hidden = true;
-    showSetup(document.body, start);
-  };
-
-  document.getElementById('menu-btn')!.addEventListener('click', () => (menu.hidden = false));
-  document.getElementById('menu-resume')!.addEventListener('click', () => (menu.hidden = true));
-  document.getElementById('menu-new')!.addEventListener('click', () => {
-    menu.hidden = true;
-    toSetup();
-  });
+    showSetup(document.body, {
+      onPreview: (map) => {
+        clearBackdrop();
+        backdrop = new MenuBackdrop(view, map);
+      },
+      onStart: (_opts, map) => start(map),
+    });
+  }
 
   const fromUrl = optionsFromUrl(params);
-  if (fromUrl) start(fromUrl);
+  if (fromUrl) start(generateMap(fromUrl));
   else toSetup();
 
   let last = performance.now();
   const frame = (now: number) => {
-    const dt = now - last;
-    last = now;
-    if (game) game.frame(now, dt);
-    else {
-      view.ctx.setTransform(1, 0, 0, 1, 0, 0);
-      view.ctx.fillStyle = '#0e1426';
-      view.ctx.fillRect(0, 0, view.ctx.canvas.width, view.ctx.canvas.height);
-    }
-    fps.frame(now);
+    // rAF timestamps can precede a performance.now() read taken just before, so clamp.
+    const dt = Math.max(0, now - last);
+    last = Math.max(last, now);
+    if (game) {
+      game.frame(now, dt);
+      fps?.frame(now);
+    } else if (backdrop) backdrop.frame(dt);
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

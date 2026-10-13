@@ -52,6 +52,17 @@ export class Fog {
     this.version++;
   }
 
+  /** Marks a circle as explored (seen before) without making it visible. */
+  explore(x: number, y: number, r: number): void {
+    const cx = Math.floor(x), cy = Math.floor(y);
+    const offs = circle(r);
+    for (let k = 0; k < offs.length; k += 2) {
+      const tx = cx + offs[k], ty = cy + offs[k + 1];
+      if (tx >= 0 && ty >= 0 && tx < this.size && ty < this.size) this.explored[ty * this.size + tx] = 1;
+    }
+    this.version++;
+  }
+
   revealAll(): void {
     this.revealed = true;
     this.explored.fill(1);

@@ -138,7 +138,7 @@ class MapBuilder {
     const pts: Array<[number, number]> = [];
     if (this.opts.type === 'coastal') {
       // Sea lies in direction a0; players spread over the landward half circle.
-      const cx = 0.5 - 0.08 * Math.cos(a0), cy = 0.5 - 0.08 * Math.sin(a0);
+      const cx = 0.5 - 0.02 * Math.cos(a0), cy = 0.5 - 0.02 * Math.sin(a0);
       for (let i = 0; i < p; i++) {
         const a = a0 + Math.PI / 2 + (i * Math.PI) / (p - 1);
         pts.push([cx + 0.32 * Math.cos(a), cy + 0.32 * Math.sin(a)]);
@@ -167,10 +167,10 @@ class MapBuilder {
       case 'coastal':
         return this.fillWhere((nx, ny, n) => {
           const proj = (nx - 0.5) * Math.cos(this.seaAngle) + (ny - 0.5) * Math.sin(this.seaAngle);
-          return proj > 0.22 + (n - 0.5) * 0.14;
+          return proj > 0.15 + (n - 0.5) * 0.12;
         });
       case 'lakes':
-        return this.fillWhere((nx, ny, n) => Math.hypot(nx - 0.5, ny - 0.5) < 0.16 + (n - 0.5) * 0.1);
+        return this.fillWhere((nx, ny, n) => Math.hypot(nx - 0.5, ny - 0.5) < 0.19 + (n - 0.5) * 0.1);
       case 'islands':
         return this.shapeIslands();
     }
@@ -230,7 +230,8 @@ class MapBuilder {
   private shapeIslands() {
     const { N } = this;
     const p = this.opts.players;
-    const playerR = p <= 2 ? 0.21 : p === 3 ? 0.19 : 0.17;
+    // Capped in tiles so the shoreline shows inside the explored start area on big maps.
+    const playerR = Math.min(p <= 2 ? 0.21 : p === 3 ? 0.19 : 0.17, 25 / N);
     const islands: Array<{ x: number; y: number; r: number }> = this.starts.map((s) => ({ x: s.x / N, y: s.y / N, r: playerR }));
     islands.push({ x: 0.5, y: 0.5, r: 0.085 });
     const angles = this.starts.map((s) => Math.atan2(s.y / N - 0.5, s.x / N - 0.5));
@@ -337,12 +338,14 @@ class MapBuilder {
           t[i] = Terrain.Dirt;
         }
       }
+    // A trodden, irregular patch of dirt around each Town Center.
     const r = data.start.townRadius + 1;
     for (const s of this.starts)
       for (let dy = -r; dy <= r; dy++)
         for (let dx = -r; dx <= r; dx++) {
           const x = s.x + dx, y = s.y + dy;
-          if (this.inside(x, y) && dx * dx + dy * dy <= r * r && this.isLand(this.idx(x, y)))
+          const edge = data.start.townRadius - 1 + this.forestNoise.fbm(x + 700, y + 700, 2, 1) * 2.2;
+          if (this.inside(x, y) && Math.hypot(dx, dy) <= edge && this.isLand(this.idx(x, y)))
             t[this.idx(x, y)] = Terrain.Dirt;
         }
   }

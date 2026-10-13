@@ -1,20 +1,9 @@
 import type { Camera } from '../render/camera';
+import { PLAYER_COLORS } from '../render/palette';
 import type { Fog } from '../sim/fog';
-import { Feature, type GameMap, Terrain } from '../sim/terrain';
+import type { GameMap } from '../sim/terrain';
+import { mapImage } from './mapImage';
 
-const TERRAIN_RGB: Record<number, [number, number, number]> = {
-  [Terrain.Grass]: [78, 140, 62],
-  [Terrain.Dirt]: [156, 123, 78],
-  [Terrain.Sand]: [220, 198, 131],
-  [Terrain.Shallow]: [108, 188, 200],
-  [Terrain.Deep]: [43, 106, 163],
-};
-const FEATURE_RGB: Record<number, [number, number, number]> = {
-  [Feature.Tree]: [28, 84, 34],
-  [Feature.Gold]: [250, 204, 52],
-  [Feature.Stone]: [190, 190, 190],
-  [Feature.Berries]: [214, 70, 130],
-};
 const REDRAW_MS = 120;
 
 /**
@@ -41,15 +30,7 @@ export class Minimap {
     this.el.className = 'minimap';
     parent.appendChild(this.el);
 
-    this.base = document.createElement('canvas');
-    this.base.width = this.base.height = N;
-    const bg = this.base.getContext('2d')!;
-    const img = bg.createImageData(N, N);
-    for (let i = 0; i < N * N; i++) {
-      const c = FEATURE_RGB[map.feature[i]] ?? TERRAIN_RGB[map.terrain[i]];
-      img.data.set([c[0], c[1], c[2], 255], i * 4);
-    }
-    bg.putImageData(img, 0, 0);
+    this.base = mapImage(map);
 
     this.fogCanvas = document.createElement('canvas');
     this.fogCanvas.width = this.fogCanvas.height = N;
@@ -98,7 +79,7 @@ export class Minimap {
     g.drawImage(this.fogCanvas, 0, 0, px, px);
 
     const s = this.map.starts[0];
-    g.fillStyle = '#3b82f6';
+    g.fillStyle = PLAYER_COLORS[0];
     g.strokeStyle = '#ffffff';
     g.lineWidth = Math.max(1, k * 0.6);
     g.fillRect((s.x - 2) * k, (s.y - 2) * k, 4 * k, 4 * k);

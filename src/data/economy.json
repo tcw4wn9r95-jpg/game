@@ -1,0 +1,5 @@
+{
+  "startResources": { "food": 200, "wood": 200, "gold": 100, "stone": 200 },
+  "popPerHouse": 5,
+  "popPerTownCenter": 5
+}

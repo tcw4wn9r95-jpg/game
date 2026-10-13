@@ -25,7 +25,7 @@ export class Bench {
     this.t += dt;
     if (this.t > 0.5) this.frames.push(dt * 1000); // skip warm-up
     const N = this.mapSize;
-    const level = Math.min(ZOOM_LEVELS.length - 1, Math.floor((this.t / DURATION_S) * ZOOM_LEVELS.length));
+    const level = Math.max(0, Math.min(ZOOM_LEVELS.length - 1, Math.floor((this.t / DURATION_S) * ZOOM_LEVELS.length)));
     while (this.camera.level < level) this.camera.zoomStep(1);
     while (this.camera.level > level) this.camera.zoomStep(-1);
     this.camera.centerOn(N / 2 + (N / 2) * Math.sin(this.t * 0.9), N / 2 + (N / 2) * Math.sin(this.t * 0.67 + 1));
