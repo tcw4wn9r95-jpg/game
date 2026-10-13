@@ -102,6 +102,10 @@ function boot(): void {
     });
   }
 
+  if (params.has('buildings')) {
+    void import('./ui/spriteSheet').then((m) => m.drawBuildingSheet(view, Number(params.get('buildings')) || 48));
+    return;
+  }
   if (params.has('sheet')) {
     void import('./ui/spriteSheet').then((m) => m.drawSpriteSheet(view, Number(params.get('sheet')) || 3));
     return;

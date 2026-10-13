@@ -31,7 +31,9 @@ type G = CanvasRenderingContext2D;
 type P = [number, number];
 
 const D2R = Math.PI / 180;
-const OUT = '#1d1208';
+const OUT = 'rgba(30,17,7,0.82)';
+/** Light from the upper left in figure space (unit vector). */
+const LX = -0.55, LY = -0.83;
 const BOOT = '#3a2614';
 const LEATHER = '#5b3a1e';
 const STEEL = '#b9c1c6';
@@ -45,6 +47,10 @@ export const CLOTHS = ['#6b5a42', '#4f5a4a', '#5e4a3a', '#575866'];
 // ---------- colour helpers ----------
 
 function parse(c: string): [number, number, number] {
+  if (c[0] !== '#') {
+    const m = c.match(/[\d.]+/g) ?? ['0', '0', '0'];
+    return [+m[0], +m[1], +m[2]];
+  }
   const n = parseInt(c.slice(1), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
@@ -61,18 +67,54 @@ function seg(from: P, deg: number, len: number): P {
   return [from[0] + Math.sin(deg * D2R) * len, from[1] + Math.cos(deg * D2R) * len];
 }
 
-/** A rounded, outlined limb segment. */
-function limb(g: G, a: P, b: P, w: number, color: string) {
-  g.lineCap = 'round';
-  g.strokeStyle = OUT;
-  g.lineWidth = w + 2.4;
-  g.beginPath();
-  g.moveTo(a[0], a[1]);
-  g.lineTo(b[0], b[1]);
-  g.stroke();
+function stroke(g: G, a: P, b: P, w: number, color: string, ox = 0, oy = 0) {
   g.strokeStyle = color;
   g.lineWidth = w;
+  g.beginPath();
+  g.moveTo(a[0] + ox, a[1] + oy);
+  g.lineTo(b[0] + ox, b[1] + oy);
   g.stroke();
+}
+
+/**
+ * A tapered limb segment (w at a, w * taper at b) with rounded ends, shaded as
+ * a cylinder lit from the upper left: lit edge, mid tone, then core shadow.
+ */
+function limb(g: G, a: P, b: P, w: number, color: string, taper = 0.82) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+  let px = -dy / l, py = dx / l;
+  if (px * LX + py * LY < 0) (px = -px), (py = -py);
+  const r0 = w / 2, r1 = (w * taper) / 2;
+  const ang = Math.atan2(py, px);
+  g.beginPath();
+  g.moveTo(a[0] + px * r0, a[1] + py * r0);
+  g.lineTo(b[0] + px * r1, b[1] + py * r1);
+  g.arc(b[0], b[1], r1, ang, ang + Math.PI, (dx * py - dy * px) > 0);
+  g.lineTo(a[0] - px * r0, a[1] - py * r0);
+  g.arc(a[0], a[1], r0, ang + Math.PI, ang, (dx * py - dy * px) > 0);
+  g.closePath();
+  g.strokeStyle = OUT;
+  g.lineWidth = 1.2;
+  g.lineJoin = 'round';
+  g.stroke();
+  const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, rm = (r0 + r1) / 2;
+  const grad = g.createLinearGradient(mx + px * rm, my + py * rm, mx - px * rm, my - py * rm);
+  grad.addColorStop(0, shade(color, 1.3));
+  grad.addColorStop(0.3, color);
+  grad.addColorStop(0.75, shade(color, 0.7));
+  grad.addColorStop(1, shade(color, 0.55));
+  g.fillStyle = grad;
+  g.fill();
+}
+
+/** Gradient lighting a rounded shape from the upper left. */
+function roundLight(g: G, x: number, y: number, rx: number, ry: number, color: string): CanvasGradient {
+  const r = Math.max(rx, ry);
+  const grad = g.createRadialGradient(x + LX * rx * 0.45, y + LY * ry * 0.45, r * 0.05, x, y, r * 1.2);
+  grad.addColorStop(0, shade(color, 1.28));
+  grad.addColorStop(0.5, color);
+  grad.addColorStop(1, shade(color, 0.58));
+  return grad;
 }
 
 function blob(g: G, x: number, y: number, rx: number, ry: number, fill: string | CanvasGradient, rot = 0, outline = true) {
@@ -80,10 +122,10 @@ function blob(g: G, x: number, y: number, rx: number, ry: number, fill: string |
   g.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
   if (outline) {
     g.strokeStyle = OUT;
-    g.lineWidth = 2;
+    g.lineWidth = 1.4;
     g.stroke();
   }
-  g.fillStyle = fill;
+  g.fillStyle = typeof fill === 'string' && fill[0] === '#' && rx > 1.5 ? roundLight(g, x, y, rx, ry, fill) : fill;
   g.fill();
 }
 
@@ -93,11 +135,19 @@ function poly(g: G, pts: P[], fill: string | CanvasGradient, outline = true) {
   g.closePath();
   if (outline) {
     g.strokeStyle = OUT;
-    g.lineWidth = 2;
+    g.lineWidth = 1.4;
     g.lineJoin = 'round';
     g.stroke();
   }
-  g.fillStyle = fill;
+  if (typeof fill === 'string' && fill[0] === '#') {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of pts) (x0 = Math.min(x0, x)), (y0 = Math.min(y0, y)), (x1 = Math.max(x1, x)), (y1 = Math.max(y1, y));
+    const grad = g.createLinearGradient(x0, y0, x1, y1);
+    grad.addColorStop(0, shade(fill, 1.22));
+    grad.addColorStop(0.45, fill);
+    grad.addColorStop(1, shade(fill, 0.62));
+    g.fillStyle = grad;
+  } else g.fillStyle = fill;
   g.fill();
 }
 
@@ -274,37 +324,83 @@ function drawCarry(g: G, carry: ResourceKind, view: View, shoulder: P, hip: P, b
   blob(g, x + 2.5, y - 6.5, 2, 1.6, glint, 0, true);
 }
 
+/** Fine strands combed through a hair or straw shape (current path is used as the clip). */
+function strands(g: G, x: number, y: number, r: number, color: string, view: View) {
+  g.save();
+  g.clip();
+  for (let k = -5; k <= 5; k++) {
+    const sx = x + k * r * 0.19;
+    g.strokeStyle = k % 2 ? shade(color, 0.6) : shade(color, 1.35);
+    g.globalAlpha = k % 2 ? 0.55 : 0.35;
+    g.lineWidth = 0.6;
+    g.beginPath();
+    g.moveTo(x + (view === 'side' ? r * 0.5 : 0), y - r * 1.2);
+    g.quadraticCurveTo(sx + k * 0.6, y - r * 0.6, sx + k * 0.9, y + r * 0.6);
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+  g.restore();
+}
+
 function head(g: G, view: View, x: number, y: number, look: Look, team: string) {
   const r = 9;
-  const skin = g.createRadialGradient(x - 3, y - 3, 1, x, y, r + 2);
-  skin.addColorStop(0, shade(look.skin, 1.12));
-  skin.addColorStop(1, shade(look.skin, 0.82));
+  const skin = look.skin;
+  // Neck, in shadow under the jaw.
+  limb(g, [x + (view === 'side' ? -1 : 0), y + 5], [x + (view === 'side' ? -1.5 : 0), y + 12], 6.5, shade(skin, 0.82));
   if (view === 'back') {
     blob(g, x, y, r, r, look.female ? '#e9e1cc' : look.hair);
+    g.beginPath();
+    g.ellipse(x, y, r, r, 0, 0, Math.PI * 2);
+    strands(g, x, y, r, look.female ? '#e9e1cc' : look.hair, view);
     if (!look.female) blob(g, x, y + 4, r * 0.75, 4, shade(look.hair, 0.85), 0, false);
     return;
   }
-  blob(g, x, y, r, r, skin);
+  // Ears.
+  if (view === 'side') blob(g, x - 2, y + 1, 2, 2.8, shade(skin, 0.9));
+  else for (const sx of [-1, 1]) blob(g, x + sx * 8.6, y + 1, 1.7, 2.6, shade(skin, 0.88));
+  blob(g, x, y, r, r * 1.04, skin);
+  // Shadow along the jaw and under the hairline.
+  g.save();
+  g.beginPath();
+  g.ellipse(x, y, r, r * 1.04, 0, 0, Math.PI * 2);
+  g.clip();
+  const jaw = g.createLinearGradient(0, y + 2, 0, y + r);
+  jaw.addColorStop(0, 'rgba(70,30,15,0)');
+  jaw.addColorStop(1, 'rgba(70,30,15,0.28)');
+  g.fillStyle = jaw;
+  g.fillRect(x - r, y, r * 2, r * 1.1);
+  g.restore();
+  const brow = shade(look.hair, 0.8);
+  const lip = `rgb(${parse(shade(skin, 0.72)).map((v, i) => Math.round(i === 0 ? v * 1.12 : v * 0.88)).join(',')})`;
   if (view === 'side') {
-    // Nose, eye, ear.
-    poly(g, [[x + r - 1, y - 1], [x + r + 2.6, y + 2], [x + r - 1, y + 3]], shade(look.skin, 0.95), false);
-    blob(g, x + 4, y - 1, 1.2, 1.4, '#1a120c', 0, false);
-    blob(g, x - 2, y + 1, 1.6, 2.4, shade(look.skin, 0.85), 0, false);
+    // Nose with a lit ridge, eye with its white, brow, lips and ear.
+    poly(g, [[x + r - 1.2, y - 2], [x + r + 2.4, y + 2.2], [x + r - 0.8, y + 3.2]], shade(skin, 0.95), false);
+    stroke(g, [x + r - 0.8, y - 1.6], [x + r + 1.8, y + 2], 0.5, shade(skin, 1.25));
+    blob(g, x + 4.6, y - 0.6, 1.6, 1.0, '#f2ece2', 0, false);
+    blob(g, x + 5.4, y - 0.6, 0.75, 0.85, '#2a1a10', 0, false);
+    stroke(g, [x + 3, y - 2.8], [x + 6.6, y - 2.6], 0.9, brow);
+    stroke(g, [x + 5.5, y + 5], [x + 7.6, y + 4.6], 0.9, lip);
+    blob(g, x + 2.5, y + 3.2, 2.2, 1.6, 'rgba(200,90,70,0.16)', 0, false);
   } else {
-    blob(g, x - 3.2, y - 0.5, 1.2, 1.4, '#1a120c', 0, false);
-    blob(g, x + 3.2, y - 0.5, 1.2, 1.4, '#1a120c', 0, false);
-    g.strokeStyle = shade(look.skin, 0.65);
-    g.lineWidth = 1;
-    g.beginPath();
-    g.moveTo(x - 2, y + 4.5);
-    g.lineTo(x + 2, y + 4.5);
-    g.stroke();
+    for (const sx of [-1, 1]) {
+      blob(g, x + sx * 3.3, y - 0.3, 1.75, 1.05, '#f2ece2', 0, false);
+      blob(g, x + sx * 3.3 + 0.2, y - 0.25, 0.85, 0.9, '#2a1a10', 0, false);
+      blob(g, x + sx * 3.3 - 0.2, y - 0.6, 0.25, 0.25, 'rgba(255,255,255,0.8)', 0, false);
+      stroke(g, [x + sx * 1.7, y - 2.6], [x + sx * 5, y - 2.9], 0.95, brow);
+      blob(g, x + sx * 4.6, y + 2.8, 2.1, 1.4, 'rgba(200,90,70,0.16)', 0, false);
+    }
+    // Nose: a shadow down its far side, a lit bridge and nostrils.
+    stroke(g, [x + 0.8, y - 0.5], [x + 1.4, y + 2.6], 0.8, shade(skin, 0.7));
+    stroke(g, [x - 0.4, y - 0.8], [x - 0.3, y + 2], 0.5, shade(skin, 1.25));
+    blob(g, x - 0.9, y + 3, 0.45, 0.35, shade(skin, 0.5), 0, false);
+    blob(g, x + 1.1, y + 3, 0.45, 0.35, shade(skin, 0.5), 0, false);
+    stroke(g, [x - 2, y + 5.2], [x + 2, y + 5.2], 1, lip);
+    stroke(g, [x - 1.2, y + 6], [x + 1.2, y + 6], 0.5, shade(skin, 1.15));
   }
   if (look.female) {
-    // Headscarf tied at the back, with a team-coloured band.
-    g.fillStyle = '#e9e1cc';
+    // Linen headscarf tied at the back, with a team-coloured band.
     g.strokeStyle = OUT;
-    g.lineWidth = 2;
+    g.lineWidth = 1.4;
     g.beginPath();
     if (view === 'side') {
       g.moveTo(x + 6, y - 5);
@@ -321,7 +417,20 @@ function head(g: G, view: View, x: number, y: number, look: Look, team: string) 
     }
     g.closePath();
     g.stroke();
+    g.fillStyle = roundLight(g, x, y - 5, 10, 8, '#e9e1cc');
     g.fill();
+    // Folds in the linen.
+    g.save();
+    g.clip();
+    g.strokeStyle = 'rgba(120,100,70,0.35)';
+    g.lineWidth = 0.6;
+    for (let k = -2; k <= 2; k++) {
+      g.beginPath();
+      g.moveTo(x + k * 3, y - 11);
+      g.quadraticCurveTo(x + k * 4, y - 6, x + k * 4.5 + (view === 'side' ? -3 : 0), y + 2);
+      g.stroke();
+    }
+    g.restore();
     g.strokeStyle = team;
     g.lineWidth = 1.6;
     g.beginPath();
@@ -329,10 +438,9 @@ function head(g: G, view: View, x: number, y: number, look: Look, team: string) 
     else g.arc(x, y + 1, 9, Math.PI * 1.15, Math.PI * 1.85);
     g.stroke();
   } else {
-    // Short hair; a beard on some.
-    g.fillStyle = look.hair;
+    // Short hair with combed strands; a beard on some.
     g.strokeStyle = OUT;
-    g.lineWidth = 2;
+    g.lineWidth = 1.4;
     g.beginPath();
     if (view === 'side') {
       g.moveTo(x + 7, y - 4);
@@ -349,13 +457,17 @@ function head(g: G, view: View, x: number, y: number, look: Look, team: string) 
     }
     g.closePath();
     g.stroke();
+    g.fillStyle = roundLight(g, x, y - 6, 10, 7, look.hair);
     g.fill();
+    strands(g, x, y - 4, 8, look.hair, view);
     if (look.hair === HAIRS[1] || look.hair === HAIRS[4]) {
-      g.fillStyle = look.hair;
       g.beginPath();
       if (view === 'side') g.ellipse(x + 3, y + 6, 5, 3.5, 0.3, 0, Math.PI * 2);
       else g.ellipse(x, y + 6.5, 5.5, 3.5, 0, 0, Math.PI * 2);
+      g.fillStyle = roundLight(g, x, y + 6, 5.5, 3.5, look.hair);
       g.fill();
+      strands(g, x, y + 7, 4, look.hair, view);
+      if (view !== 'side') stroke(g, [x - 2, y + 5], [x + 2, y + 5], 0.9, lip);
     }
   }
 }
@@ -372,12 +484,60 @@ function torso(g: G, view: View, sh: P, hip: P, look: Look, team: string) {
   grad.addColorStop(0.5, shade(team, 0.95 * lit));
   grad.addColorStop(1, shade(team, 0.6 * lit));
   const flare = look.female ? 5 : 2;
-  poly(g, [
-    [sx - half, sy],
-    [sx + half, sy],
-    [hx + hipHalf + flare, hy + hem],
-    [hx - hipHalf - flare, hy + hem],
-  ], grad);
+  const waist = hipHalf - 1.5;
+  const outline = () => {
+    // Rounded shoulders, a nipped waist at the belt, and a skirt flaring to the hem.
+    g.beginPath();
+    g.moveTo(sx - half + 3, sy - 1.5);
+    g.quadraticCurveTo(sx, sy - 3, sx + half - 3, sy - 1.5);
+    g.quadraticCurveTo(sx + half + 1, sy, sx + half, sy + 5);
+    g.quadraticCurveTo(hx + waist + 1, (sy + hy) / 2, hx + waist, hy - 3);
+    g.quadraticCurveTo(hx + hipHalf + flare * 0.4, hy + hem * 0.4, hx + hipHalf + flare, hy + hem);
+    g.quadraticCurveTo(hx, hy + hem + 1.5, hx - hipHalf - flare, hy + hem);
+    g.quadraticCurveTo(hx - hipHalf - flare * 0.4, hy + hem * 0.4, hx - waist, hy - 3);
+    g.quadraticCurveTo(hx - waist - 1, (sy + hy) / 2, sx - half, sy + 5);
+    g.quadraticCurveTo(sx - half - 1, sy, sx - half + 3, sy - 1.5);
+    g.closePath();
+  };
+  outline();
+  g.strokeStyle = OUT;
+  g.lineWidth = 1.4;
+  g.stroke();
+  g.fillStyle = grad;
+  g.fill();
+  const body = g.createLinearGradient(0, sy, 0, hy + hem);
+  body.addColorStop(0, 'rgba(255,245,225,0.14)');
+  body.addColorStop(0.5, 'rgba(0,0,0,0)');
+  body.addColorStop(1, 'rgba(10,6,20,0.22)');
+  g.fillStyle = body;
+  g.fill();
+  // Cloth folds falling from the shoulders and gathering at the belt, and side shadow.
+  g.save();
+  outline();
+  g.clip();
+  for (let k = -2; k <= 2; k++) {
+    const fx = sx + k * half * 0.38, tx = hx + k * (hipHalf + flare) * 0.45;
+    g.strokeStyle = 'rgba(10,6,20,0.22)';
+    g.lineWidth = 1.3;
+    g.beginPath();
+    g.moveTo(fx, sy + 2);
+    g.quadraticCurveTo((fx + tx) / 2 + 1.5, (sy + hy) / 2, tx, hy - 4);
+    g.moveTo(tx + 0.5, hy + 1);
+    g.quadraticCurveTo(tx + k * 1.2, hy + hem * 0.6, tx + k * 2, hy + hem);
+    g.stroke();
+    g.strokeStyle = 'rgba(255,250,235,0.16)';
+    g.lineWidth = 0.9;
+    g.beginPath();
+    g.moveTo(fx - 1.4, sy + 3);
+    g.quadraticCurveTo((fx + tx) / 2, (sy + hy) / 2, tx - 1.4, hy - 4);
+    g.stroke();
+  }
+  const ao = g.createLinearGradient(0, hy - 10, 0, hy - 3);
+  ao.addColorStop(0, 'rgba(0,0,0,0)');
+  ao.addColorStop(1, 'rgba(10,6,20,0.3)');
+  g.fillStyle = ao;
+  g.fillRect(hx - 20, hy - 10, 40, 7);
+  g.restore();
   // Hem trim and sleeves' cuff colour.
   g.fillStyle = look.cloth;
   g.fillRect(hx - hipHalf - flare + 1, hy + hem - 3, (hipHalf + flare) * 2 - 2, 2.5);
@@ -407,8 +567,8 @@ function legs(g: G, pose: Pose, view: View, hip: P, look: Look, which: 'near' | 
     const [t, s] = which === 'near' ? pose.near : pose.far;
     const knee = seg(hip, t, 24);
     const foot = seg(knee, s, 24);
-    limb(g, hip, knee, 7.5, trouser);
-    limb(g, knee, foot, 6.2, trouser);
+    limb(g, hip, knee, 9.5, trouser, 0.78);
+    limb(g, knee, foot, 7.2, trouser, 0.75);
     blob(g, foot[0] + 3, foot[1] - 1, 5, 2.6, which === 'far' ? shade(BOOT, 0.8) : BOOT, 0);
     return;
   }
@@ -418,8 +578,8 @@ function legs(g: G, pose: Pose, view: View, hip: P, look: Look, which: 'near' | 
   const x = hip[0] + side * 5.5;
   const knee: P = [x, hip[1] + 24 - lift];
   const foot: P = [x, -1 - lift * 0.6];
-  limb(g, [x, hip[1]], knee, 7.5, trouser);
-  limb(g, knee, foot, 6.2, trouser);
+  limb(g, [x, hip[1]], knee, 9.5, trouser, 0.78);
+  limb(g, knee, foot, 7.2, trouser, 0.75);
   blob(g, x, foot[1] - 0.5, 3.6, 2.6, BOOT, 0);
 }
 
@@ -429,9 +589,9 @@ function arm(g: G, pose: Pose, view: View, sh: P, look: Look, team: string, whic
     const [u, f] = which === 'near' ? pose.armN : pose.armF;
     const elbow = seg(sh, u, 17);
     const hand = seg(elbow, f, 16);
-    limb(g, sh, elbow, 6, sleeve);
-    limb(g, elbow, hand, 5, look.skin);
-    blob(g, hand[0], hand[1], 2.6, 2.6, look.skin, 0, false);
+    limb(g, sh, elbow, 7.4, sleeve, 0.85);
+    limb(g, elbow, hand, 5.6, look.skin, 0.8);
+    blob(g, hand[0], hand[1], 2.9, 2.7, look.skin);
     return { hand, fore: f };
   }
   const side = which === 'near' ? 1 : -1;
@@ -439,8 +599,9 @@ function arm(g: G, pose: Pose, view: View, sh: P, look: Look, team: string, whic
   const s0: P = [sh[0] + side * 12.5, sh[1] + 2];
   const elbow: P = [s0[0] + side * 2, s0[1] + 16 - Math.abs(swing) * 0.3];
   const hand: P = [elbow[0] + side * 1, elbow[1] + 15 + swing * (view === 'front' ? 0.3 : -0.3)];
-  limb(g, s0, elbow, 6, sleeve);
-  limb(g, elbow, hand, 5, look.skin);
+  limb(g, s0, elbow, 7.4, sleeve, 0.85);
+  limb(g, elbow, hand, 5.6, look.skin, 0.8);
+  blob(g, hand[0], hand[1] + 1, 2.8, 3, look.skin);
   return { hand, fore: 0 };
 }
 
@@ -500,49 +661,116 @@ export function drawScout(g: G, f: FigureSpec): void {
     ];
     const drawLeg = (l: (typeof legsAt)[number]) => {
       const [u, lo] = moving ? gallop(f.frame, l.off, l.hind) : [l.hind ? -4 : 4, 0];
-      const top: P = [body[0] + l.x, body[1] + 6];
-      const knee = seg(top, u, 18);
-      const hoof = seg(knee, lo, 20);
+      const top: P = [body[0] + l.x, body[1] + 2];
+      const knee = seg(top, u, 20);
+      const hoof = seg(knee, lo, 19);
       const c = l.far ? coatDark : coat;
-      limb(g, top, knee, l.hind ? 9 : 7.5, c);
-      limb(g, knee, hoof, 5, c);
-      blob(g, hoof[0], hoof[1], 3.2, 2.2, '#2a2420', 0);
+      // Muscled forearm or gaskin, a slim cannon with a dark sock, fetlock and hoof.
+      limb(g, top, knee, l.hind ? 12 : 10, c, 0.5);
+      const fet = seg(knee, lo, 15);
+      limb(g, knee, fet, 4.6, l.far ? '#3a2416' : '#4a2e1a', 0.9);
+      limb(g, fet, hoof, 4.6, '#2e221a', 1.05);
+      poly(g, [[hoof[0] - 3, hoof[1] - 1.2], [hoof[0] + 3.2, hoof[1] - 1.2], [hoof[0] + 3.8, hoof[1] + 1.4], [hoof[0] - 3.2, hoof[1] + 1.4]], '#1f1813');
     };
     legsAt.filter((l) => l.far).forEach(drawLeg);
-    // Tail.
-    g.strokeStyle = mane;
-    g.lineWidth = 5;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(body[0] - 32, body[1] - 4);
-    g.quadraticCurveTo(body[0] - 44, body[1] + 4 + (moving ? (f.frame % 2) * 3 : 0), body[0] - 40, body[1] + 20);
+    const [bx, by] = body;
+    // Tail: a sweep of hair strands.
+    const sway = moving ? (f.frame % 3) * 2 : 0;
+    for (let k = 0; k < 7; k++) {
+      g.strokeStyle = k % 2 ? mane : shade(mane, 1.6);
+      g.lineWidth = k % 2 ? 2.4 : 1;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(bx - 34, by - 8);
+      g.bezierCurveTo(bx - 46 - k * 0.6, by - 4 + sway, bx - 44 - k, by + 10 + sway, bx - 40 - k * 1.4 + sway, by + 22 + k * 0.8);
+      g.stroke();
+    }
+    // One silhouette: withers, back, croup, rump, belly, chest, neck and head.
+    const shape = () => {
+      g.beginPath();
+      g.moveTo(bx + 16, by - 14);
+      g.quadraticCurveTo(bx - 6, by - 10, bx - 26, by - 15);
+      g.bezierCurveTo(bx - 36, by - 15, bx - 40, by - 4, bx - 34, by + 6);
+      g.quadraticCurveTo(bx - 32, by + 11, bx - 22, by + 12);
+      g.quadraticCurveTo(bx - 2, by + 18, bx + 16, by + 12);
+      g.quadraticCurveTo(bx + 30, by + 10, bx + 32, by - 2);
+      g.quadraticCurveTo(bx + 37, by - 10, bx + 40, by - 24);
+      g.quadraticCurveTo(bx + 46, by - 24, bx + 54, by - 19);
+      g.quadraticCurveTo(bx + 59, by - 21, bx + 56, by - 26);
+      g.quadraticCurveTo(bx + 49, by - 36, bx + 40, by - 42);
+      g.quadraticCurveTo(bx + 24, by - 36, bx + 16, by - 14);
+      g.closePath();
+    };
+    shape();
+    g.strokeStyle = OUT;
+    g.lineWidth = 1.4;
     g.stroke();
-    // Barrel, chest and haunch.
-    const grad = g.createLinearGradient(0, body[1] - 14, 0, body[1] + 14);
-    grad.addColorStop(0, shade(coat, 1.2));
-    grad.addColorStop(1, coatDark);
-    blob(g, body[0], body[1], 32, 13, grad);
-    blob(g, body[0] - 22, body[1] - 2, 13, 13, grad);
-    blob(g, body[0] + 22, body[1] - 1, 12, 13, grad);
-    legsAt.filter((l) => !l.far).forEach(drawLeg);
-    // Neck and head.
-    poly(g, [[body[0] + 20, body[1] - 8], [body[0] + 34, body[1] - 36], [body[0] + 42, body[1] - 32], [body[0] + 34, body[1] + 2]], grad);
-    poly(g, [[body[0] + 33, body[1] - 40], [body[0] + 54, body[1] - 26], [body[0] + 52, body[1] - 20], [body[0] + 36, body[1] - 26]], coat);
-    poly(g, [[body[0] + 35, body[1] - 41], [body[0] + 37, body[1] - 49], [body[0] + 40, body[1] - 40]], coat); // ear
-    blob(g, body[0] + 41, body[1] - 33, 1.4, 1.4, '#120a04', 0, false);
-    g.strokeStyle = mane;
-    g.lineWidth = 4;
-    g.beginPath();
-    g.moveTo(body[0] + 33, body[1] - 40);
-    g.quadraticCurveTo(body[0] + 22, body[1] - 22, body[0] + 18, body[1] - 10);
-    g.stroke();
-    // Bridle.
-    g.strokeStyle = LEATHER;
+    const grad = g.createLinearGradient(0, by - 30, 0, by + 16);
+    grad.addColorStop(0, shade(coat, 1.25));
+    grad.addColorStop(0.55, coat);
+    grad.addColorStop(1, shade(coat, 0.55));
+    g.fillStyle = grad;
+    g.fill();
+    g.save();
+    shape();
+    g.clip();
+    // Sheen on the shoulder, haunch and neck; shadow behind the elbow and along the belly.
+    for (const [hx, hy, r, a] of [[bx + 22, by - 4, 13, 0.32], [bx - 24, by - 6, 14, 0.32], [bx + 34, by - 24, 8, 0.2]] as const) {
+      const h = g.createRadialGradient(hx - 3, hy - 4, 0.5, hx, hy, r);
+      h.addColorStop(0, `rgba(255,236,200,${a})`);
+      h.addColorStop(1, 'rgba(255,236,200,0)');
+      g.fillStyle = h;
+      g.fillRect(hx - r, hy - r, r * 2, r * 2);
+    }
+    g.strokeStyle = 'rgba(30,14,4,0.35)';
     g.lineWidth = 1.2;
     g.beginPath();
-    g.moveTo(body[0] + 50, body[1] - 25);
-    g.lineTo(body[0] + 12, body[1] - 28);
+    g.moveTo(bx + 14, by + 10);
+    g.quadraticCurveTo(bx + 12, by, bx + 18, by - 8);
+    g.moveTo(bx - 14, by + 12);
+    g.quadraticCurveTo(bx - 16, by + 2, bx - 12, by - 8);
     g.stroke();
+    // Dark muzzle.
+    const muz = g.createRadialGradient(bx + 56, by - 22, 0.5, bx + 55, by - 22, 7);
+    muz.addColorStop(0, 'rgba(40,24,16,0.85)');
+    muz.addColorStop(1, 'rgba(40,24,16,0)');
+    g.fillStyle = muz;
+    g.fillRect(bx + 46, by - 30, 16, 14);
+    g.restore();
+    blob(g, bx + 55.5, by - 23.5, 0.9, 0.7, '#120a04', 0, false);
+    // Eye with a catchlight, and ears.
+    blob(g, bx + 44, by - 33, 1.6, 1.3, '#120a04', 0, false);
+    blob(g, bx + 43.6, by - 33.4, 0.45, 0.45, 'rgba(255,255,255,0.8)', 0, false);
+    poly(g, [[bx + 38, by - 41], [bx + 39, by - 50], [bx + 42.5, by - 41]], coat);
+    poly(g, [[bx + 36, by - 40], [bx + 36, by - 48], [bx + 39.5, by - 41]], coatDark);
+    // Mane in strands along the crest, and a forelock.
+    for (let k = 0; k < 9; k++) {
+      const t = k / 8;
+      const mx = bx + 38 - t * 22, my = by - 41 + t * 26;
+      g.strokeStyle = k % 2 ? mane : shade(mane, 1.5);
+      g.lineWidth = 2.2;
+      g.beginPath();
+      g.moveTo(mx, my);
+      g.quadraticCurveTo(mx - 4, my + 2, mx - 6, my + 6 + (k % 3));
+      g.stroke();
+    }
+    g.strokeStyle = mane;
+    g.lineWidth = 1.8;
+    g.beginPath();
+    g.moveTo(bx + 40, by - 41);
+    g.quadraticCurveTo(bx + 44, by - 39, bx + 45, by - 35);
+    g.stroke();
+    legsAt.filter((l) => !l.far).forEach(drawLeg);
+    // Bridle and reins.
+    g.strokeStyle = LEATHER;
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(bx + 54, by - 22);
+    g.lineTo(bx + 41, by - 37);
+    g.moveTo(bx + 50, by - 27);
+    g.quadraticCurveTo(bx + 30, by - 22, bx + 10, by - 26);
+    g.stroke();
+    blob(g, bx + 52, by - 23, 1, 1, '#c8c8c8', 0, false);
     // Caparison in team colour with a gold hem.
     poly(g, [[body[0] - 18, body[1] - 12], [body[0] + 16, body[1] - 12], [body[0] + 20, body[1] + 10], [body[0] - 22, body[1] + 10]], f.team);
     g.fillStyle = '#e2bc4c';
@@ -576,35 +804,64 @@ export function drawScout(g: G, f: FigureSpec): void {
   // Front and back views: the horse seen head-on or from behind, rider above.
   const body: P = [0, -48 + bob];
   const legPhase = (k: number) => (moving ? Math.sin((f.frame / 6 + k * 0.25) * Math.PI * 2) * 4 : 0);
-  for (const [x, k] of [[-9, 0], [9, 2]] as const) {
-    limb(g, [x, body[1] + 6], [x, -2 - Math.max(0, legPhase(k))], 6.5, coatDark);
-    blob(g, x, -1.5 - Math.max(0, legPhase(k)), 3.4, 2.2, '#2a2420', 0);
+  const [bx, by] = body;
+  // Far pair of legs (hind from the front, fore from behind), then the near pair.
+  for (const [x, k, far] of [[-6, 1, true], [6, 3, true], [-10, 0, false], [10, 2, false]] as const) {
+    const lift = Math.max(0, legPhase(k));
+    const top: P = [bx + x, by + 4], knee: P = [bx + x * 1.05, by + 26 - lift], hoof: P = [bx + x * 1.05, -2 - lift];
+    limb(g, top, knee, far ? 8 : 10, far ? coatDark : coat, 0.55);
+    limb(g, knee, hoof, 4.6, far ? '#2e1d12' : '#4a2e1a', 0.95);
+    poly(g, [[hoof[0] - 3, hoof[1] - 1], [hoof[0] + 3, hoof[1] - 1], [hoof[0] + 3.4, hoof[1] + 1.4], [hoof[0] - 3.4, hoof[1] + 1.4]], '#1f1813');
   }
-  const grad = g.createRadialGradient(-6, body[1] - 6, 2, 0, body[1], 22);
-  grad.addColorStop(0, shade(coat, 1.25));
-  grad.addColorStop(1, coatDark);
-  blob(g, body[0], body[1], 17, 16, grad);
-  poly(g, [[-15, body[1] - 6], [15, body[1] - 6], [16, body[1] + 12], [-16, body[1] + 12]], f.team);
-  g.fillStyle = '#e2bc4c';
-  g.fillRect(-16, body[1] + 10, 32, 2.5);
-  if (f.view === 'front') {
-    poly(g, [[-6, body[1] - 12], [6, body[1] - 12], [5, body[1] + 14], [-5, body[1] + 14]], coat);
-    blob(g, 0, body[1] + 14, 5, 4, shade(coat, 0.8));
-    blob(g, -3, body[1] - 4, 1.4, 1.4, '#120a04', 0, false);
-    blob(g, 3, body[1] - 4, 1.4, 1.4, '#120a04', 0, false);
-    poly(g, [[-6, body[1] - 12], [-8, body[1] - 20], [-3, body[1] - 13]], coat);
-    poly(g, [[6, body[1] - 12], [8, body[1] - 20], [3, body[1] - 13]], coat);
-  } else {
-    // Tail hanging below the caparison.
-    g.strokeStyle = mane;
-    g.lineWidth = 4.5;
-    g.lineCap = 'round';
+  // Barrel seen end-on: a broad chest (front) or two rounded haunches (back).
+  if (f.view === 'back') {
+    for (const sx of [-1, 1]) blob(g, bx + sx * 8, by - 2, 11, 15, coat);
+    g.strokeStyle = 'rgba(30,14,4,0.45)';
+    g.lineWidth = 1.2;
     g.beginPath();
-    g.moveTo(0, body[1] + 13);
-    g.quadraticCurveTo(2, body[1] + 22, 1, body[1] + 30);
+    g.moveTo(bx, by - 14);
+    g.lineTo(bx, by + 10);
     g.stroke();
+  } else blob(g, bx, by, 17, 16, coat);
+  poly(g, [[-15, by - 6], [15, by - 6], [16, by + 12], [-16, by + 12]], f.team);
+  g.fillStyle = '#e2bc4c';
+  g.fillRect(-16, by + 10, 32, 2.5);
+  if (f.view === 'front') {
+    // Neck and a long face with a white blaze, eyes on the sides of the head.
+    poly(g, [[-7, by - 14], [7, by - 14], [6, by - 2], [-6, by - 2]], shade(coat, 0.9));
+    g.beginPath();
+    g.moveTo(bx - 6, by - 22);
+    g.quadraticCurveTo(bx - 7.5, by - 4, bx - 4.5, by + 12);
+    g.quadraticCurveTo(bx, by + 16, bx + 4.5, by + 12);
+    g.quadraticCurveTo(bx + 7.5, by - 4, bx + 6, by - 22);
+    g.quadraticCurveTo(bx, by - 25, bx - 6, by - 22);
+    g.closePath();
+    g.strokeStyle = OUT;
+    g.lineWidth = 1.4;
+    g.stroke();
+    g.fillStyle = roundLight(g, bx, by - 6, 7, 18, coat);
+    g.fill();
+    poly(g, [[bx - 1.2, by - 20], [bx + 1.2, by - 20], [bx + 1.8, by + 6], [bx - 1.8, by + 6]], '#efe6d6', false);
+    blob(g, bx, by + 11, 4.6, 3.6, '#3a2418');
+    for (const sx of [-1, 1]) {
+      blob(g, bx + sx * 1.8, by + 11.5, 0.8, 0.9, '#120a04', 0, false);
+      blob(g, bx + sx * 5.6, by - 13, 1.2, 1.6, '#120a04', 0, false);
+      poly(g, [[bx + sx * 3, by - 22], [bx + sx * 6.5, by - 31], [bx + sx * 6.8, by - 21]], coat);
+    }
+    for (let k = -2; k <= 2; k++) stroke(g, [bx + k * 0.8, by - 24], [bx + k * 1.6, by - 17], 1.4, k % 2 ? mane : shade(mane, 1.5));
+  } else {
+    // Tail falling in strands below the caparison.
+    for (let k = -2; k <= 2; k++) {
+      g.strokeStyle = k % 2 ? mane : shade(mane, 1.5);
+      g.lineWidth = 2;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(bx, by - 8);
+      g.quadraticCurveTo(bx + k * 2.5, by + 14, bx + k * 3 + 1, by + 30);
+      g.stroke();
+    }
   }
-  const sh: P = [0, body[1] - 38];
+  const sh: P = [0, by - 38];
   const mail = g.createLinearGradient(-10, 0, 10, 0);
   mail.addColorStop(0, '#c9cfd2');
   mail.addColorStop(1, '#6f787d');
@@ -636,16 +893,47 @@ export function drawMilitia(g: G, f: FigureSpec): void {
   const mailLegs: Look = { ...look, cloth: '#55595c' };
 
   const shield = (x: number, y: number, rx: number) => {
-    const grad = g.createRadialGradient(x - rx * 0.3, y - rx * 0.3, 1, x, y, rx);
-    grad.addColorStop(0, shade(f.team, 1.3));
-    grad.addColorStop(1, shade(f.team, 0.6));
-    blob(g, x, y, rx, rx * 1.05, grad);
-    g.strokeStyle = '#d9b44a';
+    const ry = rx * 1.05;
+    // Painted planks: team field, plank seams, wear at the edge.
+    blob(g, x, y, rx, ry, f.team);
+    g.save();
+    g.beginPath();
+    g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    g.clip();
+    g.strokeStyle = 'rgba(20,10,0,0.3)';
+    g.lineWidth = 0.6;
+    for (let k = -2; k <= 2; k++) {
+      g.beginPath();
+      g.moveTo(x + k * rx * 0.36, y - ry);
+      g.lineTo(x + k * rx * 0.36, y + ry);
+      g.stroke();
+    }
+    const wear = g.createRadialGradient(x, y, rx * 0.6, x, y, rx);
+    wear.addColorStop(0, 'rgba(120,80,40,0)');
+    wear.addColorStop(1, 'rgba(120,80,40,0.45)');
+    g.fillStyle = wear;
+    g.fillRect(x - rx, y - ry, rx * 2, ry * 2);
+    g.restore();
+    // Gilt cross bands, iron rim with rivets, and a domed boss with a highlight.
+    g.strokeStyle = '#c9a03a';
+    g.lineWidth = 1.4;
+    g.beginPath();
+    g.moveTo(x, y - ry + 1.5);
+    g.lineTo(x, y + ry - 1.5);
+    g.moveTo(x - rx + 1.5, y);
+    g.lineTo(x + rx - 1.5, y);
+    g.stroke();
+    g.strokeStyle = '#4a4c4e';
     g.lineWidth = 1.6;
     g.beginPath();
-    g.ellipse(x, y, rx - 2, rx * 1.05 - 2, 0, 0, Math.PI * 2);
+    g.ellipse(x, y, rx - 0.6, ry - 0.6, 0, 0, Math.PI * 2);
     g.stroke();
-    blob(g, x, y, rx * 0.28, rx * 0.28, STEEL);
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      blob(g, x + Math.cos(a) * (rx - 0.7), y + Math.sin(a) * (ry - 0.7), 0.55, 0.55, '#d8dcde', 0, false);
+    }
+    blob(g, x, y, rx * 0.3, rx * 0.3, STEEL);
+    blob(g, x - rx * 0.1, y - rx * 0.12, rx * 0.09, rx * 0.07, 'rgba(255,255,255,0.85)', 0, false);
   };
 
   if (f.view === 'back') shield(sh[0], sh[1] + 16, 13);
@@ -670,10 +958,16 @@ export function drawMilitia(g: G, f: FigureSpec): void {
   head(g, f.view, headC[0], headC[1], look, f.team);
   // Nasal helmet over the hair.
   const hx = headC[0], hy = headC[1];
+  // Polished conical helm: specular streak, darker band at the brow, rivets.
   const helm = g.createLinearGradient(hx - 10, 0, hx + 10, 0);
-  helm.addColorStop(0, '#e1e7ea');
-  helm.addColorStop(1, '#6f797e');
+  helm.addColorStop(0, '#9aa4a9');
+  helm.addColorStop(0.28, '#f4f8fa');
+  helm.addColorStop(0.45, '#aab3b8');
+  helm.addColorStop(1, '#4e575c');
   poly(g, [[hx - 10, hy - 1], [hx - 8, hy - 9], [hx, hy - 15], [hx + 8, hy - 9], [hx + 10, hy - 1]], helm);
+  stroke(g, [hx - 10, hy - 1.6], [hx + 10, hy - 1.6], 2, '#5c6468');
+  for (const k of [-6, -2, 2, 6]) blob(g, hx + k, hy - 1.6, 0.5, 0.5, '#e8ecee', 0, false);
+  stroke(g, [hx - 3.5, hy - 10], [hx - 1, hy - 13.5], 0.8, 'rgba(255,255,255,0.75)');
   if (f.view !== 'back') limb(g, [f.view === 'side' ? hx + 7 : hx, hy - 2], [f.view === 'side' ? hx + 7.5 : hx, hy + 4], 1.6, STEEL_DARK);
   const near = arm(g, pose, f.view, sh, look, f.team, 'near');
   if (f.view === 'front') shield(sh[0] - 13, sh[1] + 20, 11);

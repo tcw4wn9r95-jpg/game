@@ -2,6 +2,7 @@
 import type { ResourceKind } from '../sim/constants';
 import type { UnitType } from '../sim/entities';
 import { type Anim, CLOTHS, type FigureSpec, HAIRS, type Look, SKINS, type Tool, type View, drawMilitia, drawScout, drawVillager } from './figures';
+import { grade } from './materials';
 import { PLAYER_COLORS } from './palette';
 import type { Sprite } from './sprites';
 
@@ -73,12 +74,13 @@ export class UnitSprites {
     const c = document.createElement('canvas');
     c.width = Math.ceil((d.x1 - d.x0) * k);
     c.height = Math.ceil((d.y1 - d.y0) * k);
-    const g = c.getContext('2d')!;
+    const g = c.getContext('2d', { willReadFrequently: true })!;
     const ax = -d.x0 * k, ay = -d.y0 * k;
     g.translate(ax, ay);
     if (p.left) g.scale(-1, 1);
     g.scale(k, k);
     d.draw(g, this.spec(player, look, p));
+    grade(c, 0.05, look * 13 + p.frame);
     return { c, ax, ay };
   }
 }

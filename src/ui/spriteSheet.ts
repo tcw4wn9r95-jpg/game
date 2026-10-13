@@ -1,6 +1,7 @@
 // Debug view (?sheet): every unit pose drawn large, for reviewing the art.
 import type { View } from '../render/canvas';
 import type { Tool } from '../render/figures';
+import { BuildingSprites } from '../render/buildingSprites';
 import { UnitSprites } from '../render/unitSprites';
 
 export function drawSpriteSheet(view: View, zoom = 4): void {
@@ -11,7 +12,7 @@ export function drawSpriteSheet(view: View, zoom = 4): void {
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   const cell = 32 * zoom * view.dpr * 1.05;
   let col = 0, row = 0;
-  const put = (type: 'villager' | 'scout', player: number, look: number, pose: Parameters<UnitSprites['get']>[3]) => {
+  const put = (type: 'villager' | 'scout' | 'militia', player: number, look: number, pose: Parameters<UnitSprites['get']>[3]) => {
     const sp = sprites.get(type, player, look, pose);
     const x = (col + 0.5) * cell * (type === 'scout' ? 1.5 : 1), y = (row + 0.9) * cell * 1.3;
     ctx.drawImage(sp.c, x - sp.ax, y - sp.ay);
@@ -27,8 +28,42 @@ export function drawSpriteSheet(view: View, zoom = 4): void {
   row++;
   col = 0;
   for (const v of ['front', 'back'] as const) put('villager', 3, 5, { ...base, view: v, anim: 'walk', frame: 1, carry: 'stone' });
+  for (const v of ['front', 'side', 'back'] as const) put('militia', 0, 1, { ...base, view: v, anim: 'idle' });
+  put('militia', 1, 2, { ...base, view: 'side', anim: 'work', frame: 2 });
   put('scout', 0, 0, { ...base, view: 'side', anim: 'idle' });
   put('scout', 1, 0, { ...base, view: 'side', anim: 'walk', frame: 2 });
   put('scout', 2, 0, { ...base, view: 'front', anim: 'walk', frame: 1 });
   put('scout', 3, 0, { ...base, view: 'back', anim: 'walk', frame: 3 });
+}
+
+/** Debug view (?buildings=zoom): every building at one zoom, on grass. */
+export function drawBuildingSheet(view: View, z = 48): void {
+  const { ctx } = view;
+  const tw = Math.round(z * view.dpr) * 2;
+  const sprites = new BuildingSprites(tw);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#5f8a3e';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const list = [
+    ['town_center', 4, 0],
+    ['house', 2, 0],
+    ['mill', 2, 0],
+    ['lumber_camp', 2, 0],
+    ['mining_camp', 2, 0],
+    ['barracks', 3, 0],
+    ['farm', 3, 3],
+    ['farm', 3, 1],
+  ] as const;
+  let x = 10, y = 10, rowH = 0;
+  for (const [type, size, variant] of list) {
+    const sp = sprites.get(type, size, 0, variant);
+    if (x + sp.c.width > ctx.canvas.width) {
+      x = 10;
+      y += rowH;
+      rowH = 0;
+    }
+    ctx.drawImage(sp.c, x, y);
+    x += sp.c.width;
+    rowH = Math.max(rowH, sp.c.height);
+  }
 }
