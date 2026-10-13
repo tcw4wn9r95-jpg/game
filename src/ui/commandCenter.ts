@@ -16,8 +16,8 @@ const CAP = 10;
 
 /** Build tabs; buildings arrive in later milestones and simply join their tab. */
 const TABS: Array<{ key: string; name: string; icon: string; types: BuildingType[] }> = [
-  { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'mill', 'lumber_camp', 'mining_camp'] },
-  { key: 'military', name: 'Military', icon: ICONS.military, types: [] },
+  { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'mill', 'lumber_camp', 'mining_camp', 'farm'] },
+  { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks'] },
   { key: 'defense', name: 'Defense', icon: ICONS.meleeArmor, types: [] },
   { key: 'naval', name: 'Naval', icon: ICONS.ship, types: [] },
 ];
@@ -30,7 +30,9 @@ interface Cmd {
   disabled?: () => boolean;
   /** Small caption under the icon, e.g. a cost. */
   caption?: string;
-  active?: boolean;
+  active?: () => boolean;
+  /** Needs a second tap within a moment (destructive actions). */
+  confirm?: boolean;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, html = ''): HTMLElementTagNameMap[K] {
@@ -155,8 +157,8 @@ export class CommandCenter {
             this.tab = null;
             ctl.startPlacing(type);
           },
-          disabled: () => Object.entries(cost).some(([k, v]) => res[k as Res] < v),
-          tip: () => tipHtml(def.name, def.description, cost),
+          disabled: () => Object.entries(cost).some(([k, v]) => res[k as Res] < v) || !this.hasRequired(type),
+          tip: () => tipHtml(def.name, `${def.description}${this.hasRequired(type) ? '' : `<br><i>Requires a ${BUILDING_DEFS[def.requires!].name}.</i>`}`, cost),
         };
       });
       while (slots.length < 5) slots.push(null);
@@ -164,6 +166,8 @@ export class CommandCenter {
       slots.push({ icon: ICONS.back, label: 'Back', run: () => (this.tab = null) });
       return slots;
     }
+    const building = this.ownBuilding();
+    if (building) return this.buildingCommands(building);
     const slots: Array<Cmd | null> = [];
     if (villagers) {
       for (const t of TABS.slice(0, 2))
@@ -176,8 +180,65 @@ export class CommandCenter {
         });
     }
     if (own.length) slots.push({ icon: ICONS.stop, label: 'Stop', run: () => ctl.stop(), tip: () => tipHtml('Stop', 'Abandon the current task.') });
-    while (slots.length < 5) slots.push(null);
+    while (slots.length < 4) slots.push(null);
+    slots.push(own.length ? this.deleteCmd() : null);
     slots.push({ icon: ICONS.close, label: 'Deselect', run: () => ctl.deselect() });
+    return slots;
+  }
+
+  /** The single building of yours that is selected, if that is the selection. */
+  private ownBuilding() {
+    if (this.ctl.selection.size !== 1) return null;
+    const b = this.world.building([...this.ctl.selection][0]);
+    return b && b.owner === this.player ? b : null;
+  }
+
+  private hasRequired(type: BuildingType): boolean {
+    const req = BUILDING_DEFS[type].requires;
+    return !req || [...this.world.buildings(this.player)].some((b) => b.type === req && b.complete);
+  }
+
+  private deleteCmd(): Cmd {
+    return { icon: ICONS.trash, label: 'Delete', confirm: true, run: () => this.ctl.deleteSelected(), tip: () => tipHtml('Delete', 'Tap twice. Unfinished buildings refund what was not yet built.') };
+  }
+
+  private buildingCommands(b: NonNullable<ReturnType<CommandCenter['ownBuilding']>>): Array<Cmd | null> {
+    const def = BUILDING_DEFS[b.type];
+    const slots: Array<Cmd | null> = [];
+    const res = this.world.players[this.player].resources;
+    if (b.complete) {
+      for (const unit of def.trains) {
+        const u = UNIT_DEFS[unit];
+        const cost = u.cost as Record<string, number>;
+        slots.push({
+          icon: ICON[unit],
+          label: `Train ${u.name}`,
+          caption: Object.values(cost).join('/'),
+          run: () => this.ctl.command({ type: 'train', id: b.id, unit }),
+          disabled: () => Object.entries(cost).some(([k, v]) => res[k as Res] < v),
+          tip: () => tipHtml(`Train ${u.name}`, `${u.description}<br>${u.trainTime}s · ${u.hp} HP`, cost),
+        });
+      }
+      if (def.trains.length)
+        slots.push({
+          icon: ICONS.repeat,
+          label: 'Repeat',
+          active: () => !!this.world.building(b.id)?.repeat,
+          run: () => this.ctl.command({ type: 'repeat', id: b.id, on: !this.world.building(b.id)?.repeat }),
+          tip: () => tipHtml('Repeat production', 'Keep training the same unit while you can afford it.'),
+        });
+      if (b.type === 'farm' || b.type === 'mill')
+        slots.push({
+          icon: ICONS.reseed,
+          label: 'Auto-reseed farms',
+          active: () => this.world.players[this.player].autoReseed,
+          run: () => this.ctl.command({ type: 'autoReseed', on: !this.world.players[this.player].autoReseed }),
+          tip: () => tipHtml('Auto-reseed farms', `Replant fields when they are harvested, for ${BUILDING_DEFS.farm.cost.wood} wood each.`),
+        });
+    }
+    while (slots.length < 4) slots.push(null);
+    slots.push(this.deleteCmd());
+    slots.push({ icon: ICONS.close, label: 'Deselect', run: () => this.ctl.deselect() });
     return slots;
   }
 
@@ -190,11 +251,26 @@ export class CommandCenter {
       }
       const b = el('button', 'cmd-btn', `${c.icon}${c.caption ? `<span class="cmd-cap">${c.caption}</span>` : ''}`);
       b.setAttribute('aria-label', c.label);
-      if (c.active) b.classList.add('active');
+      let armed = 0;
       b.addEventListener('click', () => {
         if (b.disabled) return;
+        if (c.confirm && !armed) {
+          b.classList.add('armed');
+          armed = window.setTimeout(() => {
+            armed = 0;
+            b.classList.remove('armed');
+          }, 2000);
+          return;
+        }
+        clearTimeout(armed);
         c.run();
       });
+      if (c.active) {
+        const a = c.active;
+        const refresh = () => b.classList.toggle('active', a());
+        refresh();
+        this.live.push(refresh);
+      }
       tip(b, c.tip ?? (() => tipHtml(c.label, '')));
       if (c.disabled) {
         const d = c.disabled;
@@ -217,14 +293,17 @@ export class CommandCenter {
         <div class="ci-head"><span class="ci-name">${name}</span><span class="ci-owner">${owner}</span></div>
         <div class="hp"><div class="hp-fill"></div><span class="hp-text"></span></div>
         <div class="stats"></div>
-        <div class="ci-status"><span class="ci-status-text"></span><span class="carry"></span></div>
+        <div class="ci-status"><span class="ci-status-text"></span><span class="carry"></span><span class="queue"></span></div>
       </div>`;
     const fill = this.info.querySelector<HTMLElement>('.hp-fill')!;
     const hpText = this.info.querySelector<HTMLElement>('.hp-text')!;
     const statusEl = this.info.querySelector<HTMLElement>('.ci-status-text')!;
     const carryEl = this.info.querySelector<HTMLElement>('.carry')!;
     const stats = this.info.querySelector<HTMLElement>('.stats')!;
+    const queueEl = this.info.querySelector<HTMLElement>('.queue')!;
     this.renderStats(stats, e);
+    let queueSig = '';
+    let headBar: HTMLElement | null = null;
     let lastCarry = '';
     this.live.push(() => {
       const cur = this.world.get(e.id);
@@ -241,7 +320,16 @@ export class CommandCenter {
         const def = BUILDING_DEFS[cur.type];
         frac = cur.complete ? cur.hp / def.hp : cur.progress;
         text = cur.complete ? `${Math.ceil(cur.hp)} / ${def.hp}` : `Building… ${Math.floor(cur.progress * 100)}%`;
-        st = cur.complete ? def.description : 'Under construction';
+        st = !cur.complete ? 'Under construction' : cur.type === 'farm' ? `${cur.amount} food left in this planting` : def.description;
+        if (cur.complete && def.trains.length && cur.owner === this.player) {
+          st = cur.housed ? 'Waiting for houses: population limit reached' : cur.queue.length ? `Training ${UNIT_DEFS[cur.queue[0].unit].name}` : cur.rally ? 'Ready' : 'Tap the map to set a rally point';
+          const sig = cur.queue.map((q) => q.unit).join(',');
+          if (sig !== queueSig) {
+            queueSig = sig;
+            headBar = this.renderQueue(queueEl, cur.id, cur.queue.map((q) => q.unit));
+          }
+          if (headBar && cur.queue[0]) headBar.style.width = `${cur.queue[0].progress * 100}%`;
+        }
       } else {
         text = `${cur.amount} food`;
         st = 'Select villagers, then tap it to gather.';
@@ -253,6 +341,21 @@ export class CommandCenter {
       if (statusEl.textContent !== st) statusEl.textContent = st;
       if (carry !== lastCarry) carryEl.innerHTML = lastCarry = carry;
     });
+  }
+
+  /** Training queue: the head with a progress bar, then the rest; tap any to cancel (full refund). */
+  private renderQueue(box: HTMLElement, id: number, units: string[]): HTMLElement | null {
+    box.innerHTML = '';
+    let bar: HTMLElement | null = null;
+    units.slice(0, 8).forEach((unit, i) => {
+      const q = el('button', i === 0 ? 'qitem head' : 'qitem', `${ICON[unit]}${i === 0 ? '<span class="qbar"><span></span></span>' : ''}`);
+      q.setAttribute('aria-label', `Cancel ${unit}`);
+      q.addEventListener('click', () => this.ctl.command({ type: 'cancelTrain', id, index: i }));
+      if (i === 0) bar = q.querySelector<HTMLElement>('.qbar span');
+      box.appendChild(q);
+    });
+    if (units.length > 8) box.appendChild(el('span', 'qmore', `+${units.length - 8}`));
+    return bar;
   }
 
   private renderStats(box: HTMLElement, e: Entity): void {
@@ -305,7 +408,7 @@ export class CommandCenter {
     const p = this.ctl.placing!;
     const def = BUILDING_DEFS[p.type];
     this.info.innerHTML = `
-      <div class="pf-frame"><div class="pf">${portrait({ kind: 'building', type: p.type, owner: this.player, id: 0, x: 0, y: 0, size: def.size, hp: 0, progress: 0, complete: true })}</div></div>
+      <div class="pf-frame"><div class="pf">${portrait({ kind: 'building', type: p.type, owner: this.player })}</div></div>
       <div class="ci-body">
         <div class="ci-head"><span class="ci-name">${def.name}</span><span class="ci-owner">${costHtml(def.cost as Record<string, number>)}</span></div>
         <div class="ci-status"><span class="ci-status-text">Tap the map to choose a spot, then confirm.</span></div>

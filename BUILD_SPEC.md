@@ -243,7 +243,7 @@ Procedural, seeded. Every start has a forest line, berries, sheep, deer, gold an
 | Long-press then drag | Box select |
 | Double-tap a unit | Select all of that type on screen |
 | One-finger drag on empty map | Pan camera |
-| Two-finger pinch | Zoom (3 levels) |
+| Two-finger pinch | Zoom (4 levels, the closest for watching units work) |
 | Tap minimap | Jump camera |
 
 HUD (always visible): idle villager button with count, idle army button, select-all-military, select-all-ships, King button (Regicide), pause, speed, menu. Build sheet grouped by age with tabs: Economy, Military, Defense, Naval. Command panel for the selection: train queue, stance, formation, stop, delete, plus context buttons (Pack/Unpack for Trebuchet, Attack Ground for Mangonel, Unload for Transport and Siege Tower, Lock/Unlock for gates, Ungarrison). Resource bar top. "Under attack" toasts with tap-to-jump; distinct sounds for town, wall, ship and King alerts.

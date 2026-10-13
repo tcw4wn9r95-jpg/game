@@ -6,7 +6,7 @@ import type { ResourceKind } from '../sim/constants';
 
 export type View = 'front' | 'side' | 'back';
 export type Anim = 'idle' | 'walk' | 'work';
-export type Tool = 'none' | 'axe' | 'pick' | 'hammer' | 'basket' | 'knife' | 'spear';
+export type Tool = 'none' | 'axe' | 'pick' | 'hammer' | 'basket' | 'knife' | 'spear' | 'hoe' | 'sword';
 
 export interface Look {
   female: boolean;
@@ -161,6 +161,14 @@ function workPose(tool: Tool, frame: number): Pose {
       const low = tool === 'pick' ? 12 : 0;
       return { bob: 0, lean: k.lean + low * 0.4, ...legs, armN: [k.n[0], k.n[1] + low] as [number, number], armF: [k.f[0], k.f[1] + low] as [number, number] };
     }
+    case 'hoe': {
+      const k = [[-90, -60], [-40, -10], [30, 60], [10, 40]][frame];
+      return { bob: 2, lean: 18, ...legs, armN: [k[0], k[1]], armF: [k[0] - 10, k[1] - 6] };
+    }
+    case 'sword': {
+      const k = [[-150, -120], [-90, -30], [60, 70], [30, 40]][frame];
+      return { bob: 0, lean: k[0] > 0 ? 12 : -2, near: [22, 10], far: [-18, -10], armN: [k[0], k[1]], armF: [30, 70] };
+    }
     case 'hammer': {
       const k = [[-70, -120], [-30, -50], [45, 70], [15, 30]][frame];
       return { bob: 0, lean: 8, ...legs, armN: [k[0], k[1]], armF: [10, 40] };
@@ -188,7 +196,17 @@ function drawTool(g: G, tool: Tool, hand: P, fore: number) {
   // Hafted tools are held roughly at right angles to the forearm.
   const dir = (fore + (tool === 'spear' ? 0 : 90)) * D2R;
   const ux = Math.sin(dir), uy = Math.cos(dir);
-  const len = tool === 'spear' ? 46 : tool === 'knife' ? 9 : tool === 'hammer' ? 18 : 26;
+  if (tool === 'sword') {
+    // Blade along the forearm's grip direction, with a crossguard.
+    const d2 = (fore + 90) * D2R, sx = Math.sin(d2), sy = Math.cos(d2);
+    const tipP: P = [hand[0] + sx * 24, hand[1] + sy * 24];
+    poly(g, [[hand[0] + sx * 3 - sy * 1.8, hand[1] + sy * 3 + sx * 1.8], [tipP[0], tipP[1]], [hand[0] + sx * 3 + sy * 1.8, hand[1] + sy * 3 - sx * 1.8]], STEEL);
+    limb(g, [hand[0] + sx * 3 - sy * 1.2, hand[1] + sy * 3 + sx * 1.2], [hand[0] + sx * 20, hand[1] + sy * 20], 0.8, '#eef3f5');
+    limb(g, [hand[0] + sx * 2.5 - sy * 4.5, hand[1] + sy * 2.5 + sx * 4.5], [hand[0] + sx * 2.5 + sy * 4.5, hand[1] + sy * 2.5 - sx * 4.5], 2.2, '#c8962a');
+    limb(g, [hand[0] - sx * 3, hand[1] - sy * 3], [hand[0] + sx * 1.5, hand[1] + sy * 1.5], 2.4, LEATHER);
+    return;
+  }
+  const len = tool === 'spear' ? 46 : tool === 'knife' ? 9 : tool === 'hammer' ? 18 : tool === 'hoe' ? 30 : 26;
   const back = tool === 'spear' ? 18 : tool === 'knife' ? 1 : 4;
   const a: P = [hand[0] - ux * back, hand[1] - uy * back];
   const b: P = [hand[0] + ux * len, hand[1] + uy * len];
@@ -204,6 +222,8 @@ function drawTool(g: G, tool: Tool, hand: P, fore: number) {
     limb(g, [b[0] + px * 9 - ux * 3, b[1] + py * 9 - uy * 3], [b[0] + px * 9.5 + ux * 4, b[1] + py * 9.5 + uy * 4], 1, '#eef3f5');
   } else if (tool === 'pick') {
     poly(g, [[b[0] - px * 12 - ux * 2, b[1] - py * 12 - uy * 2], [b[0] - ux * 2.5, b[1] - uy * 2.5], [b[0] + px * 12 - ux * 2, b[1] + py * 12 - uy * 2], [b[0] + ux * 2, b[1] + uy * 2]], STEEL_DARK);
+  } else if (tool === 'hoe') {
+    poly(g, [[b[0] - ux * 1, b[1] - uy * 1], [b[0] + px * 2 + ux * 7, b[1] + py * 2 + uy * 7], [b[0] - px * 3 + ux * 7, b[1] - py * 3 + uy * 7]], STEEL_DARK);
   } else if (tool === 'hammer') {
     poly(g, [[b[0] - px * 5 - ux * 3, b[1] - py * 5 - uy * 3], [b[0] + px * 5 - ux * 3, b[1] + py * 5 - uy * 3], [b[0] + px * 5 + ux * 3, b[1] + py * 5 + uy * 3], [b[0] - px * 5 + ux * 3, b[1] - py * 5 + uy * 3]], STEEL_DARK);
   } else if (tool === 'spear') {
@@ -600,4 +620,63 @@ export function drawScout(g: G, f: FigureSpec): void {
   limb(g, [12, sh[1] + 4], [14, sh[1] + 18], 4.5, '#9aa3a8');
   limb(g, [14, sh[1] + 30], [14, sh[1] - 34], 2.4, HANDLE);
   poly(g, [[12, sh[1] - 34], [14, sh[1] - 44], [16, sh[1] - 34]], STEEL);
+}
+
+// ---------- militia (swordsman) ----------
+
+/** Quilted team-coloured gambeson, nasal helmet, round shield and an arming sword. */
+export function drawMilitia(g: G, f: FigureSpec): void {
+  const look: Look = { ...f.look, female: false };
+  const attacking = f.anim === 'work';
+  const pose = f.anim === 'walk' ? walkPose(f.frame) : attacking ? workPose('sword', f.frame) : { ...IDLE, armN: [20, 60] as [number, number] };
+  const hip: P = [0, -48 + pose.bob];
+  const sh = seg(hip, 180 + pose.lean, 30);
+  const headC: P = [sh[0] + (f.view === 'side' ? 2 : 0) + Math.sin(pose.lean * D2R) * 4, sh[1] - 13];
+  groundShadow(g, 16, 5);
+  const mailLegs: Look = { ...look, cloth: '#55595c' };
+
+  const shield = (x: number, y: number, rx: number) => {
+    const grad = g.createRadialGradient(x - rx * 0.3, y - rx * 0.3, 1, x, y, rx);
+    grad.addColorStop(0, shade(f.team, 1.3));
+    grad.addColorStop(1, shade(f.team, 0.6));
+    blob(g, x, y, rx, rx * 1.05, grad);
+    g.strokeStyle = '#d9b44a';
+    g.lineWidth = 1.6;
+    g.beginPath();
+    g.ellipse(x, y, rx - 2, rx * 1.05 - 2, 0, 0, Math.PI * 2);
+    g.stroke();
+    blob(g, x, y, rx * 0.28, rx * 0.28, STEEL);
+  };
+
+  if (f.view === 'back') shield(sh[0], sh[1] + 16, 13);
+  legs(g, pose, f.view, hip, mailLegs, 'far');
+  if (f.view === 'side') {
+    // Shield on the far arm, held forward.
+    const farArm = arm(g, pose, f.view, sh, look, f.team, 'far');
+    shield(farArm.hand[0] + 2, farArm.hand[1] - 6, 12);
+  }
+  legs(g, pose, f.view, hip, mailLegs, 'near');
+  torso(g, f.view, sh, hip, look, shade(f.team, 0.85));
+  // Quilting stitches.
+  g.strokeStyle = 'rgba(0,0,0,0.25)';
+  g.lineWidth = 1;
+  for (let k = 1; k < 4; k++) {
+    g.beginPath();
+    g.moveTo(sh[0] - 8, sh[1] + k * 7);
+    g.lineTo(hip[0] + 8, sh[1] + k * 7);
+    g.stroke();
+  }
+  if (f.view !== 'side') arm(g, pose, f.view, sh, look, f.team, 'far');
+  head(g, f.view, headC[0], headC[1], look, f.team);
+  // Nasal helmet over the hair.
+  const hx = headC[0], hy = headC[1];
+  const helm = g.createLinearGradient(hx - 10, 0, hx + 10, 0);
+  helm.addColorStop(0, '#e1e7ea');
+  helm.addColorStop(1, '#6f797e');
+  poly(g, [[hx - 10, hy - 1], [hx - 8, hy - 9], [hx, hy - 15], [hx + 8, hy - 9], [hx + 10, hy - 1]], helm);
+  if (f.view !== 'back') limb(g, [f.view === 'side' ? hx + 7 : hx, hy - 2], [f.view === 'side' ? hx + 7.5 : hx, hy + 4], 1.6, STEEL_DARK);
+  const near = arm(g, pose, f.view, sh, look, f.team, 'near');
+  if (f.view === 'front') shield(sh[0] - 13, sh[1] + 20, 11);
+  if (f.view === 'side') drawTool(g, 'sword', near.hand, near.fore);
+  else limb(g, [near.hand[0], near.hand[1] - 2], [near.hand[0] + 1, near.hand[1] + 20], 2.2, STEEL);
 }

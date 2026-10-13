@@ -16,6 +16,7 @@ import {
 import { Fog, type VisionSource } from './fog';
 import { NavGrid } from './grid';
 import { moveUnit, separate } from './movement';
+import { productionTick } from './production';
 import { Pathfinder } from './pathfinding';
 import { Rng } from './rng';
 import { type GameMap, Terrain } from './terrain';
@@ -33,11 +34,14 @@ export interface PlayerState {
   popCap: number;
   /** 0-3: Settlement, Township, Stronghold, Dominion. */
   age: number;
+  /** Replant farms automatically when they run out (costs a farm's wood). */
+  autoReseed: boolean;
 }
 
 export type SimEvent =
   | { type: 'dropoff'; owner: number; x: number; y: number; res: ResourceKind; amount: number }
   | { type: 'built'; owner: number; id: number }
+  | { type: 'trained'; owner: number; id: number }
   | { type: 'error'; owner: number; message: string };
 
 /** Game state, advanced only by step(); input and AI both act through issue(). */
@@ -73,6 +77,7 @@ export class World {
       pop: 0,
       popCap: 0,
       age: 0,
+      autoReseed: true,
     }));
     this.fog = map.starts.map((s) => {
       const fog = new Fog(map.size);
@@ -128,6 +133,7 @@ export class World {
     const e = this.entities.get(id);
     if (!e) return;
     if (e.kind === 'building') this.grid.setBuilding(e.x, e.y, e.size, 0);
+    if (e.kind === 'unit') this.updatePopulation();
     this.entities.delete(id);
   }
 
@@ -156,9 +162,11 @@ export class World {
 
   /** True if a building of this type fits at (x, y) for this player. */
   canPlace(type: BuildingType, owner: number, x: number, y: number): boolean {
-    const size = BUILDING_DEFS[type].size;
+    const def = BUILDING_DEFS[type];
+    const size = def.size;
     const { map, grid } = this;
     const fog = this.fog[owner];
+    if (def.requires && ![...this.buildings(owner)].some((b) => b.type === def.requires && b.complete)) return false;
     for (let ty = y; ty < y + size; ty++)
       for (let tx = x; tx < x + size; tx++) {
         if (!grid.inside(tx, ty)) return false;
@@ -183,11 +191,16 @@ export class World {
       hp: complete ? def.hp : 1,
       progress: complete ? 1 : 0,
       complete,
+      queue: [],
+      rally: null,
+      repeat: false,
+      amount: def.food ?? 0,
+      housed: false,
     });
-    this.grid.setBuilding(x, y, def.size, b.id);
+    this.grid.setBuilding(x, y, def.size, b.id, !def.walkable);
     // Anyone standing on the new footprint steps off it.
     for (const u of this.units()) {
-      if (this.grid.building[Math.floor(u.y) * this.map.size + Math.floor(u.x)] !== b.id) continue;
+      if (def.walkable || this.grid.building[Math.floor(u.y) * this.map.size + Math.floor(u.x)] !== b.id) continue;
       const out = this.grid.nearestWalkable(u.x, u.y, -1, def.size + 4);
       if (out) {
         u.x = u.px = out.x + 0.5;
@@ -261,6 +274,7 @@ export class World {
     for (const u of this.units()) moveUnit(this, u);
     separate(this);
     constructionTick(this);
+    productionTick(this);
     this.updatePopulation();
     if (this.tick % 2 === 0) this.updateVision();
     this.tick++;

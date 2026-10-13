@@ -885,3 +885,72 @@
   width: 15px;
   height: 15px;
 }
+
+/* ---------- Production queue and toggles ---------- */
+
+.queue {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.queue:empty {
+  display: none;
+}
+
+.qitem {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid #120a03;
+  background: radial-gradient(circle at 50% 30%, #6a4a2c, #2a190b 80%);
+  box-shadow: inset 0 0 0 1px var(--gold-lo);
+  cursor: pointer;
+}
+
+.qitem.head {
+  width: 26px;
+  height: 26px;
+  box-shadow: inset 0 0 0 1px var(--gold), 0 0 6px rgba(255, 210, 110, 0.5);
+}
+
+.qitem svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.qbar {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: -5px;
+  height: 4px;
+  background: #160c04;
+  border: 1px solid #000;
+}
+
+.qbar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(180deg, #ffe7a0, #c8962a);
+}
+
+.qmore {
+  font: 700 12px 'Alegreya Sans', sans-serif;
+  color: var(--cream);
+}
+
+.cmd-btn.active {
+  background: radial-gradient(circle at 50% 30%, #9a7a3a, #4a3010 80%);
+  background-origin: border-box;
+  box-shadow: 0 0 10px rgba(255, 210, 110, 0.75);
+}
+
+.cmd-btn.armed {
+  background: radial-gradient(circle at 50% 30%, #c0503a, #5a1a10 80%);
+  background-origin: border-box;
+  box-shadow: 0 0 10px rgba(255, 90, 60, 0.8);
+}

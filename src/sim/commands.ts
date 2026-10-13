@@ -1,7 +1,8 @@
 // Player commands. Touch input and the AI both produce these; the world applies
 // them at the start of the next tick, so the simulation stays deterministic.
-import { gatherOrder, isBuilder, isGatherer, setOrder, sourceOf } from './economy';
-import { BUILDING_DEFS, type BuildingType, type GatherTarget, type Unit } from './entities';
+import { findResource, gatherOrder, isBuilder, isGatherer, setOrder, sourceOf } from './economy';
+import { BUILDING_DEFS, type BuildingType, type GatherTarget, type Unit, type UnitType } from './entities';
+import { cancelQueued, canAfford, enqueue, pay } from './production';
 import type { World } from './world';
 
 export type Command =
@@ -9,10 +10,17 @@ export type Command =
   | { type: 'gather'; ids: number[]; target: GatherTarget }
   | { type: 'build'; ids: number[]; building: BuildingType; x: number; y: number }
   | { type: 'help'; ids: number[]; id: number }
-  | { type: 'stop'; ids: number[] };
+  | { type: 'stop'; ids: number[] }
+  | { type: 'train'; id: number; unit: UnitType; count?: number }
+  | { type: 'cancelTrain'; id: number; index: number }
+  | { type: 'rally'; ids: number[]; x: number; y: number; target: GatherTarget | null }
+  | { type: 'repeat'; id: number; on: boolean }
+  | { type: 'delete'; ids: number[] }
+  | { type: 'autoReseed'; on: boolean };
 
 export function applyCommand(w: World, player: number, cmd: Command): void {
-  const units = cmd.ids.map((id) => w.unit(id)).filter((u): u is Unit => !!u && u.owner === player);
+  const ids = 'ids' in cmd ? cmd.ids : [];
+  const units = ids.map((id) => w.unit(id)).filter((u): u is Unit => !!u && u.owner === player);
   switch (cmd.type) {
     case 'move':
       return moveGroup(units, cmd.x, cmd.y);
@@ -31,18 +39,54 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
         w.events.push({ type: 'error', owner: player, message: "Can't build there" });
         return;
       }
-      const cost = def.cost as Partial<Record<keyof typeof p.resources, number>>;
-      for (const [k, v] of Object.entries(cost)) {
-        if (p.resources[k as keyof typeof p.resources] < (v ?? 0)) {
-          w.events.push({ type: 'error', owner: player, message: `Not enough ${k}` });
-          return;
-        }
+      if (!canAfford(w, player, def.cost)) {
+        const short = Object.entries(def.cost).find(([k, v]) => p.resources[k as keyof typeof p.resources] < (v ?? 0));
+        w.events.push({ type: 'error', owner: player, message: `Not enough ${short?.[0] ?? 'resources'}` });
+        return;
       }
-      for (const [k, v] of Object.entries(cost)) p.resources[k as keyof typeof p.resources] -= v ?? 0;
+      pay(w, player, def.cost);
       const b = w.placeBuilding(cmd.building, player, cmd.x, cmd.y);
       for (const u of units) if (isBuilder(u)) setOrder(u, { type: 'build', id: b.id }), (u.resume = null);
       return;
     }
+    case 'train': {
+      const b = w.building(cmd.id);
+      if (!b || b.owner !== player) return;
+      for (let k = 0; k < (cmd.count ?? 1); k++) if (!enqueue(w, b, cmd.unit)) break;
+      return;
+    }
+    case 'cancelTrain': {
+      const b = w.building(cmd.id);
+      if (b && b.owner === player) cancelQueued(w, b, cmd.index);
+      return;
+    }
+    case 'rally':
+      for (const id of cmd.ids) {
+        const b = w.building(id);
+        if (b && b.owner === player && BUILDING_DEFS[b.type].trains.length) b.rally = { x: cmd.x, y: cmd.y, target: cmd.target };
+      }
+      return;
+    case 'repeat': {
+      const b = w.building(cmd.id);
+      if (b && b.owner === player) b.repeat = cmd.on;
+      return;
+    }
+    case 'autoReseed':
+      w.players[player].autoReseed = cmd.on;
+      return;
+    case 'delete':
+      for (const id of cmd.ids) {
+        const e = w.get(id);
+        if (!e || e.kind === 'resource' || e.owner !== player) continue;
+        if (e.kind === 'building') {
+          // Refund what wasn't built yet, and everything still queued.
+          const def = BUILDING_DEFS[e.type];
+          if (!e.complete) pay(w, player, Object.fromEntries(Object.entries(def.cost).map(([k, v]) => [k, Math.floor((v ?? 0) * (1 - e.progress))])), -1);
+          while (e.queue.length) cancelQueued(w, e, e.queue.length - 1);
+        }
+        w.remove(id);
+      }
+      return;
     case 'help': {
       const b = w.building(cmd.id);
       if (!b || b.owner !== player) return;
@@ -90,6 +134,23 @@ function gatherGroup(w: World, units: Unit[], target: GatherTarget): void {
     moveGroup(others, tx, ty);
   }
   let spots: GatherTarget[] = [target];
+  if (source === 'farm' && gatherers.length > 1) {
+    // One farmer per field: hand out the tapped farm, then the nearest free ones.
+    const [first, ...rest] = gatherers;
+    const order = gatherOrder(w, target);
+    if (order) setOrder(first, order), (first.resume = null);
+    const f = w.get((target as { id: number }).id) as { x: number; y: number };
+    for (const u of rest) {
+      // Farms already given out count as worked, so each search finds a different free one.
+      const t = findResource(w, u, ['farm'], f.x + 1.5, f.y + 1.5, 12);
+      const o = t && gatherOrder(w, t);
+      if (o) {
+        setOrder(u, o);
+        u.resume = null;
+      }
+    }
+    return;
+  }
   if (target.kind === 'tile' && gatherers.length > 2) {
     const N = w.map.size;
     const f = w.map.feature[target.y * N + target.x];

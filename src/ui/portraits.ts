@@ -1,7 +1,7 @@
 // HUD portraits: units and buildings rendered large from the same procedural art.
 import { BuildingSprites } from '../render/buildingSprites';
 import { UnitSprites, lookIndex } from '../render/unitSprites';
-import { BUILDING_DEFS, type Entity } from '../sim/entities';
+import { BUILDING_DEFS, type Building, type Entity } from '../sim/entities';
 import { ICONS } from './icons';
 
 const PX = 128;
@@ -19,14 +19,14 @@ function once(key: string, make: () => HTMLCanvasElement): string {
 }
 
 /** Portrait markup for an entity: a painted image for units and buildings, an icon otherwise. */
-export function portrait(e: Entity): string {
+export function portrait(e: Entity | { kind: 'building'; type: Building['type']; owner: number }): string {
   if (e.kind === 'unit') {
     const look = lookIndex(e.id);
     return `<img alt="" src="${once(`u|${e.type}|${e.owner}|${look}`, () => units.portrait(e.type, e.owner, look, PX))}">`;
   }
   if (e.kind === 'building') {
     return `<img alt="" src="${once(`b|${e.type}|${e.owner}`, () => {
-      const sp = buildings.get(e.type, BUILDING_DEFS[e.type].size, e.owner);
+      const sp = buildings.get(e.type, BUILDING_DEFS[e.type].size, e.owner, e.type === 'farm' ? 3 : 0);
       const c = document.createElement('canvas');
       c.width = c.height = PX;
       const g = c.getContext('2d')!;

@@ -19,6 +19,10 @@ export interface GestureHandlers {
   onBox?(x0: number, y0: number, x1: number, y1: number, done: boolean): void;
   /** A long press began at this point (selection box mode). */
   onLongPress?(x: number, y: number): void;
+  /** A one-finger touch began here; return true to take the drag instead of panning. */
+  onDragStart?(x: number, y: number): boolean;
+  onDrag?(x: number, y: number): void;
+  onDragEnd?(): void;
 }
 
 interface Pt {
@@ -40,6 +44,8 @@ export function attachGestures(el: HTMLElement, camera: () => Camera | null, han
   let pinchDist = 0;
   let samples: Array<{ x: number; y: number; t: number }> = [];
   let lastTap: (Pt & { t: number }) | null = null;
+  /** The current touch is dragging something the handler claimed (e.g. a placement ghost). */
+  let claimed = false;
 
   const mid = (): Pt => {
     const [a, b] = [...pointers.values()];
@@ -62,9 +68,10 @@ export function attachGestures(el: HTMLElement, camera: () => Camera | null, han
       start = { x: e.clientX, y: e.clientY, t: performance.now() };
       dragging = false;
       boxing = false;
+      claimed = !!handlers.onDragStart?.(e.clientX, e.clientY);
       samples = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
       cancelLong();
-      if (handlers.onBox)
+      if (handlers.onBox && !claimed)
         longTimer = window.setTimeout(() => {
           if (!start || dragging || pointers.size !== 1) return;
           boxing = true;
@@ -90,6 +97,11 @@ export function attachGestures(el: HTMLElement, camera: () => Camera | null, han
       p.y = e.clientY;
       if (boxing && start) {
         handlers.onBox?.(start.x, start.y, e.clientX, e.clientY, false);
+        return;
+      }
+      if (claimed) {
+        handlers.onDrag?.(e.clientX, e.clientY);
+        if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_SLOP) dragging = true;
         return;
       }
       if (!dragging && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_SLOP) {
@@ -122,6 +134,14 @@ export function attachGestures(el: HTMLElement, camera: () => Camera | null, han
     const wasSingle = pointers.size === 1;
     pointers.delete(e.pointerId);
     cancelLong();
+    if (wasSingle && claimed) {
+      claimed = false;
+      handlers.onDragEnd?.();
+      // A tap on the ghost without moving still counts as a tap.
+      if (!dragging && e.type === 'pointerup') handlers.onTap?.(e.clientX, e.clientY);
+      start = null;
+      return;
+    }
     if (wasSingle && cam) {
       if (boxing && start) {
         handlers.onBox?.(start.x, start.y, e.clientX, e.clientY, true);

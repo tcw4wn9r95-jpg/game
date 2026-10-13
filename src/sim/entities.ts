@@ -4,13 +4,52 @@ import type { ResourceKind } from './constants';
 
 export type UnitType = keyof typeof units;
 export type BuildingType = keyof typeof buildings;
-export type UnitDef = (typeof units)[UnitType] & { gatherer?: boolean; builder?: boolean };
-export type BuildingDef = (typeof buildings)[BuildingType];
+export interface UnitDef {
+  name: string;
+  hp: number;
+  speed: number;
+  los: number;
+  radius: number;
+  pop: number;
+  cost: Partial<Record<ResourceKind, number>>;
+  trainTime: number;
+  attack: number;
+  meleeArmor: number;
+  pierceArmor: number;
+  range: number;
+  description: string;
+  gatherer?: boolean;
+  builder?: boolean;
+}
 
-export const UNIT_DEFS = units as Record<UnitType, UnitDef>;
-export const BUILDING_DEFS = buildings as Record<BuildingType, BuildingDef>;
+export interface BuildingDef {
+  name: string;
+  size: number;
+  hp: number;
+  buildTime: number;
+  cost: Partial<Record<ResourceKind, number>>;
+  pop: number;
+  los: number;
+  dropoff: ResourceKind[];
+  age: number;
+  buildable: boolean;
+  description: string;
+  meleeArmor: number;
+  pierceArmor: number;
+  /** Units this building can train. */
+  trains: UnitType[];
+  /** Units can walk over it (farms). */
+  walkable?: boolean;
+  /** Food a farm yields per planting. */
+  food?: number;
+  /** A completed building of this type is needed before this one can be placed. */
+  requires?: BuildingType;
+}
 
-/** Something a villager can gather: a resource tile (tree, mine, bush) or a resource entity (animal, fish). */
+export const UNIT_DEFS = units as unknown as Record<UnitType, UnitDef>;
+export const BUILDING_DEFS = buildings as unknown as Record<BuildingType, BuildingDef>;
+
+/** Something a villager can gather: a resource tile (tree, mine, bush) or an entity (animal, fish, farm). */
 export type GatherTarget = { kind: 'tile'; x: number; y: number } | { kind: 'entity'; id: number };
 
 export type Order =
@@ -63,6 +102,16 @@ export interface Building {
   /** Construction progress 0..1. */
   progress: number;
   complete: boolean;
+  /** Units waiting to be trained; the head is in progress. */
+  queue: Array<{ unit: UnitType; progress: number }>;
+  /** Where trained units go: a point, or a resource to start gathering. */
+  rally: { x: number; y: number; target: GatherTarget | null } | null;
+  /** Re-queue each unit as it finishes (if affordable). */
+  repeat: boolean;
+  /** Farms: food left in the current planting. */
+  amount: number;
+  /** Production is waiting for population room (for a one-off alert). */
+  housed: boolean;
 }
 
 /** Food on the hoof or in the water, gathered where it stands. */

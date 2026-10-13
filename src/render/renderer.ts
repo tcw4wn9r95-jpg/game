@@ -7,6 +7,7 @@ import { BuildingSprites } from './buildingSprites';
 import type { View } from './canvas';
 import { type Camera, ZOOM_LEVELS } from './camera';
 import { CHUNK, ChunkCache } from './chunks';
+import { PLAYER_COLORS } from './palette';
 import { FOG_RGB, FogLayer } from './fogLayer';
 import { type Sprite, SpriteSet } from './sprites';
 import { TerrainTextures } from './textures';
@@ -20,7 +21,7 @@ const CHUNK_BUILD_MS = 4;
 const BG = `rgb(${FOG_RGB.join(',')})`;
 const EFFECT_S = 1.3;
 
-const TOOL_FOR: Record<string, Tool> = { tree: 'axe', gold: 'pick', stone: 'pick', berries: 'basket', sheep: 'knife', deer: 'knife', fish: 'spear' };
+const TOOL_FOR: Record<string, Tool> = { tree: 'axe', gold: 'pick', stone: 'pick', berries: 'basket', sheep: 'knife', deer: 'knife', fish: 'spear', farm: 'hoe' };
 
 interface LevelArt {
   s: number;
@@ -180,7 +181,9 @@ export class Renderer {
       } else if (e.kind === 'building') {
         if (!inView(e.x + e.size / 2, e.y + e.size, e.size)) continue;
         if (e.owner !== this.player && !fog.isExplored(e.x + e.size / 2, e.y + e.size / 2)) continue;
-        items.push({ y: e.y + e.size - 0.01, draw: () => this.drawBuilding(v, e) });
+        // Fields lie flat: draw them before anything standing on or below them.
+        const flat = BUILDING_DEFS[e.type].walkable;
+        items.push({ y: flat ? e.y - 0.5 : e.y + e.size - 0.01, draw: () => this.drawBuilding(v, e) });
       } else {
         if (!inView(e.x, e.y, 0) || !fog.isVisible(e.x, e.y)) continue;
         const s = e.type === 'sheep' ? sp.sheep : e.type === 'deer' ? sp.deer : sp.fish;
@@ -275,7 +278,10 @@ export class Renderer {
   private drawBuilding(v: FrameView, b: Building): void {
     const { ctx } = this.view;
     const { S, ox, oy } = v;
-    const sprite = v.art.buildings.get(b.type, b.size, b.owner);
+    const def = BUILDING_DEFS[b.type];
+    // Farms show how much crop is left.
+    const variant = b.type === 'farm' && b.complete ? Math.max(1, Math.ceil((b.amount / (def.food ?? 1)) * 3)) : 0;
+    const sprite = v.art.buildings.get(b.type, b.size, b.owner, variant);
     const fx = b.x * S - ox, fy = b.y * S - oy, fw = b.size * S;
     const selected = v.overlay.selection.has(b.id);
     if (selected) {
@@ -313,10 +319,46 @@ export class Renderer {
       }
       ctx.stroke();
     }
+    if (selected && b.rally && b.owner === this.player) this.drawRally(v, b);
     if (selected || !b.complete) {
-      const def = BUILDING_DEFS[b.type];
       this.hpBar(v, fx + fw / 2, fy - S * 0.6, Math.min(fw * 0.8, S * 2.2), b.complete ? b.hp / def.hp : b.progress, b.complete ? undefined : '#e8c25a');
     }
+  }
+
+  /** Dashed line from a building to its rally flag. */
+  private drawRally(v: FrameView, b: Building): void {
+    const { ctx } = this.view;
+    const { S, ox, oy } = v;
+    const r = b.rally!;
+    const bx = (b.x + b.size / 2) * S - ox, by = (b.y + b.size / 2) * S - oy;
+    const fx = r.x * S - ox, fy = r.y * S - oy;
+    ctx.save();
+    ctx.setLineDash([S * 0.2, S * 0.15]);
+    ctx.strokeStyle = 'rgba(255,240,200,0.75)';
+    ctx.lineWidth = Math.max(1, S / 20);
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(fx, fy);
+    ctx.stroke();
+    ctx.restore();
+    // Flag on a pole.
+    ctx.strokeStyle = '#3a2614';
+    ctx.lineWidth = Math.max(1.5, S / 14);
+    ctx.beginPath();
+    ctx.moveTo(fx, fy);
+    ctx.lineTo(fx, fy - S * 0.9);
+    ctx.stroke();
+    const wave = Math.sin(v.now * 4) * S * 0.05;
+    ctx.fillStyle = PLAYER_COLORS[b.owner % PLAYER_COLORS.length];
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(fx, fy - S * 0.9);
+    ctx.quadraticCurveTo(fx + S * 0.25, fy - S * 0.85 + wave, fx + S * 0.5, fy - S * 0.78);
+    ctx.lineTo(fx, fy - S * 0.55);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   }
 
   private drawGhost(v: FrameView, gh: NonNullable<Overlay['ghost']>): void {

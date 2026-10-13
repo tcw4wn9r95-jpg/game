@@ -2,7 +2,7 @@
 import type { Camera } from '../render/camera';
 import type { Effect } from '../render/renderer';
 import { isGatherer, sourceOf } from '../sim/economy';
-import { BUILDING_DEFS, type BuildingType, type Entity, type GatherTarget, type Unit } from '../sim/entities';
+import { BUILDING_DEFS, type Building, type BuildingType, type Entity, type GatherTarget, type Unit } from '../sim/entities';
 import { unitHeight } from '../render/unitSprites';
 import type { Command } from '../sim/commands';
 import { Feature } from '../sim/terrain';
@@ -103,13 +103,30 @@ export class Controller {
     if (pick.kind === 'entity' && pick.e.kind === 'unit' && pick.e.owner === me) return this.select([pick.e.id]);
     if (pick.kind === 'entity' && pick.e.kind === 'building' && pick.e.owner === me) {
       const b = pick.e;
-      const helpers = units.filter((u) => (!b.complete && isGatherer(u)) || (b.complete && u.carry));
+      const farmers = units.filter(isGatherer);
+      if (b.type === 'farm' && b.complete && farmers.length) {
+        this.issue({ type: 'gather', ids: farmers.map((u) => u.id), target: { kind: 'entity', id: b.id } });
+        this.ring(b.x + b.size / 2, b.y + b.size / 2, '#ffe28a');
+        return;
+      }
+      // Villagers act on it only if there is work there: build it, or unload what they carry.
+      const accepts = (BUILDING_DEFS[b.type].dropoff as string[]);
+      const helpers = units.filter((u) => (!b.complete && isGatherer(u)) || (b.complete && u.carry && accepts.includes(u.carry.res)));
       if (helpers.length) {
         this.issue({ type: 'help', ids: helpers.map((u) => u.id), id: b.id });
         this.ring(b.x + b.size / 2, b.y + b.size / 2, '#ffe28a');
         return;
       }
       return this.select([b.id]);
+    }
+    const producers = this.ownProducers();
+    if (!units.length && producers.length && !(pick.kind === 'entity' && pick.e.kind === 'unit')) {
+      // With a training building selected, a tap sets where new units gather.
+      const target = this.gatherTarget(pick);
+      const p = target ? this.targetPoint(target) : t;
+      this.issue({ type: 'rally', ids: producers.map((b) => b.id), x: p.x, y: p.y, target });
+      this.ring(p.x, p.y, '#fff0b0');
+      return;
     }
     if (!units.length) {
       // Nothing to command: tapping something selects it for a look, tapping ground clears.
@@ -120,7 +137,7 @@ export class Controller {
     const target = this.gatherTarget(pick);
     if (target) {
       this.issue({ type: 'gather', ids: units.map((u) => u.id), target });
-      const p = target.kind === 'tile' ? { x: target.x + 0.5, y: target.y + 0.5 } : (this.world.get(target.id) as { x: number; y: number });
+      const p = this.targetPoint(target);
       this.ring(p.x, p.y, '#ffe28a');
       return;
     }
@@ -162,6 +179,50 @@ export class Controller {
     if (ids.length) this.select(ids);
   }
 
+  private dragOffset: { x: number; y: number } | null = null;
+
+  /** Starts dragging the placement ghost if the touch lands on it; returns true to claim the gesture. */
+  dragStart(sx: number, sy: number): boolean {
+    const p = this.placing;
+    if (!p) return false;
+    const t = this.host.camera.screenToTile(sx, sy);
+    const size = BUILDING_DEFS[p.type].size;
+    if (t.x < p.x - 0.5 || t.x > p.x + size + 0.5 || t.y < p.y - 1 || t.y > p.y + size + 0.5) return false;
+    this.dragOffset = { x: t.x - p.x, y: t.y - p.y };
+    return true;
+  }
+
+  drag(sx: number, sy: number): void {
+    const p = this.placing;
+    if (!p || !this.dragOffset) return;
+    const t = this.host.camera.screenToTile(sx, sy);
+    const nx = Math.round(t.x - this.dragOffset.x), ny = Math.round(t.y - this.dragOffset.y);
+    if (nx !== p.x || ny !== p.y) {
+      p.x = nx;
+      p.y = ny;
+      this.changed();
+    }
+  }
+
+  dragEnd(): void {
+    this.dragOffset = null;
+  }
+
+  /** Deletes the player's selected units and buildings. */
+  deleteSelected(): void {
+    const ids = [...this.selection].filter((id) => {
+      const e = this.world.get(id);
+      return e && e.kind !== 'resource' && e.owner === this.host.player;
+    });
+    if (ids.length) this.issue({ type: 'delete', ids });
+    this.deselect();
+  }
+
+  /** Sends a production or toggle command for the selected building. */
+  command(cmd: Command): void {
+    this.issue(cmd);
+  }
+
   // ---------- picking ----------
 
   private pick(tx: number, ty: number): Pick {
@@ -172,14 +233,19 @@ export class Controller {
     for (const e of world.entities.values()) {
       if (e.kind === 'unit') {
         if (e.owner !== this.host.player && !fog.isVisible(e.x, e.y)) continue;
-        // Generous hit box: at least ~22 CSS px around the figure so fingers can hit it.
+        // Generous hit box: about 22 CSS px around the figure so fingers can hit it, capped when zoomed out.
         const h = unitHeight(e.type);
-        const tol = Math.max(0.45, 22 / this.host.camera.scale);
+        const tol = Math.min(0.9, Math.max(0.45, 22 / this.host.camera.scale));
         if (Math.abs(tx - e.x) > tol || ty < e.y - h - tol * 0.4 || ty > e.y + tol * 0.6) continue;
         // Own units win ties so a crowd can always be tapped into.
         const d = Math.hypot(tx - e.x, ty - (e.y - h / 2)) - (e.owner === this.host.player ? 0.2 : 0);
         if (d < bd) (bd = d), (best = e);
       }
+    }
+    // A tap well inside a building picks the building unless a unit is right under the finger.
+    if (best && bd > 0.35) {
+      const b = this.buildingAt(tx, ty, 0.4);
+      if (b) return { kind: 'entity', e: b };
     }
     if (best) return { kind: 'entity', e: best };
     for (const e of world.entities.values()) {
@@ -200,11 +266,38 @@ export class Controller {
     return { kind: 'ground', x: tx, y: ty };
   }
 
+  /** A visible building whose footprint contains the point, at least `inset` tiles from its edge. */
+  private buildingAt(tx: number, ty: number, inset: number): Building | null {
+    const fog = this.world.fog[this.host.player];
+    for (const b of this.world.buildings()) {
+      if (b.owner !== this.host.player && !fog.isExplored(b.x + 1, b.y + 1)) continue;
+      if (tx >= b.x + inset && tx <= b.x + b.size - inset && ty >= b.y + inset && ty <= b.y + b.size - inset) return b;
+    }
+    return null;
+  }
+
   private gatherTarget(p: Pick): GatherTarget | null {
     let t: GatherTarget | null = null;
     if (p.kind === 'tile') t = { kind: 'tile', x: p.x, y: p.y };
-    else if (p.kind === 'entity' && p.e.kind === 'resource') t = { kind: 'entity', id: p.e.id };
+    else if (p.kind === 'entity' && (p.e.kind === 'resource' || (p.e.kind === 'building' && p.e.type === 'farm' && p.e.owner === this.host.player)))
+      t = { kind: 'entity', id: p.e.id };
     return t && sourceOf(this.world, t) ? t : null;
+  }
+
+  private targetPoint(t: GatherTarget): { x: number; y: number } {
+    if (t.kind === 'tile') return { x: t.x + 0.5, y: t.y + 0.5 };
+    const e = this.world.get(t.id)!;
+    return e.kind === 'building' ? { x: e.x + e.size / 2, y: e.y + e.size / 2 } : { x: e.x, y: e.y };
+  }
+
+  /** Selected buildings of the player's that can train units. */
+  ownProducers(): Building[] {
+    const out: Building[] = [];
+    for (const id of this.selection) {
+      const b = this.world.building(id);
+      if (b && b.owner === this.host.player && b.complete && BUILDING_DEFS[b.type].trains.length) out.push(b);
+    }
+    return out;
   }
 
   // ---------- actions from the HUD ----------

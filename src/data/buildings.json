@@ -20,7 +20,10 @@
     "buildable": false,
     "description": "Trains villagers and stores every resource. Lose them all and the realm falls.",
     "meleeArmor": 3,
-    "pierceArmor": 5
+    "pierceArmor": 5,
+    "trains": [
+      "villager"
+    ]
   },
   "house": {
     "name": "House",
@@ -37,7 +40,8 @@
     "buildable": true,
     "description": "Supports 5 population.",
     "meleeArmor": 0,
-    "pierceArmor": 7
+    "pierceArmor": 7,
+    "trains": []
   },
   "lumber_camp": {
     "name": "Lumber Camp",
@@ -56,7 +60,8 @@
     "buildable": true,
     "description": "Drop-off for wood. Build it beside a forest.",
     "meleeArmor": 0,
-    "pierceArmor": 7
+    "pierceArmor": 7,
+    "trains": []
   },
   "mining_camp": {
     "name": "Mining Camp",
@@ -76,7 +81,8 @@
     "buildable": true,
     "description": "Drop-off for gold and stone. Build it beside a mine.",
     "meleeArmor": 0,
-    "pierceArmor": 7
+    "pierceArmor": 7,
+    "trains": []
   },
   "mill": {
     "name": "Mill",
@@ -95,6 +101,48 @@
     "buildable": true,
     "description": "Drop-off for food from berries, hunting and farms.",
     "meleeArmor": 0,
-    "pierceArmor": 7
+    "pierceArmor": 7,
+    "trains": []
+  },
+  "barracks": {
+    "name": "Barracks",
+    "size": 3,
+    "hp": 1200,
+    "buildTime": 50,
+    "cost": {
+      "wood": 175
+    },
+    "pop": 0,
+    "los": 5,
+    "dropoff": [],
+    "age": 0,
+    "buildable": true,
+    "description": "Trains infantry.",
+    "meleeArmor": 0,
+    "pierceArmor": 7,
+    "trains": [
+      "militia"
+    ]
+  },
+  "farm": {
+    "name": "Farm",
+    "size": 3,
+    "hp": 480,
+    "buildTime": 15,
+    "cost": {
+      "wood": 60
+    },
+    "pop": 0,
+    "los": 1,
+    "dropoff": [],
+    "age": 0,
+    "buildable": true,
+    "description": "A field of wheat worked by one villager. Replants itself when harvested, if you have the wood.",
+    "meleeArmor": 0,
+    "pierceArmor": 0,
+    "trains": [],
+    "walkable": true,
+    "food": 175,
+    "requires": "mill"
   }
 }

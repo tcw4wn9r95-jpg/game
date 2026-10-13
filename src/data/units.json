@@ -34,5 +34,23 @@
     "pierceArmor": 2,
     "range": 0,
     "description": "Fast mounted explorer. Strong against archers and villagers, weak against spearmen."
+  },
+  "militia": {
+    "name": "Militia",
+    "hp": 40,
+    "speed": 0.9,
+    "los": 4,
+    "radius": 0.24,
+    "pop": 1,
+    "cost": {
+      "food": 60,
+      "gold": 20
+    },
+    "trainTime": 21,
+    "attack": 4,
+    "meleeArmor": 0,
+    "pierceArmor": 1,
+    "range": 0,
+    "description": "Basic swordsman. Strong against infantry and buildings, weak against archers."
   }
 }

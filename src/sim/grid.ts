@@ -9,8 +9,10 @@ export class NavGrid {
   readonly N: number;
   /** 1 = walkable by land units. */
   readonly walk: Uint8Array;
-  /** Building id occupying each tile (0 = none). */
+  /** Building id occupying each tile (0 = none), including walkable ones like farms. */
   readonly building: Int32Array;
+  /** 1 where a building blocks movement. */
+  private readonly solid: Uint8Array;
   private comp: Int32Array;
   private compDirty = true;
 
@@ -18,6 +20,7 @@ export class NavGrid {
     this.N = map.size;
     this.walk = new Uint8Array(this.N * this.N);
     this.building = new Int32Array(this.N * this.N);
+    this.solid = new Uint8Array(this.N * this.N);
     this.comp = new Int32Array(this.N * this.N);
     for (let i = 0; i < this.N * this.N; i++) this.refresh(i);
   }
@@ -33,18 +36,20 @@ export class NavGrid {
   /** Recomputes walkability of one tile from terrain, features and buildings. */
   refresh(i: number): void {
     const was = this.walk[i];
-    const now = this.map.terrain[i] !== Terrain.Deep && this.map.feature[i] === Feature.None && this.building[i] === 0 ? 1 : 0;
+    const now = this.map.terrain[i] !== Terrain.Deep && this.map.feature[i] === Feature.None && this.solid[i] === 0 ? 1 : 0;
     if (was !== now) {
       this.walk[i] = now;
       this.compDirty = true;
     }
   }
 
-  setBuilding(x: number, y: number, size: number, id: number): void {
+  /** Marks (id > 0) or clears (id = 0) a footprint; `solid` buildings block movement. */
+  setBuilding(x: number, y: number, size: number, id: number, solid = true): void {
     for (let ty = y; ty < y + size; ty++)
       for (let tx = x; tx < x + size; tx++) {
         const i = ty * this.N + tx;
         this.building[i] = id;
+        this.solid[i] = id && solid ? 1 : 0;
         this.refresh(i);
       }
   }

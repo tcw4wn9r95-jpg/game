@@ -24,7 +24,7 @@ const REACH_POINT = 1.5;
 const MAX_REPATHS = 4;
 
 /** Gather source names: tile features and resource entities. */
-export type Source = 'tree' | 'gold' | 'stone' | 'berries' | 'sheep' | 'deer' | 'fish';
+export type Source = 'tree' | 'gold' | 'stone' | 'berries' | 'sheep' | 'deer' | 'fish' | 'farm';
 
 const FEATURE_SOURCE: Record<number, Source | undefined> = {
   [Feature.Tree]: 'tree',
@@ -42,6 +42,7 @@ export const SOURCE_RESOURCE: Record<Source, ResourceKind> = {
   sheep: 'food',
   deer: 'food',
   fish: 'food',
+  farm: 'food',
 };
 
 const RATE_KEY: Record<Source, keyof typeof economy.gatherRates> = {
@@ -52,6 +53,7 @@ const RATE_KEY: Record<Source, keyof typeof economy.gatherRates> = {
   sheep: 'sheep',
   deer: 'deer',
   fish: 'fish',
+  farm: 'farm',
 };
 
 /** What a drop-off building's completion sends its builders to gather. */
@@ -59,15 +61,20 @@ const CAMP_SOURCES: Partial<Record<string, Source[]>> = {
   lumber_camp: ['tree'],
   mining_camp: ['gold', 'stone'],
   mill: ['berries'],
+  farm: ['farm'],
 };
 
 interface ResolvedTarget {
   x: number;
   y: number;
-  /** 1 for a tile target, 0 for a point target. */
+  /** 1 for a tile target, 0 for a point target, the footprint for a farm. */
   size: number;
   amount: number;
+  /** Farms are worked from inside the field. */
+  inside?: boolean;
 }
+
+const isFarm = (e: { kind: string; type?: string } | undefined): e is Building => e?.kind === 'building' && e.type === 'farm';
 
 /** Source of a gather target, or null if it is gone or empty. */
 export function sourceOf(w: World, t: GatherTarget): Source | null {
@@ -76,6 +83,7 @@ export function sourceOf(w: World, t: GatherTarget): Source | null {
     return w.map.amount[i] > 0 ? (FEATURE_SOURCE[w.map.feature[i]] ?? null) : null;
   }
   const e = w.get(t.id);
+  if (isFarm(e)) return e.complete && e.amount > 0 ? 'farm' : null;
   return e?.kind === 'resource' && e.amount > 0 ? e.type : null;
 }
 
@@ -86,12 +94,15 @@ function resolve(w: World, t: GatherTarget): ResolvedTarget | null {
     return { x: t.x, y: t.y, size: 1, amount: w.map.amount[i] };
   }
   const e = w.get(t.id);
+  if (isFarm(e)) return e.complete && e.amount > 0 ? { x: e.x, y: e.y, size: e.size, amount: e.amount, inside: true } : null;
   if (e?.kind !== 'resource' || e.amount <= 0) return null;
   return { x: e.x, y: e.y, size: 0, amount: e.amount };
 }
 
 /** Standing on a tile touching the target (the same rule paths aim for), or close enough by distance. */
-function inReach(u: Unit, t: { x: number; y: number; size: number }): boolean {
+function inReach(u: Unit, t: { x: number; y: number; size: number; inside?: boolean }): boolean {
+  // Farmers work from well inside their field.
+  if (t.inside) return u.x > t.x + 0.6 && u.x < t.x + t.size - 0.6 && u.y > t.y + 0.6 && u.y < t.y + t.size - 0.6;
   if (t.size === 0) return touches(u, Math.floor(t.x), Math.floor(t.y), 1) || Math.hypot(u.x - t.x, u.y - t.y) <= REACH_POINT;
   return touches(u, t.x, t.y, t.size) || distToRect(u.x, u.y, t.x, t.y, t.size) <= REACH;
 }
@@ -114,10 +125,43 @@ function takeOne(w: World, t: GatherTarget): boolean {
     return true;
   }
   const e = w.get(t.id);
+  if (isFarm(e)) {
+    if (e.amount <= 0) return false;
+    e.amount--;
+    if (e.amount <= 0) reseed(w, e);
+    return true;
+  }
   if (e?.kind !== 'resource' || e.amount <= 0) return false;
   e.amount--;
   if (e.amount <= 0) w.remove(e.id);
   return true;
+}
+
+/** A harvested-out farm is replanted for its wood cost if auto-reseed is on, otherwise it goes fallow and disappears. */
+function reseed(w: World, farm: Building): void {
+  const p = w.players[farm.owner];
+  const def = BUILDING_DEFS.farm;
+  const wood = def.cost.wood ?? 0;
+  if (p.autoReseed && p.resources.wood >= wood) {
+    p.resources.wood -= wood;
+    farm.amount = def.food ?? 0;
+  } else {
+    if (p.autoReseed) w.events.push({ type: 'error', owner: farm.owner, message: 'A farm ran out: not enough wood to replant' });
+    w.remove(farm.id);
+  }
+}
+
+/**
+ * Another villager has this farm: one already working it wins, otherwise the
+ * earlier villager (lower id) keeps its claim, so two can never both give way.
+ */
+function farmTaken(w: World, farmId: number, except: Unit): boolean {
+  for (const o of w.units(except.owner)) {
+    if (o === except || o.order?.type !== 'gather' || o.order.target.kind !== 'entity' || o.order.target.id !== farmId) continue;
+    if (except.state === 'gather' && o.state !== 'gather') continue;
+    if (o.state === 'gather' || o.id < except.id) return true;
+  }
+  return false;
 }
 
 /** True if some walkable tile next to (x, y) lies in the unit's region. */
@@ -159,6 +203,15 @@ export function findResource(
         best = { kind: 'tile', x, y };
       }
   }
+  if (sources.includes('farm'))
+    for (const b of w.buildings(u.owner)) {
+      if (!isFarm(b) || !b.complete || b.amount <= 0 || farmTaken(w, b.id, u)) continue;
+      if (skip?.kind === 'entity' && skip.id === b.id) continue;
+      const d = Math.hypot(b.x + b.size / 2 - cx, b.y + b.size / 2 - cy);
+      if (d > radius || d >= bd) continue;
+      bd = d;
+      best = { kind: 'entity', id: b.id };
+    }
   for (const r of w.resources()) {
     if (!sources.includes(r.type) || r.amount <= 0) continue;
     if (skip?.kind === 'entity' && skip.id === r.id) continue;
@@ -230,9 +283,18 @@ function gather(w: World, u: Unit, o: Extract<Order, { type: 'gather' }>): void 
   if (u.carry && u.carry.amount >= CAPACITY) return goDropoff(w, u, o);
 
   let t = resolve(w, o.target);
+  if (t?.inside && o.target.kind === 'entity' && farmTaken(w, o.target.id, u)) {
+    // Someone else is farming here: find a free field nearby.
+    const next = findResource(w, u, ['farm'], t.x + 1.5, t.y + 1.5, economy.searchRadius, o.target);
+    if (!next) return finishWork(w, u);
+    o.target = next;
+    u.path = null;
+    t = resolve(w, next);
+  }
   if (!t) {
     const old = o.target;
     const ox = old.kind === 'tile' ? old.x + 0.5 : u.x, oy = old.kind === 'tile' ? old.y + 0.5 : u.y;
+    if (o.source === 'farm') return finishWork(w, u); // the field is gone; don't wander to another one
     const next = findResource(w, u, [o.source as Source], ox, oy);
     if (!next) return finishWork(w, u);
     o.target = next;
@@ -309,7 +371,11 @@ function build(w: World, u: Unit, o: Extract<Order, { type: 'build' }>): void {
 function afterBuild(w: World, u: Unit, b: Building): void {
   const sources = CAMP_SOURCES[b.type];
   const cx = b.x + b.size / 2, cy = b.y + b.size / 2;
-  if (sources) {
+  if (isFarm(b) && !farmTaken(w, b.id, u)) {
+    const order = gatherOrder(w, { kind: 'entity', id: b.id });
+    if (order) return setOrder(u, order);
+  }
+  if (sources && !isFarm(b)) {
     const t = findResource(w, u, sources, cx, cy, 8);
     const order = t && gatherOrder(w, t);
     if (order) return setOrder(u, order);
@@ -354,6 +420,8 @@ export function goalFor(w: World, u: Unit): Goal | null {
     case 'gather': {
       const t = resolve(w, o.target);
       if (!t) return null;
+      // Farmers stand in the middle of their field.
+      if (t.inside) return { x0: t.x + 1, y0: t.y + 1, x1: t.x + t.size - 2, y1: t.y + t.size - 2, reach: 0 };
       const tx = Math.floor(t.x), ty = Math.floor(t.y);
       return { x0: tx, y0: ty, x1: tx, y1: ty, reach: 1 };
     }

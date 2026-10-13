@@ -5,7 +5,8 @@ import type { BuildingType } from '../sim/entities';
 import { PLAYER_COLORS } from './palette';
 import type { Sprite } from './sprites';
 
-type Painter = (g: CanvasRenderingContext2D, W: number, team: string, rng: Rng) => void;
+/** variant: building-specific state, e.g. a farm's crop stage (0 bare .. 3 ripe). */
+type Painter = (g: CanvasRenderingContext2D, W: number, team: string, rng: Rng, variant: number) => void;
 
 const PAD = 8;
 /** Units of roof/structure drawn above the footprint's top edge. */
@@ -183,7 +184,118 @@ function rocks(g: CanvasRenderingContext2D, x: number, y: number, color: string)
   }
 }
 
+/** Ploughed field with wheat rows; fuller and more golden at higher stages. */
+const farm: Painter = (g, W, _team, rng, stage) => {
+  // Low fence of posts and rails around the field.
+  g.fillStyle = '#6e5232';
+  g.fillRect(1, 1, W - 2, W - 2);
+  const soil = g.createLinearGradient(0, 0, W, W);
+  soil.addColorStop(0, '#8a6a42');
+  soil.addColorStop(1, '#6a4c2c');
+  g.fillStyle = soil;
+  g.fillRect(4, 4, W - 8, W - 8);
+  // Furrows.
+  for (let y = 7; y < W - 6; y += 5.5) {
+    g.fillStyle = 'rgba(40,24,10,0.35)';
+    g.fillRect(5, y + 2.2, W - 10, 1.4);
+    g.fillStyle = 'rgba(190,150,100,0.25)';
+    g.fillRect(5, y, W - 10, 1);
+  }
+  // Wheat: tufts along the rows, their number and colour set by the stage.
+  const ripe = ['#7d8f3a', '#b9a83e', '#d9b84a', '#e8c95a'][stage];
+  const tip = ['#9aac4c', '#e0c860', '#f2d97a', '#fbe79a'][stage];
+  const fill = [0.15, 0.45, 0.75, 1][stage];
+  for (let y = 9; y < W - 6; y += 5.5)
+    for (let x = 7; x < W - 6; x += 3.2) {
+      if (rng.next() > fill) continue;
+      const h = 3 + stage * 1.6 + rng.next() * 2;
+      g.strokeStyle = ripe;
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(x, y + 1);
+      g.lineTo(x + (rng.next() - 0.5) * 1.5, y + 1 - h);
+      g.stroke();
+      g.fillStyle = tip;
+      g.fillRect(x - 0.6, y - h, 1.4, 1.8);
+    }
+  g.strokeStyle = '#4a3218';
+  g.lineWidth = 1.2;
+  g.strokeRect(2.5, 2.5, W - 5, W - 5);
+  g.fillStyle = '#5a3d22';
+  for (const [x, y] of [[2, 2], [W - 4, 2], [2, W - 4], [W - 4, W - 4], [W / 2 - 1, 2], [W / 2 - 1, W - 4]]) g.fillRect(x, y - 3, 2.5, 5);
+};
+
+/** Timber hall with a training yard: fence, straw dummy, rack of spears and shields. */
+const barracks: Painter = (g, W, team, rng) => {
+  shadow(g, 6, 16, W - 6, W * 0.62);
+  // Yard.
+  g.fillStyle = 'rgba(130,100,62,0.55)';
+  g.fillRect(4, W * 0.6, W - 8, W * 0.38);
+  g.strokeStyle = '#5a3d22';
+  g.lineWidth = 1.4;
+  g.beginPath();
+  g.moveTo(4, W - 4);
+  g.lineTo(W - 4, W - 4);
+  g.moveTo(4, W - 7);
+  g.lineTo(W - 4, W - 7);
+  g.stroke();
+  for (let x = 4; x <= W - 4; x += 9) {
+    g.fillStyle = '#5a3d22';
+    g.fillRect(x - 1, W - 10, 2.4, 8);
+  }
+  wall(g, 8, W - 8, W * 0.3, W * 0.62, { door: W / 2, windows: [20, W - 20], stoneBase: true });
+  thatch(g, 3, W - 3, -RISE / 2, 0, W * 0.33, rng);
+  banner(g, 15, W * 0.34, team);
+  banner(g, W - 15, W * 0.34, team);
+  flag(g, W - 10, 0, team, 1.1);
+  // Training dummy.
+  const dx = 18, dy = W - 12;
+  g.fillStyle = '#5a3d22';
+  g.fillRect(dx - 1, dy - 16, 2.4, 16);
+  g.fillRect(dx - 7, dy - 12, 14, 2);
+  g.fillStyle = '#d6bf7a';
+  g.beginPath();
+  g.ellipse(dx + 0.2, dy - 9, 4, 5.5, 0, 0, Math.PI * 2);
+  g.fill();
+  g.beginPath();
+  g.arc(dx + 0.2, dy - 17, 3, 0, Math.PI * 2);
+  g.fill();
+  // Weapon rack with spears and shields in team colour.
+  const rx = W - 30, ry = W - 12;
+  g.fillStyle = '#5a3d22';
+  g.fillRect(rx, ry - 3, 20, 2.4);
+  for (let k = 0; k < 4; k++) {
+    g.strokeStyle = '#7a5430';
+    g.lineWidth = 1.2;
+    g.beginPath();
+    g.moveTo(rx + 3 + k * 5, ry + 1);
+    g.lineTo(rx + 1 + k * 5, ry - 20);
+    g.stroke();
+    g.fillStyle = '#c9d1d6';
+    g.beginPath();
+    g.moveTo(rx + k * 5, ry - 20);
+    g.lineTo(rx + 1 + k * 5, ry - 25);
+    g.lineTo(rx + 2 + k * 5, ry - 20);
+    g.fill();
+  }
+  for (const sx of [rx + 4, rx + 15]) {
+    g.fillStyle = team;
+    g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.lineWidth = 0.6;
+    g.beginPath();
+    g.arc(sx, ry - 6, 4.2, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    g.fillStyle = '#d9b44a';
+    g.beginPath();
+    g.arc(sx, ry - 6, 1.2, 0, Math.PI * 2);
+    g.fill();
+  }
+};
+
 const PAINTERS: Record<BuildingType, Painter> = {
+  farm,
+  barracks,
   town_center: (g, W, team, rng) => {
     shadow(g, 6, 20, W - 6, W - 4);
     // Packed-earth yard.
@@ -295,17 +407,17 @@ export class BuildingSprites {
 
   constructor(readonly s: number) {}
 
-  get(type: BuildingType, size: number, player: number): Sprite {
-    const key = `${type}|${player}`;
+  get(type: BuildingType, size: number, player: number, variant = 0): Sprite {
+    const key = `${type}|${player}|${variant}`;
     let sp = this.cache.get(key);
     if (!sp) {
-      sp = this.render(type, size, player);
+      sp = this.render(type, size, player, variant);
       this.cache.set(key, sp);
     }
     return sp;
   }
 
-  private render(type: BuildingType, size: number, player: number): Sprite {
+  private render(type: BuildingType, size: number, player: number, variant: number): Sprite {
     const u = this.s / 32;
     const W = size * 32;
     const c = document.createElement('canvas');
@@ -314,7 +426,7 @@ export class BuildingSprites {
     const g = c.getContext('2d')!;
     g.scale(u, u);
     g.translate(PAD, RISE);
-    PAINTERS[type](g, W, PLAYER_COLORS[player % PLAYER_COLORS.length], new Rng(size * 31 + type.length));
+    PAINTERS[type](g, W, PLAYER_COLORS[player % PLAYER_COLORS.length], new Rng(size * 31 + type.length), variant);
     // Anchor = footprint top-left.
     return { c, ax: PAD * u, ay: RISE * u };
   }

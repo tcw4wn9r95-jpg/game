@@ -1,7 +1,7 @@
 // Unit sprites rendered lazily from the articulated figures, per zoom level.
 import type { ResourceKind } from '../sim/constants';
 import type { UnitType } from '../sim/entities';
-import { type Anim, CLOTHS, type FigureSpec, HAIRS, type Look, SKINS, type Tool, type View, drawScout, drawVillager } from './figures';
+import { type Anim, CLOTHS, type FigureSpec, HAIRS, type Look, SKINS, type Tool, type View, drawMilitia, drawScout, drawVillager } from './figures';
 import { PLAYER_COLORS } from './palette';
 import type { Sprite } from './sprites';
 
@@ -9,10 +9,11 @@ import type { Sprite } from './sprites';
 const DEFS: Record<UnitType, { tilesPer100: number; x0: number; x1: number; y0: number; y1: number; draw: (g: CanvasRenderingContext2D, f: FigureSpec) => void }> = {
   villager: { tilesPer100: 0.82, x0: -45, x1: 45, y0: -150, y1: 12, draw: drawVillager },
   scout: { tilesPer100: 1.2, x0: -60, x1: 70, y0: -150, y1: 12, draw: drawScout },
+  militia: { tilesPer100: 0.86, x0: -50, x1: 50, y0: -160, y1: 12, draw: drawMilitia },
 };
 
 /** Height of a unit's figure in tiles, for hit-testing taps. */
-export const unitHeight = (type: UnitType) => (type === 'scout' ? 1.25 : 0.85);
+export const unitHeight = (type: UnitType) => (type === 'scout' ? 1.25 : type === 'militia' ? 0.9 : 0.85);
 
 /** Eight preset looks so crowds vary; picked by unit id. */
 const LOOKS: Look[] = Array.from({ length: 8 }, (_, i) => ({

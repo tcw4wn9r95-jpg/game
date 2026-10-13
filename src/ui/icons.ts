@@ -144,6 +144,34 @@ export const ICONS = {
     <path d="M12 2v13" stroke="${INK}" stroke-width="1.6"/><path d="M12 3l7 9h-7z" fill="#efe6cc" stroke="${INK}" stroke-width="1"/>
     <path d="M12 5l-6 7h6z" fill="#d8ccae" stroke="${INK}" stroke-width="1"/><path d="M1 21c3 1.5 6-1.5 11 0s8-1.5 11 0" stroke="#4a8ac0" stroke-width="1.4" fill="none"/>`),
   back: svg(`<path d="M14 5l-7 7 7 7" fill="none" stroke="${INK}" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 5l-7 7 7 7" fill="none" stroke="#f1d48a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`),
+  militia: svg(`
+    <circle cx="11" cy="7" r="3.4" fill="#e0b48c" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M7.2 6.5L8.5 3l2.5-1.5L13.5 3l1.3 3.5z" fill="#b8c2c8" stroke="${INK}" stroke-width="1"/>
+    <path d="M6 21l1.4-8c.4-2 2-3 3.6-3s3.2 1 3.6 3L16 21z" fill="#3f6fb0" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M7 14h8M7 17h8" stroke="rgba(0,0,0,.35)" stroke-width=".9"/>
+    <circle cx="6" cy="15" r="3.6" fill="#3f6fb0" stroke="${INK}" stroke-width="1"/><circle cx="6" cy="15" r="1" fill="#d9b44a"/>
+    <path d="M17 13l5-9" stroke="#c9d1d6" stroke-width="1.8" stroke-linecap="round"/><path d="M15.5 12.5l3 1.6" stroke="#c8962a" stroke-width="1.6"/>`),
+  barracks: svg(`
+    <path d="M2 20v-8h20v8z" fill="#d8c8a0" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M1 12.5L5 7h14l4 5.5z" fill="#d1ae5c" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M10.5 20v-4a1.5 1.5 0 013 0v4z" fill="#3a2412"/>
+    <path d="M17 22l4-6M19 22l-4-6" stroke="#c9d1d6" stroke-width="1.4" stroke-linecap="round"/>
+    <rect x="4" y="13" width="3" height="3" fill="#3f6fb0" stroke="${INK}" stroke-width=".6"/>`),
+  farm: svg(`
+    <path d="M2 21L5 9h14l3 12z" fill="#8a6a42" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <g stroke="#e3c35a" stroke-width="1.3" stroke-linecap="round"><path d="M6 19l1-4M9 19l.5-4M12 19v-4M15 19l-.5-4M18 19l-1-4"/><path d="M6.5 13l.6-2.5M10 13l.3-2.5M13.5 13l-.2-2.5M17 13l-.5-2.5"/></g>`),
+  repeat: svg(`
+    <path d="M5 11a7 7 0 0112-4.5M19 13a7 7 0 01-12 4.5" fill="none" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M5 11a7 7 0 0112-4.5M19 13a7 7 0 01-12 4.5" fill="none" stroke="#f1d48a" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M18.5 2.5l-.8 5-4.8-1z" fill="#f1d48a" stroke="${INK}" stroke-width=".9"/><path d="M5.5 21.5l.8-5 4.8 1z" fill="#f1d48a" stroke="${INK}" stroke-width=".9"/>`),
+  trash: svg(`
+    <path d="M5 7h14l-1.4 14H6.4z" fill="#8a5a30" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M3 6h18" stroke="${INK}" stroke-width="2.6" stroke-linecap="round"/><path d="M9 6V3.5h6V6" fill="none" stroke="${INK}" stroke-width="1.4"/>
+    <path d="M9.5 10v8M12 10v8M14.5 10v8" stroke="#2a1606" stroke-width="1.2"/>`),
+  reseed: svg(`
+    <path d="M12 21V9" stroke="#7d8f3a" stroke-width="1.8"/>
+    <path d="M12 9c-3-.5-5-3-5-6 3 0 5 2.5 5 6zM12 13c3-.5 5-3 5-6-3 0-5 2.5-5 6zM12 16c-3-.5-5-3-5-6 3 0 5 2.5 5 6z" fill="#e3c35a" stroke="${INK}" stroke-width="1"/>
+    <path d="M4 21h16" stroke="#8a6a42" stroke-width="2.4" stroke-linecap="round"/>`),
   dice: svg(`
     <rect x="3.5" y="3.5" width="17" height="17" rx="3.5" fill="#f4ead2" stroke="${INK}" stroke-width="1.4"/>
     <circle cx="8" cy="8" r="1.6" fill="${INK}"/><circle cx="16" cy="8" r="1.6" fill="${INK}"/>

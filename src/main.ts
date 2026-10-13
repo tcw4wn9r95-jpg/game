@@ -71,6 +71,9 @@ function boot(): void {
     onTap: (x, y) => game?.controller.tap(x, y),
     onDoubleTap: (x, y) => game?.controller.doubleTap(x, y),
     onBox: (x0, y0, x1, y1, done) => game?.controller.box(x0, y0, x1, y1, done),
+    onDragStart: (x, y) => game?.controller.dragStart(x, y) ?? false,
+    onDrag: (x, y) => game?.controller.drag(x, y),
+    onDragEnd: () => game?.controller.dragEnd(),
   });
 
   const clearBackdrop = () => {
