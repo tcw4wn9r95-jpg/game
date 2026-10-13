@@ -1,8 +1,12 @@
 import type { Camera } from '../render/camera';
 
 /** Movement (CSS px) before a touch counts as a drag instead of a tap. */
-const TAP_SLOP = 8;
+const TAP_SLOP = 10;
 const TAP_MAX_MS = 350;
+/** Hold this long without moving to start a selection box. */
+const LONG_PRESS_MS = 380;
+const DOUBLE_TAP_MS = 320;
+const DOUBLE_TAP_PX = 30;
 /** Pinch distance ratio that triggers one zoom step. */
 const PINCH_STEP = 1.3;
 /** Window (ms) of recent moves used to estimate fling velocity. */
@@ -10,6 +14,11 @@ const FLING_WINDOW = 90;
 
 export interface GestureHandlers {
   onTap?(x: number, y: number): void;
+  onDoubleTap?(x: number, y: number): void;
+  /** Selection box in screen CSS px; `done` on release. */
+  onBox?(x0: number, y0: number, x1: number, y1: number, done: boolean): void;
+  /** A long press began at this point (selection box mode). */
+  onLongPress?(x: number, y: number): void;
 }
 
 interface Pt {
@@ -18,15 +27,19 @@ interface Pt {
 }
 
 /**
- * Turns pointer input on the canvas into camera moves: one-finger pan with fling,
- * two-finger pinch (stepped zoom) and pan, mouse wheel zoom, and taps.
+ * Turns pointer input on the canvas into camera moves and selection gestures:
+ * one-finger pan with fling, two-finger pinch (stepped zoom) and pan, mouse-wheel
+ * zoom, taps, double taps, and long-press-then-drag box selection.
  */
 export function attachGestures(el: HTMLElement, camera: () => Camera | null, handlers: GestureHandlers = {}): void {
   const pointers = new Map<number, Pt>();
   let start: (Pt & { t: number }) | null = null;
   let dragging = false;
+  let boxing = false;
+  let longTimer = 0;
   let pinchDist = 0;
   let samples: Array<{ x: number; y: number; t: number }> = [];
+  let lastTap: (Pt & { t: number }) | null = null;
 
   const mid = (): Pt => {
     const [a, b] = [...pointers.values()];
@@ -36,6 +49,10 @@ export function attachGestures(el: HTMLElement, camera: () => Camera | null, han
     const [a, b] = [...pointers.values()];
     return Math.hypot(a.x - b.x, a.y - b.y);
   };
+  const cancelLong = () => {
+    clearTimeout(longTimer);
+    longTimer = 0;
+  };
 
   el.addEventListener('pointerdown', (e) => {
     el.setPointerCapture(e.pointerId);
@@ -44,8 +61,20 @@ export function attachGestures(el: HTMLElement, camera: () => Camera | null, han
     if (pointers.size === 1) {
       start = { x: e.clientX, y: e.clientY, t: performance.now() };
       dragging = false;
+      boxing = false;
       samples = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
+      cancelLong();
+      if (handlers.onBox)
+        longTimer = window.setTimeout(() => {
+          if (!start || dragging || pointers.size !== 1) return;
+          boxing = true;
+          handlers.onLongPress?.(start.x, start.y);
+          handlers.onBox?.(start.x, start.y, start.x, start.y, false);
+        }, LONG_PRESS_MS);
     } else if (pointers.size === 2) {
+      cancelLong();
+      if (boxing && start) handlers.onBox?.(start.x, start.y, start.x, start.y, true);
+      boxing = false;
       start = null; // a second finger cancels any tap
       pinchDist = spread();
     }
@@ -57,9 +86,16 @@ export function attachGestures(el: HTMLElement, camera: () => Camera | null, han
     if (!p || !cam) return;
     if (pointers.size === 1) {
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
-      if (!dragging && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_SLOP) dragging = true;
       p.x = e.clientX;
       p.y = e.clientY;
+      if (boxing && start) {
+        handlers.onBox?.(start.x, start.y, e.clientX, e.clientY, false);
+        return;
+      }
+      if (!dragging && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_SLOP) {
+        dragging = true;
+        cancelLong();
+      }
       if (dragging) {
         cam.panBy(dx, dy);
         const now = performance.now();
@@ -85,15 +121,26 @@ export function attachGestures(el: HTMLElement, camera: () => Camera | null, han
     const cam = camera();
     const wasSingle = pointers.size === 1;
     pointers.delete(e.pointerId);
+    cancelLong();
     if (wasSingle && cam) {
-      if (!dragging && start && performance.now() - start.t < TAP_MAX_MS && e.type === 'pointerup') {
-        handlers.onTap?.(e.clientX, e.clientY);
+      if (boxing && start) {
+        handlers.onBox?.(start.x, start.y, e.clientX, e.clientY, true);
+      } else if (!dragging && start && performance.now() - start.t < TAP_MAX_MS && e.type === 'pointerup') {
+        const now = performance.now();
+        if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_TAP_PX) {
+          handlers.onDoubleTap?.(e.clientX, e.clientY);
+          lastTap = null;
+        } else {
+          handlers.onTap?.(e.clientX, e.clientY);
+          lastTap = { x: e.clientX, y: e.clientY, t: now };
+        }
       } else if (dragging && samples.length >= 2) {
         const a = samples[0], b = samples[samples.length - 1];
         const dt = (b.t - a.t) / 1000;
         if (dt > 0 && performance.now() - b.t < 60) cam.fling((b.x - a.x) / dt, (b.y - a.y) / dt);
       }
       start = null;
+      boxing = false;
     } else if (pointers.size === 1) {
       // Lifting one finger of a pinch continues as a pan with the other, never a tap.
       const [rest] = [...pointers.values()];

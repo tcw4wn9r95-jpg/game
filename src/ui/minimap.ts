@@ -1,10 +1,11 @@
 import type { Camera } from '../render/camera';
 import { PLAYER_COLORS } from '../render/palette';
 import type { Fog } from '../sim/fog';
-import type { GameMap } from '../sim/terrain';
+import type { World } from '../sim/world';
 import { mapImage } from './mapImage';
 
 const REDRAW_MS = 120;
+const BASE_REFRESH_MS = 3000;
 
 /**
  * Minimap in the HUD corner: terrain and resources under the player's fog, the
@@ -12,7 +13,8 @@ const REDRAW_MS = 120;
  */
 export class Minimap {
   readonly el: HTMLCanvasElement;
-  private readonly base: HTMLCanvasElement;
+  private base: HTMLCanvasElement;
+  private baseAt = 0;
   private readonly fogCanvas: HTMLCanvasElement;
   private readonly fogImg: ImageData;
   private fogVersion = -1;
@@ -21,10 +23,12 @@ export class Minimap {
 
   constructor(
     parent: HTMLElement,
-    private readonly map: GameMap,
+    private readonly world: World,
     private readonly fog: Fog,
     private readonly camera: Camera,
+    private readonly player: number,
   ) {
+    const map = world.map;
     const N = map.size;
     this.el = document.createElement('canvas');
     this.el.className = 'minimap';
@@ -58,7 +62,12 @@ export class Minimap {
     if (now - this.lastDraw < REDRAW_MS && !this.dirty) return;
     this.lastDraw = now;
     this.dirty = false;
-    const N = this.map.size;
+    const N = this.world.map.size;
+    // Felled trees and mined-out deposits: refresh the terrain picture now and then.
+    if (now - this.baseAt > BASE_REFRESH_MS) {
+      this.base = mapImage(this.world.map);
+      this.baseAt = now;
+    }
     const css = this.el.clientWidth;
     const px = Math.round(css * Math.min(window.devicePixelRatio || 1, 2));
     if (this.el.width !== px) this.el.width = this.el.height = px;
@@ -79,12 +88,21 @@ export class Minimap {
     g.drawImage(this.base, 0, 0, px, px);
     g.drawImage(this.fogCanvas, 0, 0, px, px);
 
-    const s = this.map.starts[0];
-    g.fillStyle = PLAYER_COLORS[0];
-    g.strokeStyle = '#ffffff';
-    g.lineWidth = Math.max(1, k * 0.6);
-    g.fillRect((s.x - 2) * k, (s.y - 2) * k, 4 * k, 4 * k);
-    g.strokeRect((s.x - 2) * k, (s.y - 2) * k, 4 * k, 4 * k);
+    g.strokeStyle = 'rgba(0,0,0,0.8)';
+    g.lineWidth = 1;
+    for (const b of this.world.buildings()) {
+      if (b.owner !== this.player && !this.fog.isExplored(b.x + b.size / 2, b.y + b.size / 2)) continue;
+      const sz = Math.max(3, b.size * k);
+      g.fillStyle = PLAYER_COLORS[b.owner % PLAYER_COLORS.length];
+      g.fillRect(b.x * k, b.y * k, sz, sz);
+      g.strokeRect(b.x * k, b.y * k, sz, sz);
+    }
+    const dot = Math.max(2, k * 1.2);
+    for (const u of this.world.units()) {
+      if (u.owner !== this.player && !this.fog.isVisible(u.x, u.y)) continue;
+      g.fillStyle = PLAYER_COLORS[u.owner % PLAYER_COLORS.length];
+      g.fillRect(u.x * k - dot / 2, u.y * k - dot / 2, dot, dot);
+    }
 
     const cam = this.camera;
     const hw = cam.viewW / 2 / cam.scale, hh = cam.viewH / 2 / cam.scale;

@@ -1,8 +1,8 @@
 import type { View } from '../render/canvas';
 import { Camera, ZOOM_LEVELS } from '../render/camera';
 import { Renderer } from '../render/renderer';
-import { Fog } from '../sim/fog';
 import type { GameMap } from '../sim/terrain';
+import { World } from '../sim/world';
 
 /** The setup screen's background: the previewed map, fully revealed, drifting slowly. */
 export class MenuBackdrop {
@@ -14,9 +14,11 @@ export class MenuBackdrop {
     private readonly view: View,
     private readonly map: GameMap,
   ) {
-    const fog = new Fog(map.size);
+    // A bare world (no players' units) so the renderer has animals and terrain to show.
+    const world = new World(map, { spawnStarts: false });
+    const fog = world.fog[0];
     fog.revealAll();
-    this.renderer = new Renderer(view, map, fog);
+    this.renderer = new Renderer(view, world, fog);
     this.camera = new Camera(map.size);
     this.camera.level = ZOOM_LEVELS.length - 1;
     this.camera.scale = ZOOM_LEVELS[this.camera.level];

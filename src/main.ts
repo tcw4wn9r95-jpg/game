@@ -67,7 +67,11 @@ function boot(): void {
   let backdrop: MenuBackdrop | null = null;
   let fps: FpsCounter | null = null;
 
-  attachGestures(view.ctx.canvas, () => game?.camera ?? null);
+  attachGestures(view.ctx.canvas, () => game?.camera ?? null, {
+    onTap: (x, y) => game?.controller.tap(x, y),
+    onDoubleTap: (x, y) => game?.controller.doubleTap(x, y),
+    onBox: (x0, y0, x1, y1, done) => game?.controller.box(x0, y0, x1, y1, done),
+  });
 
   const clearBackdrop = () => {
     backdrop?.dispose();
@@ -77,6 +81,8 @@ function boot(): void {
     clearBackdrop();
     game = new Game(map, view, hud, debug);
     game.hud.onNewMatch = toSetup;
+    // Automated browser tests drive the match through this handle.
+    if (params.has('test')) (window as unknown as { __game: Game }).__game = game;
     fps = new FpsCounter(hud.querySelector('#fps')!);
     hud.hidden = false;
   };

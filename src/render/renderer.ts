@@ -1,42 +1,74 @@
+import { BUILDING_DEFS, type Building, type BuildingType, UNIT_DEFS, type Unit } from '../sim/entities';
 import type { Fog } from '../sim/fog';
-import { Feature, type GameMap, type Animal } from '../sim/terrain';
+import { Feature } from '../sim/terrain';
+import type { World } from '../sim/world';
+import { BIOMES, type Biome, pickTree } from './biome';
+import { BuildingSprites } from './buildingSprites';
 import type { View } from './canvas';
 import { type Camera, ZOOM_LEVELS } from './camera';
 import { CHUNK, ChunkCache } from './chunks';
 import { FOG_RGB, FogLayer } from './fogLayer';
 import { type Sprite, SpriteSet } from './sprites';
-import { BIOMES, type Biome, pickTree } from './biome';
 import { TerrainTextures } from './textures';
 import { tileHash } from './tiles';
+import { type Pose, UnitSprites, unitHeight } from './unitSprites';
 
 /** Time (ms) per frame spent building chunks after the first frame; at least one is built.
  * Chunks still missing draw from another zoom level meanwhile. */
 const CHUNK_BUILD_MS = 4;
 const BG = `rgb(${FOG_RGB.join(',')})`;
+const EFFECT_S = 1.3;
+
+const CARRY_COLORS = { food: '#c0563a', wood: '#8a5a2b', gold: '#f2c230', stone: '#b4b4ae' } as const;
 
 interface LevelArt {
   s: number;
   tiles: TerrainTextures;
   sprites: SpriteSet;
+  units: UnitSprites;
+  buildings: BuildingSprites;
 }
 
-/** Draws the world: cached terrain chunks, y-sorted objects, then fog. */
+export interface Overlay {
+  selection: ReadonlySet<number>;
+  /** Building being placed, at its top-left tile. */
+  ghost: { type: BuildingType; x: number; y: number; valid: boolean } | null;
+}
+
+export interface Effect {
+  kind: 'text' | 'ring';
+  x: number;
+  y: number;
+  text?: string;
+  color: string;
+  born: number;
+}
+
+/** A depth-sorted thing to draw: drawn after map row floor(y) has its trees drawn. */
+interface Drawable {
+  y: number;
+  draw: () => void;
+}
+
+/** Draws the world: cached terrain chunks, y-sorted objects and units, then fog and effects. */
 export class Renderer {
   private levels: Array<LevelArt | null> = ZOOM_LEVELS.map(() => null);
   private artDpr = 0;
   private readonly chunks: ChunkCache;
   private readonly fogLayer: FogLayer;
   private firstFrame = true;
-  private animalRows: Animal[] = [];
   private readonly biome: Biome;
+  private readonly items: Drawable[] = [];
+  readonly effects: Effect[] = [];
 
   constructor(
     private readonly view: View,
-    private readonly map: GameMap,
+    private readonly world: World,
     private readonly fog: Fog,
+    private readonly player = 0,
   ) {
-    this.biome = BIOMES[map.type];
-    this.chunks = new ChunkCache(map, this.biome);
+    this.biome = BIOMES[world.map.type];
+    this.chunks = new ChunkCache(world.map, this.biome);
     this.fogLayer = new FogLayer(fog);
   }
 
@@ -50,7 +82,7 @@ export class Renderer {
     let a = this.levels[level];
     if (!a) {
       const s = Math.round(ZOOM_LEVELS[level] * this.view.dpr);
-      a = { s, tiles: new TerrainTextures(s, this.biome), sprites: new SpriteSet(s) };
+      a = { s, tiles: new TerrainTextures(s, this.biome), sprites: new SpriteSet(s), units: new UnitSprites(s), buildings: new BuildingSprites(s) };
       this.levels[level] = a;
     }
     return a;
@@ -60,7 +92,8 @@ export class Renderer {
     this.chunks.dispose();
   }
 
-  draw(cam: Camera): void {
+  /** alpha: fraction of the way from the last tick to the next; now: seconds, for animation. */
+  draw(cam: Camera, alpha = 1, now = 0, overlay: Overlay = { selection: new Set(), ghost: null }): void {
     const { ctx, dpr } = this.view;
     const W = ctx.canvas.width, H = ctx.canvas.height;
     const level = cam.level;
@@ -76,9 +109,11 @@ export class Renderer {
     ctx.fillRect(0, 0, W, H);
 
     this.drawChunks(level, art, S, ox, oy, W, H, exact);
-    this.drawObjects(art, S, k, ox, oy, W, H, exact);
+    const v = { art, S, k, ox, oy, W, H, exact, alpha, now, overlay };
+    this.drawObjects(v);
     this.fogLayer.refresh();
     this.fogLayer.draw(ctx, ox, oy, S, W, H);
+    this.drawEffects(v);
     this.firstFrame = false;
   }
 
@@ -116,28 +151,45 @@ export class Renderer {
       }
   }
 
-  private drawObjects(art: LevelArt, S: number, k: number, ox: number, oy: number, W: number, H: number, exact: boolean) {
+  private drawObjects(v: FrameView) {
     const { ctx } = this.view;
-    const { map, fog } = this;
+    const { world, fog } = this;
+    const { map } = world;
     const N = map.size;
+    const { art, S, ox, oy, W, H, exact } = v;
     const sp = art.sprites;
-    const tx0 = Math.max(0, Math.floor(ox / S) - 1), tx1 = Math.min(N - 1, Math.ceil((ox + W) / S) + 1);
-    const ty0 = Math.max(0, Math.floor(oy / S) - 1), ty1 = Math.min(N - 1, Math.ceil((oy + H) / S) + 2);
+    const tx0 = Math.max(0, Math.floor(ox / S) - 2), tx1 = Math.min(N - 1, Math.ceil((ox + W) / S) + 2);
+    const ty0 = Math.max(0, Math.floor(oy / S) - 1), ty1 = Math.min(N - 1, Math.ceil((oy + H) / S) + 4);
     ctx.imageSmoothingEnabled = !exact;
+    const put = (s: Sprite, wx: number, wy: number) => this.put(v, s, wx, wy);
 
-    const put = (s: Sprite, wx: number, wy: number) => {
-      const px = wx * S - ox, py = wy * S - oy;
-      if (exact) ctx.drawImage(s.c, Math.round(px - s.ax), Math.round(py - s.ay));
-      else ctx.drawImage(s.c, px - s.ax * k, py - s.ay * k, s.c.width * k, s.c.height * k);
-    };
-
-    // Animals visible right now, sorted by row so they interleave with trees correctly.
-    const rows = this.animalRows;
-    rows.length = 0;
-    for (const a of map.animals)
-      if (a.y >= ty0 && a.y <= ty1 + 1 && a.x >= tx0 && a.x <= tx1 + 1 && fog.isVisible(a.x, a.y)) rows.push(a);
-    rows.sort((a, b) => a.y - b.y);
-    let ai = 0;
+    // Entities in view, depth-sorted so they interleave with trees by row.
+    const items = this.items;
+    items.length = 0;
+    const inView = (x: number, y: number, pad: number) => x >= tx0 - pad && x <= tx1 + 1 + pad && y >= ty0 && y <= ty1 + 1 + pad;
+    for (const e of world.entities.values()) {
+      if (e.kind === 'unit') {
+        const x = e.px + (e.x - e.px) * v.alpha, y = e.py + (e.y - e.py) * v.alpha;
+        if (!inView(x, y, 1)) continue;
+        if (e.owner !== this.player && !fog.isVisible(x, y)) continue;
+        items.push({ y, draw: () => this.drawUnit(v, e, x, y) });
+      } else if (e.kind === 'building') {
+        if (!inView(e.x + e.size / 2, e.y + e.size, e.size)) continue;
+        if (e.owner !== this.player && !fog.isExplored(e.x + e.size / 2, e.y + e.size / 2)) continue;
+        items.push({ y: e.y + e.size - 0.01, draw: () => this.drawBuilding(v, e) });
+      } else {
+        if (!inView(e.x, e.y, 0) || !fog.isVisible(e.x, e.y)) continue;
+        const s = e.type === 'sheep' ? sp.sheep : e.type === 'deer' ? sp.deer : sp.fish;
+        items.push({ y: e.y, draw: () => put(s, e.x, e.y + (e.type === 'fish' ? 0 : 0.3)) });
+      }
+    }
+    if (v.overlay.ghost) {
+      const gh = v.overlay.ghost;
+      items.push({ y: gh.y + BUILDING_DEFS[gh.type].size - 0.01, draw: () => this.drawGhost(v, gh) });
+    }
+    items.sort((a, b) => a.y - b.y);
+    let ii = 0;
+    while (ii < items.length && items[ii].y < ty0) items[ii++].draw();
 
     for (let y = ty0; y <= ty1; y++) {
       for (let x = tx0; x <= tx1; x++) {
@@ -153,10 +205,168 @@ export class Renderer {
           put(f === Feature.Gold ? sp.gold : f === Feature.Stone ? sp.stone : sp.berries, x + 0.5, y + 0.8);
         }
       }
-      while (ai < rows.length && rows[ai].y < y + 1) {
-        const a = rows[ai++];
-        put(a.kind === 'sheep' ? sp.sheep : a.kind === 'deer' ? sp.deer : sp.fish, a.x, a.y + (a.kind === 'fish' ? 0 : 0.3));
+      while (ii < items.length && items[ii].y < y + 1) items[ii++].draw();
+    }
+    while (ii < items.length) items[ii++].draw();
+  }
+
+  private put(v: FrameView, s: Sprite, wx: number, wy: number, alpha = 1): void {
+    const { ctx } = this.view;
+    const px = wx * v.S - v.ox, py = wy * v.S - v.oy;
+    if (alpha !== 1) ctx.globalAlpha = alpha;
+    if (v.exact) ctx.drawImage(s.c, Math.round(px - s.ax), Math.round(py - s.ay));
+    else ctx.drawImage(s.c, px - s.ax * v.k, py - s.ay * v.k, s.c.width * v.k, s.c.height * v.k);
+    if (alpha !== 1) ctx.globalAlpha = 1;
+  }
+
+  private drawUnit(v: FrameView, u: Unit, x: number, y: number): void {
+    const { ctx } = this.view;
+    const { S, ox, oy } = v;
+    const selected = v.overlay.selection.has(u.id);
+    const sx = x * S - ox, sy = y * S - oy;
+    if (selected) {
+      ctx.strokeStyle = u.owner === this.player ? 'rgba(255,255,255,0.95)' : 'rgba(255,90,80,0.95)';
+      ctx.lineWidth = Math.max(1.5, S / 16);
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, S * (u.type === 'scout' ? 0.48 : 0.36), S * (u.type === 'scout' ? 0.2 : 0.15), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Stagger animation phase per unit so crowds don't move in lockstep.
+    const t = v.now + (u.id % 7) * 0.13;
+    let pose: Pose = 'idle';
+    if (u.state === 'walk' && (u.x !== u.px || u.y !== u.py)) pose = Math.floor(t * 7) % 2 ? 'walk1' : 'walk0';
+    else if (u.state === 'gather' || u.state === 'build') pose = Math.floor(t * 2.6) % 2 ? 'work1' : 'work0';
+    const sprite = v.art.units.get(u.type, u.owner, pose, u.face < 0);
+    this.put(v, sprite, x, y);
+
+    if (u.carry && u.carry.amount > 0) {
+      // A small bundle on the back shows what is being carried.
+      const bx = sx - u.face * S * 0.2, by = sy - S * 0.55;
+      ctx.fillStyle = CARRY_COLORS[u.carry.res];
+      ctx.strokeStyle = 'rgba(20,10,0,0.8)';
+      ctx.lineWidth = Math.max(1, S / 32);
+      const r = S * 0.07 + (S * 0.05 * u.carry.amount) / 10;
+      ctx.beginPath();
+      ctx.arc(bx, by, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    if (selected) this.hpBar(v, sx, sy - S * (unitHeight(u.type) + 0.2), S * 0.5, u.hp / UNIT_DEFS[u.type].hp);
+  }
+
+  private drawBuilding(v: FrameView, b: Building): void {
+    const { ctx } = this.view;
+    const { S, ox, oy } = v;
+    const sprite = v.art.buildings.get(b.type, b.size, b.owner);
+    const fx = b.x * S - ox, fy = b.y * S - oy, fw = b.size * S;
+    const selected = v.overlay.selection.has(b.id);
+    if (selected) {
+      ctx.strokeStyle = b.owner === this.player ? 'rgba(255,255,255,0.9)' : 'rgba(255,90,80,0.9)';
+      ctx.lineWidth = Math.max(1.5, S / 16);
+      ctx.strokeRect(fx + 1, fy + 1, fw - 2, fw - 2);
+    }
+    if (b.complete) {
+      this.put(v, sprite, b.x, b.y);
+    } else {
+      // Foundation: staked-out plot, the building rising from the ground, scaffolding.
+      ctx.fillStyle = 'rgba(110,82,48,0.55)';
+      ctx.fillRect(fx, fy, fw, fw);
+      ctx.strokeStyle = 'rgba(230,210,160,0.8)';
+      ctx.lineWidth = Math.max(1, S / 24);
+      ctx.strokeRect(fx + S * 0.08, fy + S * 0.08, fw - S * 0.16, fw - S * 0.16);
+      const p = Math.max(0.04, b.progress);
+      const k = v.exact ? 1 : v.k;
+      const sh = sprite.c.height;
+      const shown = Math.max(1, Math.round(sh * p));
+      const dx = fx - sprite.ax * k, dy = fy - sprite.ay * k + (sh - shown) * k;
+      ctx.drawImage(sprite.c, 0, sh - shown, sprite.c.width, shown, dx, dy, sprite.c.width * k, shown * k);
+      ctx.strokeStyle = 'rgba(92,62,30,0.9)';
+      ctx.lineWidth = Math.max(1, S / 18);
+      const top = fy + fw - (fw + S) * p;
+      ctx.beginPath();
+      for (let i = 0; i <= b.size * 2; i++) {
+        const x = fx + (fw * i) / (b.size * 2);
+        ctx.moveTo(x, fy + fw);
+        ctx.lineTo(x, top);
       }
+      for (let y = fy + fw; y > top; y -= S * 0.5) {
+        ctx.moveTo(fx, y);
+        ctx.lineTo(fx + fw, y);
+      }
+      ctx.stroke();
+    }
+    if (selected || !b.complete) {
+      const def = BUILDING_DEFS[b.type];
+      this.hpBar(v, fx + fw / 2, fy - S * 0.6, Math.min(fw * 0.8, S * 2.2), b.complete ? b.hp / def.hp : b.progress, b.complete ? undefined : '#e8c25a');
     }
   }
+
+  private drawGhost(v: FrameView, gh: NonNullable<Overlay['ghost']>): void {
+    const { ctx } = this.view;
+    const { S, ox, oy } = v;
+    const size = BUILDING_DEFS[gh.type].size;
+    const fx = gh.x * S - ox, fy = gh.y * S - oy, fw = size * S;
+    ctx.fillStyle = gh.valid ? 'rgba(90,220,110,0.35)' : 'rgba(230,60,50,0.4)';
+    ctx.fillRect(fx, fy, fw, fw);
+    ctx.strokeStyle = gh.valid ? 'rgba(170,255,180,0.95)' : 'rgba(255,140,130,0.95)';
+    ctx.lineWidth = Math.max(1.5, S / 14);
+    ctx.strokeRect(fx, fy, fw, fw);
+    this.put(v, v.art.buildings.get(gh.type, size, this.player), gh.x, gh.y, 0.6);
+  }
+
+  private hpBar(v: FrameView, cx: number, y: number, w: number, frac: number, color?: string): void {
+    const { ctx } = this.view;
+    const h = Math.max(3, v.S / 9);
+    ctx.fillStyle = 'rgba(10,6,2,0.8)';
+    ctx.fillRect(cx - w / 2 - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = color ?? (frac > 0.5 ? '#5fd35a' : frac > 0.25 ? '#e6c330' : '#e24a3b');
+    ctx.fillRect(cx - w / 2, y, w * Math.max(0, Math.min(1, frac)), h);
+  }
+
+  private drawEffects(v: FrameView): void {
+    const { ctx } = this.view;
+    const { S, ox, oy } = v;
+    for (let i = this.effects.length - 1; i >= 0; i--) {
+      const e = this.effects[i];
+      const age = v.now - e.born;
+      if (age > EFFECT_S) {
+        this.effects.splice(i, 1);
+        continue;
+      }
+      if (!this.fog.isVisible(e.x, e.y)) continue;
+      const t = age / EFFECT_S;
+      const sx = e.x * S - ox, sy = e.y * S - oy;
+      ctx.globalAlpha = 1 - t * t;
+      if (e.kind === 'text') {
+        ctx.font = `700 ${Math.round(Math.max(11, S * 0.5))}px 'Alegreya Sans', sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.lineWidth = Math.max(2, S / 10);
+        ctx.strokeStyle = 'rgba(10,6,2,0.85)';
+        ctx.strokeText(e.text!, sx, sy - S * (0.9 + t * 0.9));
+        ctx.fillStyle = e.color;
+        ctx.fillText(e.text!, sx, sy - S * (0.9 + t * 0.9));
+      } else {
+        ctx.strokeStyle = e.color;
+        ctx.lineWidth = Math.max(1.5, S / 14);
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, S * (0.15 + t * 0.45), S * (0.07 + t * 0.2), 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+interface FrameView {
+  art: LevelArt;
+  S: number;
+  k: number;
+  ox: number;
+  oy: number;
+  W: number;
+  H: number;
+  exact: boolean;
+  alpha: number;
+  now: number;
+  overlay: Overlay;
 }

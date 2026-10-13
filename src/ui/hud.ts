@@ -21,6 +21,9 @@ export class Hud {
   private readonly last = new Map<string, string>();
   private readonly pauseMenu: HTMLElement;
   onNewMatch: () => void = () => {};
+  onIdleVillager: () => void = () => {};
+  private readonly idleBtn: HTMLButtonElement;
+  private readonly toasts: HTMLElement;
   paused = false;
 
   constructor(private readonly root: HTMLElement) {
@@ -56,6 +59,18 @@ export class Hud {
     this.minimapSlot = el('div', 'minimap-frame frame');
     root.appendChild(this.minimapSlot);
 
+    const side = el('div', 'side-btns');
+    this.idleBtn = el('button', 'round-btn idle-btn');
+    this.idleBtn.setAttribute('aria-label', 'Next idle villager');
+    this.idleBtn.innerHTML = `${ICONS.villager}<span class="badge" data-v="idle">0</span>`;
+    this.values.set('idle', this.idleBtn.querySelector('[data-v]')!);
+    this.idleBtn.addEventListener('click', () => this.onIdleVillager());
+    side.appendChild(this.idleBtn);
+    root.appendChild(side);
+
+    this.toasts = el('div', 'toasts');
+    root.appendChild(this.toasts);
+
     this.pauseMenu = el('div', 'panel-backdrop');
     this.pauseMenu.hidden = true;
     this.pauseMenu.innerHTML = `
@@ -85,8 +100,20 @@ export class Hud {
     this.pauseMenu.hidden = !p;
   }
 
-  update(world: World, player: number): void {
+  /** Short message that fades after a few seconds. */
+  toast(message: string): void {
+    const t = el('div', 'toast frame');
+    t.textContent = message;
+    this.toasts.appendChild(t);
+    while (this.toasts.children.length > 3) this.toasts.firstElementChild!.remove();
+    setTimeout(() => t.classList.add('fade'), 2200);
+    setTimeout(() => t.remove(), 2800);
+  }
+
+  update(world: World, player: number, idleVillagers = 0): void {
     const ps = world.players[player];
+    this.set('idle', String(idleVillagers));
+    this.idleBtn.classList.toggle('has-idle', idleVillagers > 0);
     for (const k of RESOURCE_KINDS) this.set(k, String(Math.floor(ps.resources[k])));
     this.set('pop', `${ps.pop}/${ps.popCap}`);
     this.set('ageNum', ages[ps.age].numeral);

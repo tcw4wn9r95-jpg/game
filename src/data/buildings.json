@@ -1,0 +1,62 @@
+{
+  "town_center": {
+    "name": "Town Center",
+    "size": 4,
+    "hp": 2400,
+    "buildTime": 150,
+    "cost": { "wood": 275, "stone": 100 },
+    "pop": 5,
+    "los": 8,
+    "dropoff": ["food", "wood", "gold", "stone"],
+    "age": 0,
+    "buildable": false
+  },
+  "house": {
+    "name": "House",
+    "size": 2,
+    "hp": 550,
+    "buildTime": 25,
+    "cost": { "wood": 30 },
+    "pop": 5,
+    "los": 2,
+    "dropoff": [],
+    "age": 0,
+    "buildable": true
+  },
+  "lumber_camp": {
+    "name": "Lumber Camp",
+    "size": 2,
+    "hp": 600,
+    "buildTime": 35,
+    "cost": { "wood": 100 },
+    "pop": 0,
+    "los": 3,
+    "dropoff": ["wood"],
+    "age": 0,
+    "buildable": true
+  },
+  "mining_camp": {
+    "name": "Mining Camp",
+    "size": 2,
+    "hp": 600,
+    "buildTime": 35,
+    "cost": { "wood": 100 },
+    "pop": 0,
+    "los": 3,
+    "dropoff": ["gold", "stone"],
+    "age": 0,
+    "buildable": true
+  },
+  "mill": {
+    "name": "Mill",
+    "size": 2,
+    "hp": 600,
+    "buildTime": 35,
+    "cost": { "wood": 100 },
+    "pop": 0,
+    "los": 3,
+    "dropoff": ["food"],
+    "age": 0,
+    "buildable": true
+  }
+}

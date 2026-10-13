@@ -51,6 +51,54 @@ export const ICONS = {
   menu: svg(`
     <path d="M5 7h14M5 12h14M5 17h14" stroke="#2a1606" stroke-width="4" stroke-linecap="round"/>
     <path d="M5 7h14M5 12h14M5 17h14" stroke="#f1d48a" stroke-width="2.2" stroke-linecap="round"/>`),
+  villager: svg(`
+    <circle cx="12" cy="6.5" r="3.4" fill="#e0b48c" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M8.6 6c0-2.6 1.6-4 3.4-4s3.4 1.4 3.4 4z" fill="#7a5a36"/>
+    <path d="M6 21l1.6-8.5c.4-2 2.2-3 4.4-3s4 1 4.4 3L18 21z" fill="#3f6fb0" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M7.5 15.5h9" stroke="#5a3a1c" stroke-width="1.4"/>
+    <path d="M17 9l4-4" stroke="#6b4a2a" stroke-width="1.6" stroke-linecap="round"/><path d="M19.5 3.5l2.5 1-1 2.5z" fill="#a8b0b6" stroke="${INK}" stroke-width=".6"/>`),
+  scout: svg(`
+    <path d="M3 17c0-3 2-5 6-5h6l3-4 3 1-2 5v4" fill="#8a5a30" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M5 17v4M9 17v4M15 17v4M18 17v4" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M10 12l1-6h3l1 6z" fill="#3f6fb0" stroke="${INK}" stroke-width="1"/>
+    <circle cx="12.5" cy="4.2" r="2" fill="#e0b48c" stroke="${INK}" stroke-width=".9"/>`),
+  town_center: svg(`
+    <path d="M2 21V12h20v9z" fill="#d8c8a0" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M1 12.5L5 7h14l4 5.5z" fill="#d1ae5c" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M9 12V6h6v6z" fill="#d8c8a0" stroke="${INK}" stroke-width="1"/><path d="M8 6.5l4-4 4 4z" fill="#d1ae5c" stroke="${INK}" stroke-width="1"/>
+    <path d="M10.5 21v-4a1.5 1.5 0 013 0v4z" fill="#3a2412"/><path d="M12 2.5V0" stroke="${INK}"/><path d="M12 .2l3 .9-3 .9z" fill="#3f6fb0"/>`),
+  house: svg(`
+    <path d="M4 21v-8h16v8z" fill="#d8c8a0" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M2 13.5L7 6h10l5 7.5z" fill="#d1ae5c" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M7 21v-4.5a1.5 1.5 0 013 0V21z" fill="#3a2412"/><rect x="14" y="15" width="3" height="3" fill="#3a2412"/>`),
+  lumber_camp: svg(`
+    <path d="M2 11L6 5h11l3 6z" fill="#d1ae5c" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M4 11v9M18 11v9" stroke="#5a3d22" stroke-width="1.6"/><rect x="4" y="11" width="14" height="6" fill="#2b1d10"/>
+    <g fill="#d6b07a" stroke="${INK}" stroke-width=".8"><circle cx="9" cy="20" r="2"/><circle cx="13" cy="20" r="2"/><circle cx="11" cy="17" r="2"/></g>`),
+  mining_camp: svg(`
+    <path d="M2 11L6 5h11l3 6z" fill="#d1ae5c" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M4 11v9M18 11v9" stroke="#5a3d22" stroke-width="1.6"/><rect x="4" y="11" width="14" height="6" fill="#2b1d10"/>
+    <rect x="7" y="15" width="9" height="4.5" fill="#5a4a3a" stroke="${INK}" stroke-width=".9"/>
+    <circle cx="9" cy="20.5" r="1.4" fill="${INK}"/><circle cx="14" cy="20.5" r="1.4" fill="${INK}"/>
+    <circle cx="10" cy="14.5" r="1.6" fill="#f2c230" stroke="${INK}" stroke-width=".6"/><circle cx="13" cy="14.8" r="1.5" fill="#b4b4ae" stroke="${INK}" stroke-width=".6"/>`),
+  mill: svg(`
+    <path d="M6 21v-8h12v8z" fill="#d8c8a0" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M4.5 13.5L8 9h8l3.5 4.5z" fill="#d1ae5c" stroke="${INK}" stroke-width="1"/>
+    <g stroke="#5a3d22" stroke-width="1.4"><path d="M12 9L5 2M12 9l7-7M12 9L4 15M12 9l8 6"/></g>
+    <g fill="#f0e6cc" stroke="${INK}" stroke-width=".5"><path d="M6 2.5l2.6 1-2.2 2.2-1.4-2.4z"/><path d="M18 2.5l-2.6 1 2.2 2.2 1.4-2.4z"/></g>
+    <circle cx="12" cy="9" r="1.5" fill="${INK}"/>`),
+  hammer: svg(`
+    <path d="M13 9l8 8-2.5 2.5-8-8" fill="#8a5a30" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M3 9.5L9.5 3l5 5-6.5 6.5z" fill="#a8b0b6" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M5.5 9.3l4-4" stroke="#e6ecef" stroke-width="1.2" stroke-linecap="round"/>`),
+  stop: svg(`
+    <path d="M8 2h8l6 6v8l-6 6H8l-6-6V8z" fill="#b8352b" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
+    <rect x="7" y="10.5" width="10" height="3" rx="1" fill="#f6ead0"/>`),
+  close: svg(`<path d="M6 6l12 12M18 6L6 18" stroke="${INK}" stroke-width="4.2" stroke-linecap="round"/><path d="M6 6l12 12M18 6L6 18" stroke="#f1d48a" stroke-width="2.2" stroke-linecap="round"/>`),
+  check: svg(`<path d="M4 12.5l5 5L20 6.5" fill="none" stroke="${INK}" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#9cf59a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`),
+  sheep: svg(`<ellipse cx="11" cy="13" rx="7" ry="5" fill="#f3f2ea" stroke="${INK}" stroke-width="1.1"/><ellipse cx="18.5" cy="11" rx="2.6" ry="2" fill="#3a3a3a"/><path d="M7 17.5v3M14 17.5v3" stroke="${INK}" stroke-width="1.6"/>`),
+  deer: svg(`<ellipse cx="11" cy="13" rx="7" ry="3.6" fill="#9b6a3c" stroke="${INK}" stroke-width="1.1"/><path d="M16 11l3-6 2 1-2 6" fill="#9b6a3c" stroke="${INK}" stroke-width="1"/><path d="M19 5l-1-3M20 5l2-2" stroke="#d8c6a4" stroke-width="1.1"/><path d="M6 16v5M9 16v5M14 16v5M16 16v5" stroke="${INK}" stroke-width="1.4"/>`),
+  fish: svg(`<path d="M3 12c4-5 10-5 14 0-4 5-10 5-14 0z" fill="#6aa7c9" stroke="${INK}" stroke-width="1.1"/><path d="M17 12l4-4v8z" fill="#6aa7c9" stroke="${INK}" stroke-width="1.1"/><circle cx="7" cy="11" r="1" fill="${INK}"/>`),
   dice: svg(`
     <rect x="3.5" y="3.5" width="17" height="17" rx="3.5" fill="#f4ead2" stroke="${INK}" stroke-width="1.4"/>
     <circle cx="8" cy="8" r="1.6" fill="${INK}"/><circle cx="16" cy="8" r="1.6" fill="${INK}"/>

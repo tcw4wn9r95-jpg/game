@@ -1,0 +1,24 @@
+{
+  "villager": {
+    "name": "Villager",
+    "hp": 25,
+    "speed": 1.1,
+    "los": 5,
+    "radius": 0.22,
+    "pop": 1,
+    "cost": { "food": 50 },
+    "trainTime": 25,
+    "gatherer": true,
+    "builder": true
+  },
+  "scout": {
+    "name": "Scout",
+    "hp": 45,
+    "speed": 2.1,
+    "los": 8,
+    "radius": 0.32,
+    "pop": 1,
+    "cost": { "food": 80 },
+    "trainTime": 30
+  }
+}
