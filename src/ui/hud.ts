@@ -1,6 +1,7 @@
 import ages from '../data/ages.json';
 import { RESOURCE_KINDS, type ResourceKind, type World } from '../sim/world';
 import { ICONS } from './icons';
+import { tip } from './tooltip';
 
 const RESOURCE_NAMES: Record<ResourceKind, string> = { food: 'Food', wood: 'Wood', gold: 'Gold', stone: 'Stone' };
 
@@ -22,7 +23,10 @@ export class Hud {
   private readonly pauseMenu: HTMLElement;
   onNewMatch: () => void = () => {};
   onIdleVillager: () => void = () => {};
+  onIdleMilitary: () => void = () => {};
+  onAllMilitary: () => void = () => {};
   private readonly idleBtn: HTMLButtonElement;
+  private readonly armyBtn: HTMLButtonElement;
   private readonly toasts: HTMLElement;
   paused = false;
 
@@ -60,12 +64,20 @@ export class Hud {
     root.appendChild(this.minimapSlot);
 
     const side = el('div', 'side-btns');
-    this.idleBtn = el('button', 'round-btn idle-btn');
-    this.idleBtn.setAttribute('aria-label', 'Next idle villager');
-    this.idleBtn.innerHTML = `${ICONS.villager}<span class="badge" data-v="idle">0</span>`;
-    this.values.set('idle', this.idleBtn.querySelector('[data-v]')!);
-    this.idleBtn.addEventListener('click', () => this.onIdleVillager());
-    side.appendChild(this.idleBtn);
+    const sideBtn = (key: string, icon: string, title: string, body: string, run: () => void, badge = true) => {
+      const b = el('button', 'side-btn');
+      b.setAttribute('aria-label', title);
+      b.innerHTML = `${icon}${badge ? `<span class="badge" data-v="${key}">0</span>` : ''}`;
+      if (badge) this.values.set(key, b.querySelector('[data-v]')!);
+      b.addEventListener('click', run);
+      tip(b, () => `<div class="tip-title">${title}</div><div class="tip-body">${body}</div>`);
+      side.appendChild(b);
+      return b;
+    };
+    this.idleBtn = sideBtn('idle', ICONS.villager, 'Idle Villagers', 'Jump to the next villager with nothing to do.', () => this.onIdleVillager());
+    this.armyBtn = sideBtn('idleArmy', ICONS.helmet, 'Idle Military', 'Jump to the next soldier awaiting orders.', () => this.onIdleMilitary());
+    sideBtn('army', ICONS.military, 'Select All Military', 'Select every soldier you command.', () => this.onAllMilitary(), false);
+    sideBtn('ships', ICONS.ship, 'Select All Ships', 'Available once you have a Dock.', () => {}, false).disabled = true;
     root.appendChild(side);
 
     this.toasts = el('div', 'toasts');
@@ -90,8 +102,10 @@ export class Hud {
   private stat(key: string, icon: string, title: string, cls = ''): HTMLElement {
     const s = el('div', `stat ${cls}`);
     s.title = title;
-    s.innerHTML = `<span class="icon">${icon}</span><span class="stat-v" data-v="${key}">0</span>`;
-    this.values.set(key, s.querySelector('[data-v]')!);
+    const workers = (RESOURCE_KINDS as string[]).includes(key);
+    s.innerHTML = `<span class="icon">${icon}</span><span class="stat-v" data-v="${key}">0</span>${workers ? `<span class="workers" data-v="${key}W">0</span>` : ''}`;
+    s.querySelectorAll<HTMLElement>('[data-v]').forEach((n) => this.values.set(n.dataset.v!, n));
+    tip(s, () => `<div class="tip-title">${title}</div><div class="tip-body">${workers ? 'Stockpile, and villagers gathering it.' : 'Population / capacity. Build houses to raise it.'}</div>`);
     return s;
   }
 
@@ -110,10 +124,20 @@ export class Hud {
     setTimeout(() => t.remove(), 2800);
   }
 
-  update(world: World, player: number, idleVillagers = 0): void {
+  update(world: World, player: number, idleVillagers = 0, idleMilitary = 0): void {
     const ps = world.players[player];
     this.set('idle', String(idleVillagers));
     this.idleBtn.classList.toggle('has-idle', idleVillagers > 0);
+    this.set('idleArmy', String(idleMilitary));
+    this.armyBtn.classList.toggle('has-idle', idleMilitary > 0);
+    // Villagers working each resource, as on the AoE resource bar.
+    const workers = { food: 0, wood: 0, gold: 0, stone: 0 };
+    for (const u of world.units(player)) {
+      const o = u.order;
+      if (o?.type === 'gather') workers[o.res]++;
+      else if (o?.type === 'dropoff' && u.carry) workers[u.carry.res]++;
+    }
+    for (const k of RESOURCE_KINDS) this.set(`${k}W`, String(workers[k]));
     for (const k of RESOURCE_KINDS) this.set(k, String(Math.floor(ps.resources[k])));
     this.set('pop', `${ps.pop}/${ps.popCap}`);
     this.set('ageNum', ages[ps.age].numeral);

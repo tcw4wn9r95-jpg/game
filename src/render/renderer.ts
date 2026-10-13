@@ -11,7 +11,8 @@ import { FOG_RGB, FogLayer } from './fogLayer';
 import { type Sprite, SpriteSet } from './sprites';
 import { TerrainTextures } from './textures';
 import { tileHash } from './tiles';
-import { type Pose, UnitSprites, unitHeight } from './unitSprites';
+import type { Tool } from './figures';
+import { type UnitPose, UnitSprites, lookIndex, unitHeight } from './unitSprites';
 
 /** Time (ms) per frame spent building chunks after the first frame; at least one is built.
  * Chunks still missing draw from another zoom level meanwhile. */
@@ -19,7 +20,7 @@ const CHUNK_BUILD_MS = 4;
 const BG = `rgb(${FOG_RGB.join(',')})`;
 const EFFECT_S = 1.3;
 
-const CARRY_COLORS = { food: '#c0563a', wood: '#8a5a2b', gold: '#f2c230', stone: '#b4b4ae' } as const;
+const TOOL_FOR: Record<string, Tool> = { tree: 'axe', gold: 'pick', stone: 'pick', berries: 'basket', sheep: 'knife', deer: 'knife', fish: 'spear' };
 
 interface LevelArt {
   s: number;
@@ -60,6 +61,9 @@ export class Renderer {
   private readonly biome: Biome;
   private readonly items: Drawable[] = [];
   readonly effects: Effect[] = [];
+  /** Last drawn position and facing per unit, to pick a view from movement. */
+  private readonly lastPos = new Map<number, { x: number; y: number }>();
+  private readonly lastView = new Map<number, { view: 'front' | 'side' | 'back'; left: boolean }>();
 
   constructor(
     private readonly view: View,
@@ -233,25 +237,39 @@ export class Renderer {
     }
     // Stagger animation phase per unit so crowds don't move in lockstep.
     const t = v.now + (u.id % 7) * 0.13;
-    let pose: Pose = 'idle';
-    if (u.state === 'walk' && (u.x !== u.px || u.y !== u.py)) pose = Math.floor(t * 7) % 2 ? 'walk1' : 'walk0';
-    else if (u.state === 'gather' || u.state === 'build') pose = Math.floor(t * 2.6) % 2 ? 'work1' : 'work0';
-    const sprite = v.art.units.get(u.type, u.owner, pose, u.face < 0);
-    this.put(v, sprite, x, y);
+    const p = this.poseFor(u, x, y, t);
+    this.put(v, v.art.units.get(u.type, u.owner, lookIndex(u.id), p), x, y);
 
-    if (u.carry && u.carry.amount > 0) {
-      // A small bundle on the back shows what is being carried.
-      const bx = sx - u.face * S * 0.2, by = sy - S * 0.55;
-      ctx.fillStyle = CARRY_COLORS[u.carry.res];
-      ctx.strokeStyle = 'rgba(20,10,0,0.8)';
-      ctx.lineWidth = Math.max(1, S / 32);
-      const r = S * 0.07 + (S * 0.05 * u.carry.amount) / 10;
-      ctx.beginPath();
-      ctx.arc(bx, by, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
     if (selected) this.hpBar(v, sx, sy - S * (unitHeight(u.type) + 0.2), S * 0.5, u.hp / UNIT_DEFS[u.type].hp);
+  }
+
+  /** Chooses view, animation frame, tool and load for a unit this frame. */
+  private poseFor(u: Unit, x: number, y: number, t: number): UnitPose {
+    const prev = this.lastPos.get(u.id);
+    // Side-on reads best for a unit that hasn't moved yet (a horse head-on is just a sliver).
+    let view = this.lastView.get(u.id) ?? { view: 'side' as const, left: u.face < 0 };
+    const moving = u.state === 'walk' && (u.x !== u.px || u.y !== u.py);
+    if (prev && moving) {
+      const dx = x - prev.x, dy = y - prev.y;
+      if (Math.abs(dx) + Math.abs(dy) > 1e-4)
+        view = Math.abs(dy) > Math.abs(dx) * 1.3 ? { view: dy > 0 ? 'front' : 'back', left: false } : { view: 'side', left: dx < 0 };
+    }
+    this.lastPos.set(u.id, { x, y });
+    const working = u.state === 'gather' || u.state === 'build';
+    // Work always plays side-on, facing the job.
+    if (working) view = { view: 'side', left: u.face < 0 };
+    this.lastView.set(u.id, view);
+    let tool: Tool = 'none';
+    if (u.state === 'build') tool = 'hammer';
+    else if (u.state === 'gather' && u.order?.type === 'gather') tool = TOOL_FOR[u.order.source] ?? 'none';
+    const fps = u.type === 'scout' ? 12 : 10;
+    return {
+      ...view,
+      anim: working ? 'work' : moving ? 'walk' : 'idle',
+      frame: working ? Math.floor(t * 5) % 4 : moving ? Math.floor(t * fps) % 6 : 0,
+      tool,
+      carry: u.carry && u.carry.amount > 0 && !working ? u.carry.res : null,
+    };
   }
 
   private drawBuilding(v: FrameView, b: Building): void {

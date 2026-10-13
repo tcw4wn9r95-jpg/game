@@ -7,7 +7,7 @@ import { TICK_MS, World } from './sim/world';
 import { Bench } from './ui/bench';
 import { Hud } from './ui/hud';
 import { Minimap } from './ui/minimap';
-import { SelectionPanel } from './ui/selectionPanel';
+import { CommandCenter } from './ui/commandCenter';
 
 /** Longest frame gap we catch up on; anything longer (app backgrounded) is dropped. */
 const MAX_FRAME_MS = 250;
@@ -27,7 +27,7 @@ export class Game {
   readonly controller: Controller;
   private readonly renderer: Renderer;
   private readonly minimap: Minimap;
-  private readonly panel: SelectionPanel;
+  private readonly panel: CommandCenter;
   private readonly bench: Bench | null;
   private acc = 0;
   /** The human player's slot. */
@@ -56,8 +56,10 @@ export class Game {
       player: this.player,
       addEffect: (e) => this.addEffect(e),
     });
-    this.panel = new SelectionPanel(hudRoot, this.controller, this.world, this.player);
+    this.panel = new CommandCenter(hudRoot, this.controller, this.world, this.player);
     this.hud.onIdleVillager = () => this.controller.nextIdleVillager();
+    this.hud.onIdleMilitary = () => this.controller.nextIdleMilitary();
+    this.hud.onAllMilitary = () => this.controller.selectAllMilitary();
     this.bench = debug.bench ? new Bench(this.camera, map.size, hudRoot.querySelector('#bench')!) : null;
   }
 
@@ -87,7 +89,7 @@ export class Game {
     const ghost = c.placing ? { ...c.placing, valid: c.placementValid() } : null;
     this.renderer.draw(this.camera, this.hud.paused ? 1 : this.acc / TICK_MS, now / 1000, { selection: c.selection, ghost });
     this.minimap.draw(now);
-    this.hud.update(this.world, this.player, c.idleVillagers().length);
+    this.hud.update(this.world, this.player, c.idleVillagers().length, c.idleMilitary().length);
     this.panel.update();
   }
 

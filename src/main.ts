@@ -99,6 +99,10 @@ function boot(): void {
     });
   }
 
+  if (params.has('sheet')) {
+    void import('./ui/spriteSheet').then((m) => m.drawSpriteSheet(view, Number(params.get('sheet')) || 3));
+    return;
+  }
   const fromUrl = optionsFromUrl(params);
   if (fromUrl) start(generateMap(fromUrl));
   else toSetup();

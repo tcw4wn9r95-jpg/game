@@ -25,7 +25,7 @@ function hash2(x: number, y: number, seed: number): number {
 }
 
 /** Value noise whose lattice wraps every (px, py) cells, so it tiles seamlessly. */
-function pnoise(x: number, y: number, px: number, py: number, seed: number): number {
+export function pnoise(x: number, y: number, px: number, py: number, seed: number): number {
   const x0 = Math.floor(x), y0 = Math.floor(y);
   const fx = x - x0, fy = y - y0;
   const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);

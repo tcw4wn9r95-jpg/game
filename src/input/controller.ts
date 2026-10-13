@@ -253,6 +253,28 @@ export class Controller {
     this.host.camera.centerOn(u.x, u.y);
   }
 
+  /** Own units that fight (everything but villagers). */
+  military(): Unit[] {
+    return [...this.world.units(this.host.player)].filter((u) => u.type !== 'villager');
+  }
+
+  idleMilitary(): Unit[] {
+    return this.military().filter((u) => !u.order);
+  }
+
+  nextIdleMilitary(): void {
+    const idle = this.idleMilitary();
+    if (!idle.length) return;
+    const u = idle[this.idleCursor++ % idle.length];
+    this.select([u.id]);
+    this.host.camera.centerOn(u.x, u.y);
+  }
+
+  selectAllMilitary(): void {
+    const ids = this.military().map((u) => u.id);
+    if (ids.length) this.select(ids);
+  }
+
   private issue(cmd: Command): void {
     this.world.issue(this.host.player, cmd);
   }

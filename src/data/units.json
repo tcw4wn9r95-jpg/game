@@ -6,10 +6,17 @@
     "los": 5,
     "radius": 0.22,
     "pop": 1,
-    "cost": { "food": 50 },
+    "cost": {
+      "food": 50
+    },
     "trainTime": 25,
     "gatherer": true,
-    "builder": true
+    "builder": true,
+    "attack": 3,
+    "meleeArmor": 0,
+    "pierceArmor": 0,
+    "range": 0,
+    "description": "Gathers resources, builds and repairs. The heart of your economy."
   },
   "scout": {
     "name": "Scout",
@@ -18,7 +25,14 @@
     "los": 8,
     "radius": 0.32,
     "pop": 1,
-    "cost": { "food": 80 },
-    "trainTime": 30
+    "cost": {
+      "food": 80
+    },
+    "trainTime": 30,
+    "attack": 3,
+    "meleeArmor": 0,
+    "pierceArmor": 2,
+    "range": 0,
+    "description": "Fast mounted explorer. Strong against archers and villagers, weak against spearmen."
   }
 }
