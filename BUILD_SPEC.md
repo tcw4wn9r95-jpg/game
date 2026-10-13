@@ -26,9 +26,10 @@ How to use this file: put it in the repo root as `BUILD_SPEC.md`, then tell Clau
 - **Match length:** matches are meant to be long and played across several sittings.
   | Map size | Tiles | Target length | Pop cap |
   |---|---|---|---|
-  | Skirmish | 80x80 | 30 to 40 min | 150 |
-  | Standard | 112x112 | 45 to 70 min | 200 |
-  | Epic | 144x144 | 75 to 120 min | 200 |
+  | Skirmish | 160x160 | 30 to 40 min | 150 |
+  | Standard | 224x224 | 45 to 70 min | 200 |
+  | Epic | 288x288 | 75 to 120 min | 200 |
+  Maps are deliberately large so cities have room to grow (revised after M1 playtest).
   Length comes from bigger maps, more resources, slower age-ups, walls that make attacking costly, and an optional **Peace Treaty** timer (Off / 10 / 20 / 30 min) during which no one can attack.
 - **Saving across sessions is essential.** Autosave every 30 s, on `visibilitychange`, and on every age-up. Three save slots. Match clock and stats persist.
 - **Pause is a feature.** Issue orders while paused. Game speed: 1x, 1.5x, 2x, 3x (3x for the quiet booming phases).
@@ -39,7 +40,7 @@ How to use this file: put it in the repo root as `BUILD_SPEC.md`, then tell Clau
 ## 3. Platform and tech constraints
 
 - Static site on GitHub Pages. **Vite + TypeScript**, deployed with GitHub Actions. No backend.
-- Rendering: **HTML5 Canvas 2D**, top-down 3/4 view on a square tile grid. Chunked terrain rendering (16x16 chunks cached to offscreen canvases) so large maps stay fast.
+- Rendering: **HTML5 Canvas 2D**, top-down 3/4 view on a square tile grid. Chunked terrain rendering (8x8-tile chunks cached to offscreen canvases, built under a per-frame time budget) so large maps stay fast.
 - **All art is procedurally drawn in code** and cached at startup. No external image assets. Faction = color tint plus banner shape.
 - Audio: Web Audio API, synthesized SFX. Unlock audio on first tap.
 - **iOS web app requirements:**
@@ -276,7 +277,7 @@ Difficulty changes villager cap, reaction delay, wave thresholds, counter-buildi
 Stop after each and report what to test on the phone.
 
 - **M0 Scaffold & deploy.** Vite+TS, GitHub Actions to Pages, PWA, service worker, landscape lock, canvas with fps counter. ✔ Opens full-screen from Home Screen; works in airplane mode on second launch.
-- **M1 Map & camera.** Seeded map gen for all four map types, chunked rendering, pan, zoom, minimap, fog. ✔ 60 fps panning on a 144x144 Epic map.
+- **M1 Map & camera.** Seeded map gen for all four map types, chunked rendering, pan, zoom, minimap, fog. ✔ 60 fps panning on a 288x288 Epic map.
 - **M2 Villagers & economy.** Selection, A* on land layer, gather/carry/drop-off, houses, camps, resource HUD, idle villager button. ✔ 30 villagers gather 10 sim-minutes headless without getting stuck.
 - **M3 Buildings & production.** Placement, construction, queues, rally points, pop cap. ✔ Full Age I economy by touch alone.
 - **M4 Combat.** Age I to III land units, counters, armor, stances, flow-field group movement. ✔ Tests: 10 spearmen beat 10 scouts; 10 archers beat 10 militia; 10 skirmishers beat 10 archers.

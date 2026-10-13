@@ -74,7 +74,8 @@ export class Minimap {
       this.fogCanvas.getContext('2d')!.putImageData(this.fogImg, 0, 0);
     }
 
-    g.imageSmoothingEnabled = false;
+    // Smooth when shrinking a big map into the frame; crisp when enlarging a small one.
+    g.imageSmoothingEnabled = N > px;
     g.drawImage(this.base, 0, 0, px, px);
     g.drawImage(this.fogCanvas, 0, 0, px, px);
 

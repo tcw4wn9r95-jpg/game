@@ -1,5 +1,5 @@
 /** CSS pixels per tile for the three zoom levels. */
-export const ZOOM_LEVELS = [16, 24, 36] as const;
+export const ZOOM_LEVELS = [14, 22, 32] as const;
 const DEFAULT_LEVEL = 1;
 const ZOOM_ANIM_S = 0.18;
 /** Fling velocity decay per second (exponential). */

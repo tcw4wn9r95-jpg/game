@@ -6,15 +6,17 @@ import { CHUNK, ChunkCache } from './chunks';
 import { FOG_RGB, FogLayer } from './fogLayer';
 import { type Sprite, SpriteSet } from './sprites';
 import { BIOMES, type Biome, pickTree } from './biome';
-import { TileArt, tileHash } from './tiles';
+import { TerrainTextures } from './textures';
+import { tileHash } from './tiles';
 
-/** Chunks built per frame after the first; the rest draw from another zoom level meanwhile. */
-const CHUNK_BUILDS_PER_FRAME = 3;
+/** Time (ms) per frame spent building chunks after the first frame; at least one is built.
+ * Chunks still missing draw from another zoom level meanwhile. */
+const CHUNK_BUILD_MS = 4;
 const BG = `rgb(${FOG_RGB.join(',')})`;
 
 interface LevelArt {
   s: number;
-  tiles: TileArt;
+  tiles: TerrainTextures;
   sprites: SpriteSet;
 }
 
@@ -48,7 +50,7 @@ export class Renderer {
     let a = this.levels[level];
     if (!a) {
       const s = Math.round(ZOOM_LEVELS[level] * this.view.dpr);
-      a = { s, tiles: new TileArt(s, this.biome), sprites: new SpriteSet(s) };
+      a = { s, tiles: new TerrainTextures(s, this.biome), sprites: new SpriteSet(s) };
       this.levels[level] = a;
     }
     return a;
@@ -86,13 +88,14 @@ export class Renderer {
     const n = this.chunks.chunksPerSide;
     const cx0 = Math.max(0, Math.floor(ox / cs)), cx1 = Math.min(n - 1, Math.floor((ox + W) / cs));
     const cy0 = Math.max(0, Math.floor(oy / cs)), cy1 = Math.min(n - 1, Math.floor((oy + H) / cs));
-    let budget = this.firstFrame ? Infinity : CHUNK_BUILDS_PER_FRAME;
+    const deadline = this.firstFrame ? Infinity : performance.now() + CHUNK_BUILD_MS;
+    let built = 0;
     ctx.imageSmoothingEnabled = !exact;
     for (let cy = cy0; cy <= cy1; cy++)
       for (let cx = cx0; cx <= cx1; cx++) {
         let c = this.chunks.get(level, cx, cy);
-        if (!c && budget > 0) {
-          budget--;
+        if (!c && (built === 0 || performance.now() < deadline)) {
+          built++;
           c = this.chunks.build(level, cx, cy, art.tiles);
         }
         const dx = cx * cs - ox, dy = cy * cs - oy;
@@ -144,9 +147,10 @@ export class Renderer {
         const h = tileHash(x, y);
         if (f === Feature.Tree) {
           const jx = ((h >>> 8) % 100) / 100 - 0.5, jy = ((h >>> 16) % 100) / 100 - 0.5;
-          put(sp.trees[pickTree(this.biome, h & 1023)], x + 0.5 + jx * 0.22, y + 0.82 + jy * 0.14);
+          const kind = sp.trees[pickTree(this.biome, h & 1023)];
+          put(kind[(h >>> 24) % kind.length], x + 0.5 + jx * 0.3, y + 0.78 + jy * 0.2);
         } else {
-          put(f === Feature.Gold ? sp.gold : f === Feature.Stone ? sp.stone : sp.berries, x + 0.5, y + 0.85);
+          put(f === Feature.Gold ? sp.gold : f === Feature.Stone ? sp.stone : sp.berries, x + 0.5, y + 0.8);
         }
       }
       while (ai < rows.length && rows[ai].y < y + 1) {

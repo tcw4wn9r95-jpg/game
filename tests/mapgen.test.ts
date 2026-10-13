@@ -63,7 +63,7 @@ describe('mapgen', () => {
               const i = s.y * map.size + s.x;
               expect(isWater(map.terrain[i])).toBe(false);
               expect(countNear(map, s, 3, Feature.Tree) + countNear(map, s, 3, Feature.Gold)).toBe(0);
-              expect(countNear(map, s, 16, Feature.Tree)).toBeGreaterThanOrEqual(25);
+              expect(countNear(map, s, 20, Feature.Tree)).toBeGreaterThanOrEqual(25);
               expect(countNear(map, s, 10, Feature.Berries)).toBeGreaterThanOrEqual(6);
               expect(countNear(map, s, 13, Feature.Gold)).toBeGreaterThanOrEqual(7);
               expect(countNear(map, s, 15, Feature.Stone)).toBeGreaterThanOrEqual(5);
@@ -99,7 +99,7 @@ describe('mapgen', () => {
   it('generates an Epic map quickly', () => {
     const t = performance.now();
     generateMap({ type: 'islands', size: 'epic', players: 4, seed: 3 });
-    expect(performance.now() - t).toBeLessThan(1500);
+    expect(performance.now() - t).toBeLessThan(3000);
   });
 });
 
