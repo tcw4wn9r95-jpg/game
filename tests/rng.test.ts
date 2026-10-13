@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { Rng } from '../src/sim/rng';
-import { World } from '../src/sim/world';
 
 describe('Rng', () => {
   it('is deterministic for a seed', () => {
@@ -16,13 +15,5 @@ describe('Rng', () => {
       expect(n).toBeGreaterThanOrEqual(3);
       expect(n).toBeLessThanOrEqual(7);
     }
-  });
-});
-
-describe('World', () => {
-  it('advances one tick per step', () => {
-    const w = new World();
-    for (let i = 0; i < 10; i++) w.step();
-    expect(w.tick).toBe(10);
   });
 });

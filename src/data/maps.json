@@ -1,0 +1,29 @@
+{
+  "sizes": {
+    "skirmish": { "tiles": 80, "popCap": 150, "resourceScale": 1.25, "extraGold": 2, "extraStone": 1, "fords": 2 },
+    "standard": { "tiles": 112, "popCap": 200, "resourceScale": 2, "extraGold": 4, "extraStone": 2, "fords": 3 },
+    "epic": { "tiles": 144, "popCap": 200, "resourceScale": 2.5, "extraGold": 6, "extraStone": 3, "fords": 3 }
+  },
+  "amounts": {
+    "tree": 100,
+    "berries": 125,
+    "goldTile": 800,
+    "stoneTile": 350,
+    "sheep": 100,
+    "deer": 140,
+    "shoreFish": 200,
+    "deepFish": 300
+  },
+  "start": {
+    "clearRadius": 9,
+    "townRadius": 4,
+    "visionRadius": 10,
+    "berries": 6,
+    "gold": 7,
+    "secondGold": 4,
+    "stone": 5,
+    "sheep": 4,
+    "deer": 4,
+    "shoreFish": 3
+  }
+}

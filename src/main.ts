@@ -1,11 +1,11 @@
 import './style.css';
+import { Game } from './game';
+import { attachGestures } from './input/gestures';
 import { createView } from './render/canvas';
-import { drawSplash } from './render/splash';
-import { TICK_MS, World } from './sim/world';
+import type { MapOptions } from './sim/mapgen';
+import { MAP_SIZES, MAP_TYPES, type MapSize, type MapType } from './sim/terrain';
 import { FpsCounter } from './ui/fps';
-
-/** Longest frame gap we catch up on; anything longer (app backgrounded) is dropped. */
-const MAX_FRAME_MS = 250;
+import { randomSeed, showSetup } from './ui/setup';
 
 function blockBrowserGestures(): void {
   // iOS Safari ignores user-scalable=no, so block pinch and double-tap zoom here.
@@ -36,28 +36,67 @@ function registerServiceWorker(): void {
   }
 }
 
+/** Debug/test entry: ?map=islands&size=epic&players=4&seed=7&reveal=1&bench=1 skips the setup screen. */
+function optionsFromUrl(params: URLSearchParams): MapOptions | null {
+  const type = params.get('map') as MapType | null;
+  if (!type || !MAP_TYPES.includes(type)) return null;
+  const size = params.get('size') as MapSize | null;
+  const players = Number(params.get('players'));
+  return {
+    type,
+    size: size && MAP_SIZES.includes(size) ? size : 'standard',
+    players: players >= 2 && players <= 4 ? players : 2,
+    seed: Number(params.get('seed')) || randomSeed(),
+  };
+}
+
 function boot(): void {
   blockBrowserGestures();
   lockLandscape();
   registerServiceWorker();
 
+  const params = new URLSearchParams(location.search);
+  const debug = { reveal: params.has('reveal'), bench: params.has('bench') };
   const view = createView(document.getElementById('game') as HTMLCanvasElement);
+  const hud = document.getElementById('hud')!;
+  const menu = document.getElementById('menu')!;
   const fps = new FpsCounter(document.getElementById('fps')!);
-  document.getElementById('build')!.textContent = `build ${__BUILD_ID__}`;
+  let game: Game | null = null;
 
-  const world = new World();
+  attachGestures(view.ctx.canvas, () => game?.camera ?? null);
+
+  const start = (o: MapOptions) => {
+    game = new Game(o, view, hud, debug);
+    hud.hidden = false;
+  };
+  const toSetup = () => {
+    game?.destroy();
+    game = null;
+    hud.hidden = true;
+    showSetup(document.body, start);
+  };
+
+  document.getElementById('menu-btn')!.addEventListener('click', () => (menu.hidden = false));
+  document.getElementById('menu-resume')!.addEventListener('click', () => (menu.hidden = true));
+  document.getElementById('menu-new')!.addEventListener('click', () => {
+    menu.hidden = true;
+    toSetup();
+  });
+
+  const fromUrl = optionsFromUrl(params);
+  if (fromUrl) start(fromUrl);
+  else toSetup();
+
   let last = performance.now();
-  let acc = 0;
-
   const frame = (now: number) => {
-    acc += Math.min(now - last, MAX_FRAME_MS);
+    const dt = now - last;
     last = now;
-    while (acc >= TICK_MS) {
-      world.step();
-      acc -= TICK_MS;
+    if (game) game.frame(now, dt);
+    else {
+      view.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      view.ctx.fillStyle = '#0e1426';
+      view.ctx.fillRect(0, 0, view.ctx.canvas.width, view.ctx.canvas.height);
     }
-    const alpha = acc / TICK_MS;
-    drawSplash(view, world.prevDriftX + (world.driftX - world.prevDriftX) * alpha);
     fps.frame(now);
     requestAnimationFrame(frame);
   };
