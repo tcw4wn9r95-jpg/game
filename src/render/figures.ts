@@ -25,6 +25,42 @@ export interface FigureSpec {
   carry: ResourceKind | null;
   team: string;
   look: Look;
+  /** Upgraded (Swordsman, Pikeman, Crossbowman, Light Cavalry): better kit. */
+  elite?: boolean;
+}
+
+/** A dyed horsehair crest or plume on top of a helm at (x, y). */
+function plume(g: G, x: number, y: number, team: string, view: View) {
+  const back = view === 'side' ? -1 : 0;
+  g.beginPath();
+  g.moveTo(x - 1.5, y);
+  g.quadraticCurveTo(x + back * 6 - 2, y - 9, x + back * 10 - 1, y - 4 + (view === 'side' ? 6 : -2));
+  g.quadraticCurveTo(x + back * 4 + 2, y - 4, x + 1.5, y);
+  g.closePath();
+  g.strokeStyle = OUT;
+  g.lineWidth = 1.2;
+  g.stroke();
+  g.fillStyle = roundLight(g, x, y - 4, 5, 5, team);
+  g.fill();
+}
+
+/** Steel kettle hat: a domed crown with a wide brim. */
+function kettleHat(g: G, x: number, y: number) {
+  const steel = g.createLinearGradient(x - 12, 0, x + 12, 0);
+  steel.addColorStop(0, '#9aa4a9');
+  steel.addColorStop(0.3, '#eef3f5');
+  steel.addColorStop(1, '#4e575c');
+  blob(g, x, y - 2, 13, 3, steel as unknown as string);
+  g.beginPath();
+  g.moveTo(x - 8.5, y - 2);
+  g.quadraticCurveTo(x - 8.5, y - 14, x, y - 14);
+  g.quadraticCurveTo(x + 8.5, y - 14, x + 8.5, y - 2);
+  g.closePath();
+  g.strokeStyle = OUT;
+  g.lineWidth = 1.3;
+  g.stroke();
+  g.fillStyle = steel;
+  g.fill();
 }
 
 type G = CanvasRenderingContext2D;
@@ -877,6 +913,7 @@ function drawHorseman(g: G, f: FigureSpec, knight: boolean): void {
       blob(g, sh[0] + 2, sh[1] - 9, 7.5, 7.5, f.look.skin);
       poly(g, [[sh[0] - 6, sh[1] - 10], [sh[0] + 2, sh[1] - 22], [sh[0] + 10, sh[1] - 10]], STEEL);
       limb(g, [sh[0] + 7, sh[1] - 11], [sh[0] + 8, sh[1] - 4], 1.5, STEEL_DARK);
+      if (f.elite) plume(g, sh[0] + 2, sh[1] - 21, f.team, 'side');
     }
     // Arm and weapon: the lance is couched level and drives forward on the strike.
     const thrust = striking ? [0, 4, 10, 6][f.frame % 4] : 0;
@@ -1069,6 +1106,7 @@ export function drawMilitia(g: G, f: FigureSpec): void {
   for (const k of [-6, -2, 2, 6]) blob(g, hx + k, hy - 1.6, 0.5, 0.5, '#e8ecee', 0, false);
   stroke(g, [hx - 3.5, hy - 10], [hx - 1, hy - 13.5], 0.8, 'rgba(255,255,255,0.75)');
   if (f.view !== 'back') limb(g, [f.view === 'side' ? hx + 7 : hx, hy - 2], [f.view === 'side' ? hx + 7.5 : hx, hy + 4], 1.6, STEEL_DARK);
+  if (f.elite) plume(g, hx, hy - 14, f.team, f.view);
   const near = arm(g, pose, f.view, sh, look, f.team, 'near');
   if (f.view === 'front') shield(sh[0] - 13, sh[1] + 20, 11);
   if (f.view === 'side') drawTool(g, 'sword', near.hand, near.fore);
@@ -1218,7 +1256,8 @@ function drawFoot(g: G, f: FigureSpec, kit: Kit): void {
   head(g, f.view, headC[0], headC[1], kit === 'monk' ? { ...look, hair: look.hair } : look, f.team);
   const [hx, hy] = headC;
   // Headgear.
-  if (kit === 'spearman') {
+  if (kit === 'spearman' && f.elite) kettleHat(g, hx, hy);
+  else if (kit === 'spearman') {
     const cap = g.createLinearGradient(hx - 10, 0, hx + 10, 0);
     cap.addColorStop(0, '#9a7448');
     cap.addColorStop(1, '#4a3018');
@@ -1266,6 +1305,23 @@ function drawFoot(g: G, f: FigureSpec, kit: Kit): void {
     blob(g, sh[0] - (f.view === 'side' ? 4 : 0), sh[1] + 1, 9, 4, '#5a4128');
   }
   if (kit === 'monk' && f.view === 'front') blob(g, sh[0], sh[1] + 1, 10, 3.5, '#5a4128');
+  if (kit === 'archer' && f.elite) {
+    // Crossbowman's steel skullcap over the hood.
+    const cap = g.createLinearGradient(hx - 9, 0, hx + 9, 0);
+    cap.addColorStop(0, '#9aa4a9');
+    cap.addColorStop(0.3, '#eef3f5');
+    cap.addColorStop(1, '#4e575c');
+    g.beginPath();
+    g.moveTo(hx - 9, hy - 5);
+    g.quadraticCurveTo(hx - 9, hy - 15, hx, hy - 15);
+    g.quadraticCurveTo(hx + 9, hy - 15, hx + 9, hy - 5);
+    g.closePath();
+    g.strokeStyle = OUT;
+    g.lineWidth = 1.3;
+    g.stroke();
+    g.fillStyle = cap;
+    g.fill();
+  }
   const near = arm(g, pose, f.view, sh, look, coat, 'near');
   // Weapons.
   if (kit === 'archer' && far) bow(g, f.view === 'side' ? far.hand : [far.hand[0], far.hand[1] - 4], acting && f.view === 'side' ? near.hand : null);

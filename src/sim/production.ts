@@ -4,6 +4,7 @@ import economy from '../data/economy.json';
 import { DT, type ResourceKind } from './constants';
 import { gatherOrder, isGatherer, setOrder } from './economy';
 import { BUILDING_DEFS, type Building, UNIT_DEFS, type UnitType } from './entities';
+import { AGES, TECH_DEFS, type TechId, completeTech, researchBlock, unitStats } from './techs';
 import type { World } from './world';
 
 type Cost = Partial<Record<ResourceKind, number>>;
@@ -22,27 +23,49 @@ export function pay(w: World, player: number, cost: Cost, sign = 1): void {
 export function enqueue(w: World, b: Building, unit: UnitType): boolean {
   const def = BUILDING_DEFS[b.type];
   if (!b.complete || !def.trains.includes(unit)) return false;
+  const p = w.players[b.owner];
+  if (UNIT_DEFS[unit].age > p.age) {
+    w.events.push({ type: 'error', owner: b.owner, message: `Requires the ${AGES[UNIT_DEFS[unit].age].name} Age` });
+    return false;
+  }
+  return queueItem(w, b, UNIT_DEFS[unit].cost, { unit, progress: 0 });
+}
+
+/** Queues research of a technology at a building, paying now. */
+export function enqueueTech(w: World, b: Building, tech: TechId): boolean {
+  const t = TECH_DEFS[tech];
+  if (!b.complete || t.building !== b.type) return false;
+  const why = researchBlock(w, b.owner, tech);
+  if (why) {
+    w.events.push({ type: 'error', owner: b.owner, message: why });
+    return false;
+  }
+  return queueItem(w, b, t.cost, { tech, progress: 0 });
+}
+
+function queueItem(w: World, b: Building, cost: Cost, item: Building['queue'][number]): boolean {
   if (b.queue.length >= economy.queueLimit) {
     w.events.push({ type: 'error', owner: b.owner, message: 'Queue is full' });
     return false;
   }
-  const cost = UNIT_DEFS[unit].cost;
   if (!canAfford(w, b.owner, cost)) {
     const short = Object.entries(cost).find(([k, v]) => w.players[b.owner].resources[k as ResourceKind] < (v ?? 0));
     w.events.push({ type: 'error', owner: b.owner, message: `Not enough ${short?.[0] ?? 'resources'}` });
     return false;
   }
   pay(w, b.owner, cost);
-  b.queue.push({ unit, progress: 0 });
+  b.queue.push(item);
   return true;
 }
 
-/** Removes a queued unit and refunds it in full. */
+const itemCost = (q: Building['queue'][number]): Cost => (q.unit ? UNIT_DEFS[q.unit].cost : q.tech ? TECH_DEFS[q.tech].cost : {});
+
+/** Removes a queued unit or tech and refunds it in full. */
 export function cancelQueued(w: World, b: Building, index: number): void {
   const item = b.queue[index];
   if (!item) return;
   b.queue.splice(index, 1);
-  pay(w, b.owner, UNIT_DEFS[item.unit].cost, -1);
+  pay(w, b.owner, itemCost(item), -1);
   if (index === 0) b.housed = false;
 }
 
@@ -51,7 +74,15 @@ export function productionTick(w: World): void {
     if (!b.complete || !b.queue.length) continue;
     const head = b.queue[0];
     const p = w.players[b.owner];
-    const udef = UNIT_DEFS[head.unit];
+    if (head.tech) {
+      head.progress += DT / TECH_DEFS[head.tech].time;
+      if (head.progress < 1) continue;
+      b.queue.shift();
+      completeTech(w, b.owner, head.tech);
+      continue;
+    }
+    const unit = head.unit!;
+    const udef = UNIT_DEFS[unit];
     if (p.pop + udef.pop > p.popCap) {
       if (!b.housed) w.events.push({ type: 'error', owner: b.owner, message: 'Need more houses' });
       b.housed = true;
@@ -61,12 +92,12 @@ export function productionTick(w: World): void {
     head.progress += DT / udef.trainTime;
     if (head.progress < 1) continue;
     b.queue.shift();
-    const u = spawnFrom(w, b, head.unit);
+    const u = spawnFrom(w, b, unit);
     p.pop += udef.pop;
     w.events.push({ type: 'trained', owner: b.owner, id: u.id });
     if (b.repeat && b.queue.length === 0 && canAfford(w, b.owner, udef.cost)) {
       pay(w, b.owner, udef.cost);
-      b.queue.push({ unit: head.unit, progress: 0 });
+      b.queue.push({ unit, progress: 0 });
     }
   }
 }
@@ -79,9 +110,46 @@ function spawnFrom(w: World, b: Building, type: UnitType) {
   const ex = cx + ((toward.x - cx) / d) * (b.size / 2 + 0.8), ey = cy + ((toward.y - cy) / d) * (b.size / 2 + 0.8);
   const spot = w.grid.nearestWalkable(ex, ey, -1, b.size + 4) ?? { x: Math.floor(cx), y: b.y + b.size };
   const u = w.spawnUnit(type, b.owner, spot.x + 0.5, spot.y + 0.5);
+  u.hp = unitStats(w, b.owner, type).hp;
   if (b.rally) {
     const order = b.rally.target && isGatherer(u) ? gatherOrder(w, b.rally.target) : null;
     setOrder(u, order ?? { type: 'move', x: b.rally.x, y: b.rally.y });
   }
   return u;
+}
+
+// ---------- market ----------
+
+/** Gold per 100 units changes by this much with each trade. */
+const PRICE_STEP = 3;
+/** Selling returns this share of the buying price (the merchant's cut). */
+const SELL_SHARE = 0.7;
+const PRICE_MIN = 20, PRICE_MAX = 400;
+
+export function sellPrice(w: World, owner: number, res: 'food' | 'wood' | 'stone'): number {
+  return Math.floor(w.players[owner].market[res] * SELL_SHARE);
+}
+
+/** Buys or sells 100 of a commodity for gold at a Market; prices move with each trade. */
+export function trade(w: World, owner: number, action: 'buy' | 'sell', res: 'food' | 'wood' | 'stone'): boolean {
+  const p = w.players[owner];
+  const price = p.market[res];
+  if (action === 'buy') {
+    if (p.resources.gold < price) {
+      w.events.push({ type: 'error', owner, message: 'Not enough gold' });
+      return false;
+    }
+    p.resources.gold -= price;
+    p.resources[res] += 100;
+    p.market[res] = Math.min(PRICE_MAX, price + PRICE_STEP);
+  } else {
+    if (p.resources[res] < 100) {
+      w.events.push({ type: 'error', owner, message: `Not enough ${res}` });
+      return false;
+    }
+    p.resources[res] -= 100;
+    p.resources.gold += sellPrice(w, owner, res);
+    p.market[res] = Math.max(PRICE_MIN, price - PRICE_STEP);
+  }
+  return true;
 }

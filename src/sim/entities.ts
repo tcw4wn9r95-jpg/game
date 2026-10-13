@@ -68,6 +68,8 @@ export interface BuildingDef {
   food?: number;
   /** A completed building of this type is needed before this one can be placed. */
   requires?: BuildingType;
+  /** Counts toward the buildings needed to advance an age. */
+  advance?: boolean;
 }
 
 export const UNIT_DEFS = units as unknown as Record<UnitType, UnitDef>;
@@ -150,8 +152,8 @@ export interface Building {
   /** Construction progress 0..1. */
   progress: number;
   complete: boolean;
-  /** Units waiting to be trained; the head is in progress. */
-  queue: Array<{ unit: UnitType; progress: number }>;
+  /** Units waiting to be trained and technologies to research; the head is in progress. */
+  queue: QueueItem[];
   /** Where trained units go: a point, or a resource to start gathering. */
   rally: { x: number; y: number; target: GatherTarget | null } | null;
   /** Re-queue each unit as it finishes (if affordable). */
@@ -173,6 +175,13 @@ export interface ResourceEntity {
 }
 
 export type Entity = Unit | Building | ResourceEntity;
+
+/** One entry in a building's queue: a unit to train or a technology to research. */
+export interface QueueItem {
+  unit?: UnitType;
+  tech?: import('./techs').TechId;
+  progress: number;
+}
 
 /** Distance from a point to a building footprint (0 inside). */
 export function distToRect(px: number, py: number, x: number, y: number, size: number): number {

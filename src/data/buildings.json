@@ -70,7 +70,8 @@
     "trains": [],
     "classes": [
       "building"
-    ]
+    ],
+    "advance": true
   },
   "mining_camp": {
     "name": "Mining Camp",
@@ -94,7 +95,8 @@
     "trains": [],
     "classes": [
       "building"
-    ]
+    ],
+    "advance": true
   },
   "mill": {
     "name": "Mill",
@@ -117,7 +119,8 @@
     "trains": [],
     "classes": [
       "building"
-    ]
+    ],
+    "advance": true
   },
   "barracks": {
     "name": "Barracks",
@@ -141,7 +144,8 @@
     ],
     "classes": [
       "building"
-    ]
+    ],
+    "advance": true
   },
   "farm": {
     "name": "Farm",
@@ -189,7 +193,8 @@
     ],
     "classes": [
       "building"
-    ]
+    ],
+    "advance": true
   },
   "stable": {
     "name": "Stable",
@@ -213,7 +218,8 @@
     ],
     "classes": [
       "building"
-    ]
+    ],
+    "advance": true
   },
   "monastery": {
     "name": "Monastery",
@@ -236,6 +242,73 @@
     ],
     "classes": [
       "building"
-    ]
+    ],
+    "advance": true
+  },
+  "blacksmith": {
+    "name": "Blacksmith",
+    "size": 3,
+    "hp": 1500,
+    "buildTime": 50,
+    "cost": {
+      "wood": 150
+    },
+    "pop": 0,
+    "los": 5,
+    "dropoff": [],
+    "age": 1,
+    "buildable": true,
+    "description": "Forges better weapons and armour.",
+    "meleeArmor": 1,
+    "pierceArmor": 7,
+    "trains": [],
+    "classes": [
+      "building"
+    ],
+    "advance": true
+  },
+  "market": {
+    "name": "Market",
+    "size": 3,
+    "hp": 1500,
+    "buildTime": 50,
+    "cost": {
+      "wood": 175
+    },
+    "pop": 0,
+    "los": 5,
+    "dropoff": [],
+    "age": 1,
+    "buildable": true,
+    "description": "Buy and sell food, wood and stone for gold.",
+    "meleeArmor": 1,
+    "pierceArmor": 7,
+    "trains": [],
+    "classes": [
+      "building"
+    ],
+    "advance": true
+  },
+  "university": {
+    "name": "University",
+    "size": 3,
+    "hp": 1700,
+    "buildTime": 60,
+    "cost": {
+      "wood": 200
+    },
+    "pop": 0,
+    "los": 5,
+    "dropoff": [],
+    "age": 2,
+    "buildable": true,
+    "description": "Researches masonry and building techniques.",
+    "meleeArmor": 1,
+    "pierceArmor": 7,
+    "trains": [],
+    "classes": [
+      "building"
+    ],
+    "advance": true
   }
 }

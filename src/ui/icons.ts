@@ -199,6 +199,30 @@ export const ICONS = {
     <path d="M15 21V8h5v13z" fill="#b5ae9f" stroke="${INK}" stroke-width="1.1"/><path d="M14.5 8.5l3-3.5 3 3.5z" fill="#8a5a40" stroke="${INK}" stroke-width="1"/>
     <path d="M17.5 5V1.5M16.2 2.8h2.6" stroke="#d9b44a" stroke-width="1"/>
     <path d="M7.5 21v-4a1.5 1.5 0 013 0v4z" fill="#3a2412"/><circle cx="9" cy="13.5" r="1.4" fill="#2f5aa0" stroke="${INK}" stroke-width=".6"/>`),
+  more: svg(`<circle cx="5" cy="12" r="2.6" fill="#f1d48a" stroke="${INK}" stroke-width="1.2"/><circle cx="12" cy="12" r="2.6" fill="#f1d48a" stroke="${INK}" stroke-width="1.2"/><circle cx="19" cy="12" r="2.6" fill="#f1d48a" stroke="${INK}" stroke-width="1.2"/>`),
+  buy: svg(`
+    <circle cx="9" cy="14" r="6.5" fill="#f5c842" stroke="${INK}" stroke-width="1.2"/><circle cx="9" cy="14" r="4" fill="none" stroke="#b9871a" stroke-width="1"/>
+    <path d="M17 13V3M13.5 6.5L17 3l3.5 3.5" fill="none" stroke="${INK}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M17 13V3M13.5 6.5L17 3l3.5 3.5" fill="none" stroke="#9cf59a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`),
+  sell: svg(`
+    <circle cx="9" cy="14" r="6.5" fill="#f5c842" stroke="${INK}" stroke-width="1.2"/><circle cx="9" cy="14" r="4" fill="none" stroke="#b9871a" stroke-width="1"/>
+    <path d="M17 3v10M13.5 9.5L17 13l3.5-3.5" fill="none" stroke="${INK}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M17 3v10M13.5 9.5L17 13l3.5-3.5" fill="none" stroke="#ff9b8a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`),
+  blacksmith: svg(`
+    <path d="M3 13h13c0 2-1.5 3-3.5 3H11v3h3v2H5v-2h3v-3H6.5C4.5 16 3 15 3 13z" fill="#5c6468" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M16 13h5l-3 2z" fill="#5c6468" stroke="${INK}" stroke-width="1"/>
+    <path d="M14 3l-5 6" stroke="#7a5430" stroke-width="2" stroke-linecap="round"/><rect x="12" y="1.5" width="6" height="3.5" rx=".6" transform="rotate(35 15 3)" fill="#9aa3a8" stroke="${INK}" stroke-width=".9"/>
+    <circle cx="7" cy="10" r="1" fill="#ffb347"/><circle cx="5" cy="9" r=".7" fill="#ffd27a"/>`),
+  market: svg(`
+    <path d="M3 21v-9h18v9z" fill="#d8c8a0" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M2 12l2-6h16l2 6z" fill="#2f5aa0" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M6 6l-1 6M10 6v6M14 6v6M18 6l1 6" stroke="#f1e9d6" stroke-width="1.4"/>
+    <circle cx="8" cy="17" r="2.2" fill="#c4572f" stroke="${INK}" stroke-width=".8"/><circle cx="12.5" cy="17.5" r="2" fill="#f5c842" stroke="${INK}" stroke-width=".8"/><circle cx="16.5" cy="17" r="2" fill="#7da34a" stroke="${INK}" stroke-width=".8"/>`),
+  university: svg(`
+    <path d="M3 21V11h18v10z" fill="#c9c2b2" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M1.5 11.5L12 4l10.5 7.5z" fill="#8a5a40" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M6 13v7M10 13v7M14 13v7M18 13v7" stroke="#8a8478" stroke-width="1.6"/>
+    <path d="M9 8.5h6l-3 2z" fill="#f1e9d6"/>`),
   aggressive: svg(`
     <path d="M4 20L18 5M20 20L6 5" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>
     <path d="M4 20L18 5M20 20L6 5" stroke="#d6dde1" stroke-width="2" stroke-linecap="round"/>
@@ -276,3 +300,80 @@ export const MAP_ICONS = {
     '0 0 64 40',
   ),
 };
+
+// ---------- technology icons ----------
+
+/** One glyph per technology family. */
+const TECH_GLYPH: Record<string, string> = {
+  axe: `<path d="M6 21L16 7" stroke="#7a5430" stroke-width="2.2" stroke-linecap="round"/><path d="M13 4c3 0 6 2 7 5l-4 2-4-5z" fill="#c9d1d6" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>`,
+  saw: `<path d="M3 15l14-8 3 5-14 8z" fill="#c9d1d6" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M5 18l1-2 1.5 1 1-2 1.5 1 1-2 1.5 1 1-2 1.5 1" fill="none" stroke="${INK}" stroke-width=".8"/><path d="M17 7l3-3 2 3-2 5" fill="#7a5430" stroke="${INK}" stroke-width="1"/>`,
+  pick: `<path d="M12 21V8" stroke="#7a5430" stroke-width="2.2" stroke-linecap="round"/><path d="M3 9c4-4 14-4 18 0-5-2-13-2-18 0z" fill="#9aa3a8" stroke="${INK}" stroke-width="1.1"/>`,
+  gold: `<path d="M12 21V8" stroke="#7a5430" stroke-width="2.2" stroke-linecap="round"/><path d="M3 9c4-4 14-4 18 0-5-2-13-2-18 0z" fill="#9aa3a8" stroke="${INK}" stroke-width="1.1"/><circle cx="17" cy="17" r="3.4" fill="#f5c842" stroke="${INK}" stroke-width="1"/>`,
+  stone: `<path d="M12 21V8" stroke="#7a5430" stroke-width="2.2" stroke-linecap="round"/><path d="M3 9c4-4 14-4 18 0-5-2-13-2-18 0z" fill="#9aa3a8" stroke="${INK}" stroke-width="1.1"/><path d="M14 20l1-4 4-1 2 3-2 3z" fill="#b8b8b0" stroke="${INK}" stroke-width="1"/>`,
+  plow: `<path d="M3 8h9l5 6" fill="none" stroke="#7a5430" stroke-width="2" stroke-linecap="round"/><path d="M14 12l7 4-4 4-5-3z" fill="#9aa3a8" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M2 21h12" stroke="#6b4a2a" stroke-width="1.6"/>`,
+  collar: `<path d="M6 19c-2-6 0-14 6-14s8 8 6 14" fill="none" stroke="${INK}" stroke-width="5"/><path d="M6 19c-2-6 0-14 6-14s8 8 6 14" fill="none" stroke="#8a5a30" stroke-width="3"/><circle cx="12" cy="5" r="1.6" fill="#d9b44a"/>`,
+  barrow: `<path d="M4 11h12l-2 6H6z" fill="#8a5a30" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><circle cx="16.5" cy="18" r="3" fill="#6b4a2a" stroke="${INK}" stroke-width="1"/><path d="M4 11L1 9M16 11l5-4" stroke="#6b4a2a" stroke-width="1.6" stroke-linecap="round"/>`,
+  cart: `<path d="M2 9h16v7H2z" fill="#8a5a30" stroke="${INK}" stroke-width="1.1"/><circle cx="6" cy="18" r="3" fill="#6b4a2a" stroke="${INK}" stroke-width="1"/><circle cx="14" cy="18" r="3" fill="#6b4a2a" stroke="${INK}" stroke-width="1"/><path d="M18 11l4-2" stroke="#6b4a2a" stroke-width="1.6"/>`,
+  loom: `<ellipse cx="12" cy="12" rx="4" ry="8" fill="#e8dcc0" stroke="${INK}" stroke-width="1.1"/><path d="M8 8h8M8 12h8M8 16h8" stroke="#b8a37a" stroke-width="1"/><path d="M12 2v20" stroke="#7a5430" stroke-width="1.6"/>`,
+  watch: `<path d="M2 12c3-5 7-7 10-7s7 2 10 7c-3 5-7 7-10 7s-7-2-10-7z" fill="#f1e9d6" stroke="${INK}" stroke-width="1.2"/><circle cx="12" cy="12" r="3.6" fill="#2f5aa0" stroke="${INK}" stroke-width="1"/><circle cx="11" cy="11" r="1" fill="#fff"/>`,
+  sword: `<path d="M5 19L17 5" stroke="${INK}" stroke-width="3.6" stroke-linecap="round"/><path d="M5 19L17 5" stroke="#d6dde1" stroke-width="1.8" stroke-linecap="round"/><path d="M4 15l5 5" stroke="#c8962a" stroke-width="2.2" stroke-linecap="round"/>`,
+  arrow: `<path d="M4 20L18 6" stroke="${INK}" stroke-width="2.8" stroke-linecap="round"/><path d="M4 20L18 6" stroke="#c9a46a" stroke-width="1.2"/><path d="M15 4l6-1-1 6z" fill="#c9d1d6" stroke="${INK}" stroke-width="1"/><path d="M4 20l-1-4M4 20l4 1" stroke="#f1e9d6" stroke-width="1.6"/>`,
+  mail: `<path d="M6 5h12l2 5-2 1v9H6v-9l-2-1z" fill="#9aa3a8" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M8 9h8M8 12h8M8 15h8M8 18h8" stroke="#5c6468" stroke-width=".9" stroke-dasharray="1.2 1"/>`,
+  barding: `<path d="M3 17c0-3 2-5 6-5h6l3-4 3 1-2 5v4" fill="#8f8a84" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M3 13h14v5H3z" fill="#9aa3a8" stroke="${INK}" stroke-width=".9"/><path d="M5 14.5h10M5 16.5h10" stroke="#5c6468" stroke-width=".8" stroke-dasharray="1.2 1"/>`,
+  padding: `<path d="M12 2l8 3v6c0 5.5-3.5 9-8 11-4.5-2-8-5.5-8-11V5z" fill="#a8885a" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/><path d="M6 9h12M6 13h12M7 17h10" stroke="#6b4a2a" stroke-width=".9"/>`,
+  masonry: `<path d="M2 20h20M2 15h20M2 10h20" stroke="${INK}" stroke-width="1"/><path d="M2 10h20v10H2z" fill="#b8b0a2" stroke="${INK}" stroke-width="1.1"/><path d="M8 10v5M16 10v5M5 15v5M12 15v5M19 15v5" stroke="${INK}" stroke-width="1"/><path d="M15 3l4 4-2 2-4-4z" fill="#9aa3a8" stroke="${INK}" stroke-width=".9"/>`,
+  crane: `<path d="M5 21V4h2v17zM7 5h13" stroke="#7a5430" stroke-width="2" stroke-linecap="round"/><path d="M18 5v8" stroke="${INK}" stroke-width="1"/><rect x="15.5" y="13" width="5" height="4" fill="#b8b0a2" stroke="${INK}" stroke-width="1"/><circle cx="6" cy="16" r="4" fill="none" stroke="#6b4a2a" stroke-width="1.6"/>`,
+};
+
+const TECH_GLYPH_OF: Record<string, string> = {
+  loom: 'loom',
+  town_watch: 'watch',
+  wheelbarrow: 'barrow',
+  hand_cart: 'cart',
+  double_bit_axe: 'axe',
+  bow_saw: 'saw',
+  gold_mining: 'gold',
+  gold_shaft: 'gold',
+  stone_mining: 'stone',
+  horse_collar: 'collar',
+  heavy_plow: 'plow',
+  forging: 'sword',
+  iron_casting: 'sword',
+  fletching: 'arrow',
+  bodkin_arrow: 'arrow',
+  scale_mail: 'mail',
+  chain_mail: 'mail',
+  scale_barding: 'barding',
+  chain_barding: 'barding',
+  padded_archer: 'padding',
+  leather_archer: 'padding',
+  masonry: 'masonry',
+  treadmill_crane: 'crane',
+};
+/** Second-level techs show two pips. */
+const LEVEL2 = new Set(['iron_casting', 'bodkin_arrow', 'chain_mail', 'chain_barding', 'leather_archer', 'bow_saw', 'gold_shaft', 'heavy_plow', 'hand_cart']);
+const UPGRADE_OF: Record<string, string> = { swordsman: 'militia', pikeman: 'spearman', crossbowman: 'archer', light_cavalry: 'scout' };
+const NUMERAL: Record<string, string> = { age2: 'II', age3: 'III', age4: 'IV' };
+
+const cacheTech = new Map<string, string>();
+
+/** Icon for a technology: its tool or armour, a unit with a gold chevron for upgrades, or a crown for ages. */
+export function techIcon(id: string): string {
+  let out = cacheTech.get(id);
+  if (out) return out;
+  if (NUMERAL[id]) {
+    out = svg(`
+      <path d="M3 17l1.5-10 4.5 4.5L12 4l3 7.5L19.5 7 21 17z" fill="#f5c842" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
+      <rect x="3" y="17" width="18" height="4" rx="1" fill="#d9a62a" stroke="${INK}" stroke-width="1.1"/>
+      <text x="12" y="16" text-anchor="middle" font-family="Cinzel, serif" font-weight="700" font-size="${NUMERAL[id].length > 2 ? 6 : 7}" fill="${INK}">${NUMERAL[id]}</text>`);
+  } else if (UPGRADE_OF[id]) {
+    const base = (ICONS as Record<string, string>)[UPGRADE_OF[id]].replace(/^<svg[^>]*>|<\/svg>$/g, '');
+    out = svg(`${base}<path d="M15 9l4-4 4 4" fill="none" stroke="${INK}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 9l4-4 4 4" fill="none" stroke="#f5c842" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`);
+  } else {
+    const pips = LEVEL2.has(id) ? 2 : 1;
+    const dots = Array.from({ length: pips }, (_, k) => `<circle cx="${20 - k * 4}" cy="20.5" r="1.6" fill="#f5c842" stroke="${INK}" stroke-width=".7"/>`).join('');
+    out = svg(`${TECH_GLYPH[TECH_GLYPH_OF[id]] ?? TECH_GLYPH.sword}${dots}`);
+  }
+  cacheTech.set(id, out);
+  return out;
+}

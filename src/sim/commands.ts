@@ -4,7 +4,8 @@ import { setStance } from './combat';
 import { findResource, gatherOrder, isBuilder, isGatherer, setOrder, sourceOf } from './economy';
 import { FlowField } from './flowfield';
 import { BUILDING_DEFS, type BuildingType, type GatherTarget, type Stance, UNIT_DEFS, type Unit, type UnitType } from './entities';
-import { cancelQueued, canAfford, enqueue, pay } from './production';
+import { cancelQueued, canAfford, enqueue, enqueueTech, pay, trade } from './production';
+import type { TechId } from './techs';
 import type { World } from './world';
 
 export type Command =
@@ -20,7 +21,9 @@ export type Command =
   | { type: 'delete'; ids: number[] }
   | { type: 'autoReseed'; on: boolean }
   | { type: 'attack'; ids: number[]; id: number }
-  | { type: 'stance'; ids: number[]; stance: Stance };
+  | { type: 'stance'; ids: number[]; stance: Stance }
+  | { type: 'research'; id: number; tech: TechId }
+  | { type: 'trade'; id: number; action: 'buy' | 'sell'; res: 'food' | 'wood' | 'stone' };
 
 export function applyCommand(w: World, player: number, cmd: Command): void {
   const ids = 'ids' in cmd ? cmd.ids : [];
@@ -52,6 +55,16 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
     case 'stance':
       for (const u of units) setStance(u, cmd.stance);
       return;
+    case 'research': {
+      const b = w.building(cmd.id);
+      if (b && b.owner === player) enqueueTech(w, b, cmd.tech);
+      return;
+    }
+    case 'trade': {
+      const b = w.building(cmd.id);
+      if (b && b.owner === player && b.type === 'market' && b.complete) trade(w, player, cmd.action, cmd.res);
+      return;
+    }
     case 'stop':
       for (const u of units) {
         setOrder(u, null);
@@ -63,6 +76,10 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
     case 'build': {
       const def = BUILDING_DEFS[cmd.building];
       const p = w.players[player];
+      if (def.age > p.age) {
+        w.events.push({ type: 'error', owner: player, message: 'Not available in this age' });
+        return;
+      }
       if (!def.buildable || !w.canPlace(cmd.building, player, cmd.x, cmd.y)) {
         w.events.push({ type: 'error', owner: player, message: "Can't build there" });
         return;

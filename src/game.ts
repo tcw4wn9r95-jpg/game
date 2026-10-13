@@ -5,6 +5,7 @@ import { type Effect, Renderer } from './render/renderer';
 import type { GameMap } from './sim/terrain';
 import { TICK_MS, World } from './sim/world';
 import { Bench } from './ui/bench';
+import { AGES, TECH_DEFS } from './sim/techs';
 import { Hud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { CommandCenter } from './ui/commandCenter';
@@ -101,6 +102,13 @@ export class Game {
       if (ev.owner !== this.player) continue;
       if (ev.type === 'hit' && ev.by !== this.player && ev.by >= 0) {
         this.alert(ev.building ? 'Your town is under attack!' : 'Your units are under attack!', ev.x, ev.y, nowS);
+        continue;
+      }
+      if (ev.type === 'researched') {
+        const t = TECH_DEFS[ev.tech];
+        const age = t.effects.find((e) => e.type === 'age');
+        if (age) this.hud.announce(`${AGES[age.age].name} Age`, 'New buildings, units and technologies are available.');
+        else this.hud.toast(`${t.name} researched`);
         continue;
       }
       if (ev.type === 'dropoff') this.addEffect({ kind: 'text', x: ev.x, y: ev.y, text: `+${ev.amount}`, color: RES_COLORS[ev.res] });

@@ -4,8 +4,10 @@
 import type { Controller } from '../input/controller';
 import { isGatherer } from '../sim/economy';
 import { BUILDING_DEFS, STANCES, type Stance, type BuildingType, type Entity, UNIT_DEFS, type Unit } from '../sim/entities';
+import { sellPrice } from '../sim/production';
+import { AGES, TECH_DEFS, type TechId, buildingMaxHp, researchBlock, techsAt, unitStats } from '../sim/techs';
 import type { World } from '../sim/world';
-import { ICONS } from './icons';
+import { ICONS, techIcon } from './icons';
 import { portrait } from './portraits';
 import { hideTip, tip } from './tooltip';
 
@@ -16,8 +18,8 @@ const CAP = 10;
 
 /** Build tabs; buildings arrive in later milestones and simply join their tab. */
 const TABS: Array<{ key: string; name: string; icon: string; types: BuildingType[] }> = [
-  { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'mill', 'lumber_camp', 'mining_camp', 'farm'] },
-  { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks', 'archery_range', 'stable', 'monastery'] },
+  { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'farm', 'mill', 'lumber_camp', 'mining_camp', 'market'] },
+  { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks', 'archery_range', 'stable', 'blacksmith', 'monastery', 'university'] },
   { key: 'defense', name: 'Defense', icon: ICONS.meleeArmor, types: [] },
   { key: 'naval', name: 'Naval', icon: ICONS.ship, types: [] },
 ];
@@ -98,8 +100,11 @@ export class CommandCenter {
   private readonly card: HTMLElement;
   private readonly info: HTMLElement;
   private shown = '';
-  /** Which build tab is open, or null for the unit's main commands. */
+  /** Which build tab (or market sub-card) is open, or null for the main commands. */
   private tab: string | null = null;
+  /** Page of a command card too long for one 3x2 card. */
+  private page = 0;
+  private version = -1;
   private live: Array<() => void> = [];
 
   constructor(
@@ -123,7 +128,14 @@ export class CommandCenter {
 
   update(): void {
     this.ctl.prune();
-    const sig = `${this.ctl.version}|${this.tab}|${this.ctl.placing ? 'p' : ''}`;
+    const p = this.world.players[this.player];
+    if (this.ctl.version !== this.version) {
+      // A new selection starts on its main card.
+      this.version = this.ctl.version;
+      this.tab = null;
+      this.page = 0;
+    }
+    const sig = `${this.ctl.version}|${this.tab}|${this.page}|${this.ctl.placing ? 'p' : ''}|${p.age}|${p.techs.length}`;
     if (sig !== this.shown) {
       this.shown = sig;
       this.rebuild();
@@ -167,25 +179,29 @@ export class CommandCenter {
     const res = this.world.players[this.player].resources;
     if (this.tab && villagers) {
       const tab = TABS.find((t) => t.key === this.tab)!;
-      const slots: Array<Cmd | null> = tab.types.map((type) => {
+      const age = this.world.players[this.player].age;
+      const actions: Cmd[] = tab.types.map((type) => {
         const def = BUILDING_DEFS[type];
         const cost = def.cost as Record<string, number>;
+        const locked = def.age > age;
         return {
           icon: ICON[type],
           label: def.name,
-          caption: Object.values(cost).join('/'),
+          caption: locked ? AGES[def.age].numeral : Object.values(cost).join('/'),
           run: () => {
             this.tab = null;
             ctl.startPlacing(type);
           },
-          disabled: () => Object.entries(cost).some(([k, v]) => res[k as Res] < v) || !this.hasRequired(type),
-          tip: () => tipHtml(def.name, `${def.description}${this.hasRequired(type) ? '' : `<br><i>Requires a ${BUILDING_DEFS[def.requires!].name}.</i>`}`, cost),
+          disabled: () => locked || Object.entries(cost).some(([k, v]) => res[k as Res] < v) || !this.hasRequired(type),
+          tip: () =>
+            tipHtml(
+              def.name,
+              `${def.description}${locked ? `<br><i>Requires the ${AGES[def.age].name} Age.</i>` : ''}${this.hasRequired(type) ? '' : `<br><i>Requires a ${BUILDING_DEFS[def.requires!].name}.</i>`}`,
+              cost,
+            ),
         };
       });
-      while (slots.length < 5) slots.push(null);
-      slots.length = 5;
-      slots.push({ icon: ICONS.back, label: 'Back', run: () => (this.tab = null) });
-      return slots;
+      return this.paged(actions, [{ icon: ICONS.back, label: 'Back', run: () => ((this.tab = null), (this.page = 0)) }]);
     }
     const building = this.ownBuilding();
     if (building) return this.buildingCommands(building);
@@ -195,7 +211,7 @@ export class CommandCenter {
         slots.push({
           icon: t.icon,
           label: `Build ${t.name}`,
-          run: () => (this.tab = t.key),
+          run: () => ((this.tab = t.key), (this.page = 0)),
           disabled: () => !t.types.length,
           tip: () => tipHtml(`Build ${t.name} Buildings`, t.types.length ? t.types.map((k) => BUILDING_DEFS[k].name).join(', ') : 'Available in a later age.'),
         });
@@ -242,44 +258,114 @@ export class CommandCenter {
     return { icon: ICONS.trash, label: 'Delete', confirm: true, run: () => this.ctl.deleteSelected(), tip: () => tipHtml('Delete', 'Tap twice. Unfinished buildings refund what was not yet built.') };
   }
 
+  /** Lays out actions over pages of the 3x2 card, keeping `tail` (back, delete...) at the end of every page. */
+  private paged(actions: Array<Cmd | null>, tail: Array<Cmd | null>): Array<Cmd | null> {
+    const room = 6 - tail.length;
+    let slots: Array<Cmd | null>;
+    if (actions.length <= room) slots = [...actions];
+    else {
+      const per = room - 1;
+      const pages = Math.ceil(actions.length / per);
+      const pg = this.page % pages;
+      slots = actions.slice(pg * per, pg * per + per);
+      while (slots.length < per) slots.push(null);
+      slots.push({ icon: ICONS.more, label: 'More', caption: `${pg + 1}/${pages}`, run: () => (this.page = (pg + 1) % pages), tip: () => tipHtml('More commands', `Page ${pg + 1} of ${pages}.`) });
+    }
+    while (slots.length < room) slots.push(null);
+    return [...slots, ...tail];
+  }
+
+  private techCmd(b: { id: number }, id: TechId): Cmd {
+    const t = TECH_DEFS[id];
+    const cost = t.cost as Record<string, number>;
+    const res = this.world.players[this.player].resources;
+    const why = () => researchBlock(this.world, this.player, id);
+    return {
+      icon: techIcon(id),
+      label: `Research ${t.name}`,
+      caption: Object.values(cost).join('/'),
+      run: () => this.ctl.command({ type: 'research', id: b.id, tech: id }),
+      disabled: () => !!why() || Object.entries(cost).some(([k, v]) => res[k as Res] < v),
+      tip: () => {
+        const w = why();
+        return tipHtml(t.name, `${t.description}<br>${t.time}s${w ? `<br><i>${w}.</i>` : ''}`, cost);
+      },
+    };
+  }
+
   private buildingCommands(b: NonNullable<ReturnType<CommandCenter['ownBuilding']>>): Array<Cmd | null> {
     const def = BUILDING_DEFS[b.type];
-    const slots: Array<Cmd | null> = [];
-    const res = this.world.players[this.player].resources;
-    if (b.complete) {
-      for (const unit of def.trains) {
-        const u = UNIT_DEFS[unit];
-        const cost = u.cost as Record<string, number>;
-        slots.push({
-          icon: ICON[unit],
-          label: `Train ${u.name}`,
-          caption: Object.values(cost).join('/'),
-          run: () => this.ctl.command({ type: 'train', id: b.id, unit }),
-          disabled: () => Object.entries(cost).some(([k, v]) => res[k as Res] < v),
-          tip: () => tipHtml(`Train ${u.name}`, `${u.description}<br>${u.trainTime}s · ${u.hp} HP${matchup(u)}`, cost),
+    const p = this.world.players[this.player];
+    const res = p.resources;
+    const tail: Array<Cmd | null> = [this.deleteCmd(), { icon: ICONS.close, label: 'Deselect', run: () => this.ctl.deselect() }];
+    if (!b.complete) return this.paged([], tail);
+    if (b.type === 'market') {
+      if (this.tab === 'buy' || this.tab === 'sell') {
+        const action = this.tab;
+        const goods = (['food', 'wood', 'stone'] as const).map((r): Cmd => {
+          const price = () => (action === 'buy' ? p.market[r] : sellPrice(this.world, this.player, r));
+          return {
+            icon: ICON[r],
+            label: `${action === 'buy' ? 'Buy' : 'Sell'} ${RES_NAMES[r]}`,
+            caption: `${price()}`,
+            run: () => {
+              this.ctl.command({ type: 'trade', id: b.id, action, res: r });
+              this.shown = '';
+            },
+            disabled: () => (action === 'buy' ? res.gold < p.market[r] : res[r] < 100),
+            tip: () => tipHtml(`${action === 'buy' ? 'Buy' : 'Sell'} 100 ${RES_NAMES[r]}`, `${action === 'buy' ? 'Costs' : 'Earns'} ${price()} gold. Prices move with every trade.`),
+          };
         });
+        return this.paged(goods, [null, null, { icon: ICONS.back, label: 'Back', run: () => (this.tab = null) }]);
       }
-      if (def.trains.length)
-        slots.push({
-          icon: ICONS.repeat,
-          label: 'Repeat',
-          active: () => !!this.world.building(b.id)?.repeat,
-          run: () => this.ctl.command({ type: 'repeat', id: b.id, on: !this.world.building(b.id)?.repeat }),
-          tip: () => tipHtml('Repeat production', 'Keep training the same unit while you can afford it.'),
-        });
-      if (b.type === 'farm' || b.type === 'mill')
-        slots.push({
-          icon: ICONS.reseed,
-          label: 'Auto-reseed farms',
-          active: () => this.world.players[this.player].autoReseed,
-          run: () => this.ctl.command({ type: 'autoReseed', on: !this.world.players[this.player].autoReseed }),
-          tip: () => tipHtml('Auto-reseed farms', `Replant fields when they are harvested, for ${BUILDING_DEFS.farm.cost.wood} wood each.`),
-        });
+      return this.paged(
+        [
+          { icon: ICONS.buy, label: 'Buy', run: () => (this.tab = 'buy'), tip: () => tipHtml('Buy', 'Buy 100 food, wood or stone for gold.') },
+          { icon: ICONS.sell, label: 'Sell', run: () => (this.tab = 'sell'), tip: () => tipHtml('Sell', 'Sell 100 food, wood or stone for gold.') },
+        ],
+        tail,
+      );
     }
-    while (slots.length < 4) slots.push(null);
-    slots.push(this.deleteCmd());
-    slots.push({ icon: ICONS.close, label: 'Deselect', run: () => this.ctl.deselect() });
-    return slots;
+    const actions: Cmd[] = [];
+    for (const unit of def.trains) {
+      const u = unitStats(this.world, this.player, unit);
+      const cost = u.cost as Record<string, number>;
+      const locked = u.age > p.age;
+      actions.push({
+        icon: ICON[unit],
+        label: `Train ${UNIT_DEFS[unit].name}`,
+        caption: locked ? AGES[u.age].numeral : Object.values(cost).join('/'),
+        run: () => this.ctl.command({ type: 'train', id: b.id, unit }),
+        disabled: () => locked || Object.entries(cost).some(([k, v]) => res[k as Res] < v),
+        tip: () => tipHtml(`Train ${u.name}`, `${u.description}<br>${u.trainTime}s · ${u.hp} HP${matchup(u)}${locked ? `<br><i>Requires the ${AGES[u.age].name} Age.</i>` : ''}`, cost),
+      });
+    }
+    // Research: everything not yet done whose age is now or next (ages: only the next one).
+    for (const id of techsAt(b.type)) {
+      const t = TECH_DEFS[id];
+      if (p.techs.includes(id) || t.age > p.age + 1) continue;
+      const ageUp = t.effects.find((e) => e.type === 'age');
+      if (ageUp && ageUp.age !== p.age + 1) continue;
+      actions.push(this.techCmd(b, id));
+    }
+    const extra: Cmd[] = [];
+    if (def.trains.length)
+      extra.push({
+        icon: ICONS.repeat,
+        label: 'Repeat',
+        active: () => !!this.world.building(b.id)?.repeat,
+        run: () => this.ctl.command({ type: 'repeat', id: b.id, on: !this.world.building(b.id)?.repeat }),
+        tip: () => tipHtml('Repeat production', 'Keep training the same unit while you can afford it.'),
+      });
+    if (b.type === 'farm' || b.type === 'mill')
+      extra.push({
+        icon: ICONS.reseed,
+        label: 'Auto-reseed farms',
+        active: () => this.world.players[this.player].autoReseed,
+        run: () => this.ctl.command({ type: 'autoReseed', on: !this.world.players[this.player].autoReseed }),
+        tip: () => tipHtml('Auto-reseed farms', `Replant fields when they are harvested, for ${BUILDING_DEFS.farm.cost.wood} wood each.`),
+      });
+    return this.paged([...actions, ...extra], tail);
   }
 
   private renderCard(cmds: Array<Cmd | null>): void {
@@ -325,7 +411,7 @@ export class CommandCenter {
   // ---------- info panel ----------
 
   private renderSingle(e: Entity): void {
-    const name = e.kind === 'unit' ? UNIT_DEFS[e.type].name : e.kind === 'building' ? BUILDING_DEFS[e.type].name : e.type[0].toUpperCase() + e.type.slice(1);
+    const name = e.kind === 'unit' ? unitStats(this.world, e.owner, e.type).name : e.kind === 'building' ? BUILDING_DEFS[e.type].name : e.type[0].toUpperCase() + e.type.slice(1);
     const owner = e.kind === 'resource' ? '' : e.owner === this.player ? 'Your realm' : `Player ${e.owner + 1}`;
     this.info.innerHTML = `
       <div class="pf-frame"><div class="pf">${portrait(e)}</div></div>
@@ -350,7 +436,7 @@ export class CommandCenter {
       if (!cur) return;
       let frac = 1, text = '', st = '', carry = '';
       if (cur.kind === 'unit') {
-        const max = UNIT_DEFS[cur.type].hp;
+        const max = unitStats(this.world, cur.owner, cur.type).hp;
         frac = cur.hp / max;
         text = `${Math.ceil(cur.hp)} / ${max}`;
         st = cur.owner === this.player ? status(this.world, cur) : '';
@@ -358,15 +444,25 @@ export class CommandCenter {
           carry = `<span class="icon">${ICON[cur.carry.res]}</span><span class="carry-bar"><span style="width:${(cur.carry.amount / CAP) * 100}%"></span></span><b>${cur.carry.amount}/${CAP}</b>`;
       } else if (cur.kind === 'building') {
         const def = BUILDING_DEFS[cur.type];
-        frac = cur.complete ? cur.hp / def.hp : cur.progress;
-        text = cur.complete ? `${Math.ceil(cur.hp)} / ${def.hp}` : `Building… ${Math.floor(cur.progress * 100)}%`;
+        const maxHp = buildingMaxHp(this.world, cur);
+        frac = cur.complete ? cur.hp / maxHp : cur.progress;
+        text = cur.complete ? `${Math.ceil(cur.hp)} / ${maxHp}` : `Building… ${Math.floor(cur.progress * 100)}%`;
         st = !cur.complete ? 'Under construction' : cur.type === 'farm' ? `${cur.amount} food left in this planting` : def.description;
         if (cur.complete && def.trains.length && cur.owner === this.player) {
-          st = cur.housed ? 'Waiting for houses: population limit reached' : cur.queue.length ? `Training ${UNIT_DEFS[cur.queue[0].unit].name}` : cur.rally ? 'Ready' : 'Tap the map to set a rally point';
-          const sig = cur.queue.map((q) => q.unit).join(',');
+          const head = cur.queue[0];
+          st = cur.housed
+            ? 'Waiting for houses: population limit reached'
+            : head?.tech
+              ? `Researching ${TECH_DEFS[head.tech].name}`
+              : head?.unit
+                ? `Training ${unitStats(this.world, cur.owner, head.unit).name}`
+                : cur.rally
+                  ? 'Ready'
+                  : 'Tap the map to set a rally point';
+          const sig = cur.queue.map((q) => q.unit ?? q.tech).join(',');
           if (sig !== queueSig) {
             queueSig = sig;
-            headBar = this.renderQueue(queueEl, cur.id, cur.queue.map((q) => q.unit));
+            headBar = this.renderQueue(queueEl, cur.id, cur.queue.map((q) => (q.unit ? ICON[q.unit] : techIcon(q.tech!))));
           }
           if (headBar && cur.queue[0]) headBar.style.width = `${cur.queue[0].progress * 100}%`;
         }
@@ -384,12 +480,13 @@ export class CommandCenter {
   }
 
   /** Training queue: the head with a progress bar, then the rest; tap any to cancel (full refund). */
-  private renderQueue(box: HTMLElement, id: number, units: string[]): HTMLElement | null {
+  private renderQueue(box: HTMLElement, id: number, icons: string[]): HTMLElement | null {
     box.innerHTML = '';
     let bar: HTMLElement | null = null;
-    units.slice(0, 8).forEach((unit, i) => {
-      const q = el('button', i === 0 ? 'qitem head' : 'qitem', `${ICON[unit]}${i === 0 ? '<span class="qbar"><span></span></span>' : ''}`);
-      q.setAttribute('aria-label', `Cancel ${unit}`);
+    const units = icons;
+    units.slice(0, 8).forEach((icon, i) => {
+      const q = el('button', i === 0 ? 'qitem head' : 'qitem', `${icon}${i === 0 ? '<span class="qbar"><span></span></span>' : ''}`);
+      q.setAttribute('aria-label', 'Cancel');
       q.addEventListener('click', () => this.ctl.command({ type: 'cancelTrain', id, index: i }));
       if (i === 0) bar = q.querySelector<HTMLElement>('.qbar span');
       box.appendChild(q);
@@ -401,7 +498,7 @@ export class CommandCenter {
   private renderStats(box: HTMLElement, e: Entity): void {
     const items: Array<[string, string, string]> = [];
     if (e.kind === 'unit') {
-      const d = UNIT_DEFS[e.type] as (typeof UNIT_DEFS)[keyof typeof UNIT_DEFS] & { attack: number; meleeArmor: number; pierceArmor: number; range: number };
+      const d = unitStats(this.world, e.owner, e.type);
       items.push(['attack', String(d.attack), 'Attack']);
       items.push(['meleeArmor', String(d.meleeArmor), 'Melee armor']);
       items.push(['pierceArmor', String(d.pierceArmor), 'Pierce armor']);

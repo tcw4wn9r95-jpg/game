@@ -57,6 +57,9 @@ export function drawBuildingSheet(view: View, z = 48): void {
   ctx.fillStyle = '#5f8a3e';
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   const list = [
+    ['blacksmith', 3, 0],
+    ['market', 3, 0],
+    ['university', 3, 0],
     ['town_center', 4, 0],
     ['house', 2, 0],
     ['mill', 2, 0],
@@ -69,8 +72,9 @@ export function drawBuildingSheet(view: View, z = 48): void {
     ['farm', 3, 3],
   ] as const;
   let x = 10, y = 10, rowH = 0;
+  const ages = Number(new URLSearchParams(location.search).get('age') ?? 0);
   for (const [type, size, variant] of list) {
-    const sp = sprites.get(type, size, 0, variant);
+    const sp = sprites.get(type, size, 0, variant, ages);
     if (x + sp.c.width > ctx.canvas.width) {
       x = 10;
       y += rowH;

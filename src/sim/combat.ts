@@ -12,9 +12,11 @@ import {
   UNIT_DEFS,
   type Unit,
   type UnitClass,
+  type UnitDef,
   type UnitType,
   distToRect,
 } from './entities';
+import { buildingArmor, unitStats } from './techs';
 import type { World } from './world';
 
 /** Contact distance (edge to edge, tiles) for a melee blow. */
@@ -60,9 +62,8 @@ function classesOf(e: Unit | Building): UnitClass[] {
   return e.kind === 'unit' ? UNIT_DEFS[e.type].classes : BUILDING_DEFS[e.type].classes;
 }
 
-/** Damage one blow or arrow from a unit of type `from` does to `target`. */
-export function damageOf(from: UnitType, target: Unit | Building): number {
-  const a = UNIT_DEFS[from];
+/** Damage one blow or arrow does to `target`, from an attacker with stats `a` (after research). */
+export function damageOf(a: UnitDef, target: Unit | Building, w?: World): number {
   // Strongest bonus that applies, times the worst penalty (a unit hesitant against pikes, say).
   let up = 1, down = 1;
   for (const c of classesOf(target)) {
@@ -71,8 +72,13 @@ export function damageOf(from: UnitType, target: Unit | Building): number {
     down = Math.min(down, m);
   }
   const mult = up * down;
-  const def = target.kind === 'unit' ? UNIT_DEFS[target.type] : BUILDING_DEFS[target.type];
-  const armor = a.attackType === 'melee' ? def.meleeArmor : def.pierceArmor;
+  let melee: number, pierce: number;
+  if (target.kind === 'unit') {
+    const d = w ? unitStats(w, target.owner, target.type) : UNIT_DEFS[target.type];
+    (melee = d.meleeArmor), (pierce = d.pierceArmor);
+  } else if (w) ({ melee, pierce } = buildingArmor(w, target));
+  else (melee = BUILDING_DEFS[target.type].meleeArmor), (pierce = BUILDING_DEFS[target.type].pierceArmor);
+  const armor = a.attackType === 'melee' ? melee : pierce;
   return Math.max(1, a.attack * mult - armor);
 }
 
@@ -90,8 +96,8 @@ function centre(t: Unit | Building): { x: number; y: number } {
 const hostile = (a: { owner: number }, b: Entity): b is Unit | Building => b.kind !== 'resource' && b.owner !== a.owner;
 
 /** Reach for this unit's attack (tiles, edge to edge). */
-function reach(u: Unit, o: Extract<Order, { type: 'attack' | 'heal' | 'convert' }>): number {
-  const def = UNIT_DEFS[u.type];
+function reach(w: World, u: Unit, o: Extract<Order, { type: 'attack' | 'heal' | 'convert' }>): number {
+  const def = unitStats(w, u.owner, u.type);
   if (o.type === 'heal') return HEAL_RANGE;
   return def.range > 0 ? def.range : MELEE_REACH;
 }
@@ -117,7 +123,7 @@ export function combatThink(w: World, u: Unit): boolean {
   const valid =
     t &&
     t.kind !== 'resource' &&
-    (o.type === 'heal' ? t.kind === 'unit' && t.owner === u.owner && t.hp < UNIT_DEFS[t.type].hp : t.owner !== u.owner) &&
+    (o.type === 'heal' ? t.kind === 'unit' && t.owner === u.owner && t.hp < unitStats(w, t.owner, t.type).hp : t.owner !== u.owner) &&
     (o.type !== 'convert' || t.kind === 'unit') &&
     // Self-picked targets are dropped once out of sight; ordered ones are followed.
     (!(o.type === 'attack' && o.auto) || t.kind === 'building' || w.fog[u.owner]?.isVisible(t.x, t.y) !== false);
@@ -127,11 +133,11 @@ export function combatThink(w: World, u: Unit): boolean {
   // Leashes: stand-ground units never move; defensive ones break off a long chase.
   if (o.type === 'attack' && o.auto && u.guard) {
     const far = Math.hypot(u.x - u.guard.x, u.y - u.guard.y);
-    if ((u.stance === 'defensive' && far > LEASH) || (u.stance === 'stand' && gap(u, target) > reach(u, o) + 0.05)) return endCombat(w, u);
+    if ((u.stance === 'defensive' && far > LEASH) || (u.stance === 'stand' && gap(u, target) > reach(w, u, o) + 0.05)) return endCombat(w, u);
   }
 
   const g = gap(u, target);
-  if (g > reach(u, o)) {
+  if (g > reach(w, u, o)) {
     chase(w, u, target);
     return true;
   }
@@ -140,14 +146,14 @@ export function combatThink(w: World, u: Unit): boolean {
   u.flow = null;
   const c = centre(target);
   if (Math.abs(c.x - u.x) > 0.05) u.face = c.x > u.x ? 1 : -1;
-  if (o.type === 'heal') return heal(u, target as Unit);
+  if (o.type === 'heal') return heal(w, u, target as Unit);
   if (o.type === 'convert') return convert(w, u, target as Unit);
   u.state = 'attack';
   if (u.cooldown > 0) return true;
-  u.cooldown = Math.round(UNIT_DEFS[u.type].reload * TICK_RATE);
-  const def = UNIT_DEFS[u.type];
+  const def = unitStats(w, u.owner, u.type);
+  u.cooldown = Math.round(def.reload * TICK_RATE);
   if (def.range > 0) shoot(w, u, target);
-  else applyDamage(w, target, damageOf(u.type, target), u);
+  else applyDamage(w, target, damageOf(def, target, w), u);
   return true;
 }
 
@@ -202,9 +208,9 @@ function clearLine(w: World, x0: number, y0: number, x1: number, y1: number): bo
   return true;
 }
 
-function heal(u: Unit, t: Unit): boolean {
+function heal(w: World, u: Unit, t: Unit): boolean {
   u.state = 'heal';
-  const max = UNIT_DEFS[t.type].hp;
+  const max = unitStats(w, t.owner, t.type).hp;
   t.hp = Math.min(max, t.hp + HEAL_RATE * DT);
   return true;
 }
@@ -240,12 +246,12 @@ function convert(w: World, u: Unit, t: Unit): boolean {
 
 /** Finds work for an idle unit according to its stance: retaliate, engage, or heal. */
 function acquire(w: World, u: Unit): void {
-  const def = UNIT_DEFS[u.type];
+  const def = unitStats(w, u.owner, u.type);
   if (def.healer) {
     let best: Unit | null = null;
     let bd = Infinity;
     w.spatial.query(u.x, u.y, def.los, (o, d) => {
-      if (o.owner !== u.owner || o.id === u.id || o.hp >= UNIT_DEFS[o.type].hp) return;
+      if (o.owner !== u.owner || o.id === u.id || o.hp >= unitStats(w, o.owner, o.type).hp) return;
       if (d < bd) (bd = d), (best = o);
     });
     if (best) setOrder(u, { type: 'heal', id: (best as Unit).id, auto: true });
@@ -278,7 +284,7 @@ function acquire(w: World, u: Unit): void {
 // ---------- damage ----------
 
 function shoot(w: World, u: Unit, t: Unit | Building): void {
-  const def = UNIT_DEFS[u.type];
+  const def = unitStats(w, u.owner, u.type);
   const c = centre(t);
   // Aim at a random point inside a building; at a unit, where it stands now.
   const tx = t.kind === 'building' ? t.x + 0.3 + w.rng.next() * (t.size - 0.6) : c.x;
@@ -313,7 +319,7 @@ export function projectileTick(w: World): void {
     const t = w.get(p.target);
     if (!t || t.kind === 'resource') continue;
     const hit = t.kind === 'building' ? distToRect(p.tx, p.ty, t.x, t.y, t.size) < 0.1 : Math.hypot(t.x - p.tx, t.y - p.ty) <= HIT_RADIUS + UNIT_DEFS[t.type].radius;
-    if (hit) applyDamage(w, t, damageOf(p.from, t), w.unit(p.shooter) ?? null, p.owner);
+    if (hit) applyDamage(w, t, damageOf(unitStats(w, p.owner, p.from), t, w), w.unit(p.shooter) ?? null, p.owner);
   }
   w.projectiles = keep;
 }

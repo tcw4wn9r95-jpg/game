@@ -40,7 +40,9 @@ export class Hud {
     top.appendChild(bar);
 
     const age = el('div', 'ageplate frame');
-    age.innerHTML = `<span class="ageplate-icon">${ICONS.crown}</span><span class="ageplate-text"><b data-v="ageNum"></b><span data-v="ageName"></span></span>`;
+    age.innerHTML = `<span class="ageplate-icon">${ICONS.crown}</span><span class="ageplate-text"><b data-v="ageNum"></b><span data-v="ageName"></span></span><span class="ageplate-bar" hidden><span></span></span>`;
+    this.ageBar = age.querySelector<HTMLElement>('.ageplate-bar')!;
+    tip(age, () => this.ageTip());
     age.querySelectorAll<HTMLElement>('[data-v]').forEach((n) => this.values.set(n.dataset.v!, n));
     top.appendChild(age);
 
@@ -146,9 +148,43 @@ export class Hud {
     for (const k of RESOURCE_KINDS) this.set(`${k}W`, String(workers[k]));
     for (const k of RESOURCE_KINDS) this.set(k, String(Math.floor(ps.resources[k])));
     this.set('pop', `${ps.pop}/${ps.popCap}`);
-    this.set('ageNum', ages[ps.age].numeral);
-    this.set('ageName', `${ages[ps.age].name} Age`);
+    // While advancing, the plate names the coming age and fills a bar.
+    let advancing: { age: number; progress: number } | null = null;
+    for (const b of world.buildings(player))
+      for (const q of b.queue)
+        if (q.tech && q === b.queue[0] && /^age\d$/.test(q.tech)) advancing = { age: Number(q.tech.slice(3)) - 1, progress: q.progress };
+    this.world = world;
+    this.player = player;
+    // Advancing: show the coming age's numeral and the progress, kept as short as the usual label.
+    this.set('ageNum', advancing ? `→ ${ages[advancing.age].numeral}` : ages[ps.age].numeral);
+    this.set('ageName', advancing ? `Advancing ${Math.floor(advancing.progress * 100)}%` : `${ages[ps.age].name} Age`);
+    this.ageBar.hidden = !advancing;
+    if (advancing) (this.ageBar.firstElementChild as HTMLElement).style.width = `${advancing.progress * 100}%`;
     this.set('clock', formatClock(world.time));
+  }
+
+  private ageBar!: HTMLElement;
+  private world: World | null = null;
+  private player = 0;
+
+  private ageTip(): string {
+    const w = this.world;
+    if (!w) return '';
+    const p = w.players[this.player];
+    const next = ages[p.age + 1] as { name: string; cost: Record<string, number>; requires?: { buildings: number } } | undefined;
+    const body = next
+      ? `Next: the ${next.name} Age, for ${Object.entries(next.cost).map(([k, v]) => `${v} ${k}`).join(' and ')}, researched at the Town Center. Needs ${next.requires?.buildings ?? 2} different ${ages[p.age].name} Age buildings.`
+      : 'The highest age.';
+    return `<div class="tip-title">${ages[p.age].name} Age</div><div class="tip-body">${body}</div>`;
+  }
+
+  /** A large banner across the top for an age-up. */
+  announce(title: string, sub: string): void {
+    const b = el('div', 'age-banner');
+    b.innerHTML = `<div class="age-banner-title">${title}</div><div class="age-banner-sub">${sub}</div>`;
+    this.toasts.parentElement!.appendChild(b);
+    setTimeout(() => b.classList.add('fade'), 3200);
+    setTimeout(() => b.remove(), 4200);
   }
 
   private set(key: string, text: string): void {

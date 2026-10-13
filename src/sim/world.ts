@@ -21,6 +21,7 @@ import { productionTick } from './production';
 import { Pathfinder } from './pathfinding';
 import { Rng } from './rng';
 import { SpatialHash } from './spatial';
+import { type PlayerMods, type TechId, baseMods, buildingMaxHp, unitStats } from './techs';
 import { type GameMap, Terrain } from './terrain';
 
 export { DT, RESOURCE_KINDS, TICK_MS, TICK_RATE, type ResourceKind } from './constants';
@@ -38,6 +39,12 @@ export interface PlayerState {
   age: number;
   /** Replant farms automatically when they run out (costs a farm's wood). */
   autoReseed: boolean;
+  /** Technologies researched, in order. */
+  techs: TechId[];
+  /** Effective stats after research. */
+  mods: PlayerMods;
+  /** Market prices (gold per 100) for buying each commodity. */
+  market: { food: number; wood: number; stone: number };
 }
 
 export type SimEvent =
@@ -49,7 +56,8 @@ export type SimEvent =
   | { type: 'hit'; owner: number; by: number; id: number; x: number; y: number; amount: number; building: boolean }
   | { type: 'death'; owner: number; unit: UnitType; x: number; y: number; face: number; by: number }
   | { type: 'destroyed'; owner: number; building: BuildingType; x: number; y: number; size: number; by: number }
-  | { type: 'converted'; owner: number; from: number; id: number; x: number; y: number };
+  | { type: 'converted'; owner: number; from: number; id: number; x: number; y: number }
+  | { type: 'researched'; owner: number; tech: TechId };
 
 /** Game state, advanced only by step(); input and AI both act through issue(). */
 export class World {
@@ -91,6 +99,9 @@ export class World {
       popCap: 0,
       age: 0,
       autoReseed: true,
+      techs: [],
+      mods: baseMods(),
+      market: { food: 100, wood: 100, stone: 130 },
     }));
     this.fog = map.starts.map((s) => {
       const fog = new Fog(map.size);
@@ -159,7 +170,7 @@ export class World {
       y,
       px: x,
       py: y,
-      hp: UNIT_DEFS[type].hp,
+      hp: unitStats(this, owner, type).hp,
       face: 1,
       stance: UNIT_DEFS[type].stance,
       cooldown: 0,
@@ -187,6 +198,7 @@ export class World {
     const { map, grid } = this;
     const fog = this.fog[owner];
     if (def.requires && ![...this.buildings(owner)].some((b) => b.type === def.requires && b.complete)) return false;
+    if (this.players[owner] && def.age > this.players[owner].age) return false;
     for (let ty = y; ty < y + size; ty++)
       for (let tx = x; tx < x + size; tx++) {
         if (!grid.inside(tx, ty)) return false;
@@ -214,9 +226,10 @@ export class World {
       queue: [],
       rally: null,
       repeat: false,
-      amount: def.food ?? 0,
+      amount: def.food ? def.food + (this.players[owner]?.mods.farmFood ?? 0) : 0,
       housed: false,
     });
+    if (complete) b.hp = buildingMaxHp(this, b);
     this.grid.setBuilding(x, y, def.size, b.id, !def.walkable);
     // Anyone standing on the new footprint steps off it.
     for (const u of this.units()) {
@@ -318,9 +331,9 @@ export class World {
 
   private updateVision(): void {
     const sources: VisionSource[][] = this.players.map(() => []);
-    for (const u of this.units()) sources[u.owner]?.push({ x: u.x, y: u.y, r: UNIT_DEFS[u.type].los });
+    for (const u of this.units()) sources[u.owner]?.push({ x: u.x, y: u.y, r: unitStats(this, u.owner, u.type).los });
     for (const b of this.buildings())
-      sources[b.owner]?.push({ x: b.x + b.size / 2, y: b.y + b.size / 2, r: BUILDING_DEFS[b.type].los + b.size / 2 });
+      sources[b.owner]?.push({ x: b.x + b.size / 2, y: b.y + b.size / 2, r: BUILDING_DEFS[b.type].los + b.size / 2 + (this.players[b.owner]?.mods.building.los ?? 0) });
     this.fog.forEach((f, i) => f.update(sources[i]));
   }
 }

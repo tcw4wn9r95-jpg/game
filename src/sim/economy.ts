@@ -15,7 +15,8 @@ import type { Goal } from './pathfinding';
 import { Feature } from './terrain';
 import type { World } from './world';
 
-const CAPACITY = economy.carryCapacity;
+/** Carry capacity for a player's villagers (Wheelbarrow and Hand Cart add to it). */
+const capacity = (w: World, owner: number) => economy.carryCapacity + (w.players[owner]?.mods.carry ?? 0);
 /** How close (tiles, centre to target edge) a unit must be to work a tile or building. */
 const REACH = 1.05;
 /** Reach for point targets such as animals and fish. */
@@ -144,7 +145,7 @@ function reseed(w: World, farm: Building): void {
   const wood = def.cost.wood ?? 0;
   if (p.autoReseed && p.resources.wood >= wood) {
     p.resources.wood -= wood;
-    farm.amount = def.food ?? 0;
+    farm.amount = (def.food ?? 0) + (w.players[farm.owner]?.mods.farmFood ?? 0);
   } else {
     if (p.autoReseed) w.events.push({ type: 'error', owner: farm.owner, message: 'A farm ran out: not enough wood to replant' });
     w.remove(farm.id);
@@ -293,7 +294,8 @@ export function think(w: World, u: Unit): void {
 
 function gather(w: World, u: Unit, o: Extract<Order, { type: 'gather' }>): void {
   if (u.carry && u.carry.res !== o.res) u.carry = null; // switching jobs drops the load
-  if (u.carry && u.carry.amount >= CAPACITY) return goDropoff(w, u, o);
+  const cap = capacity(w, u.owner);
+  if (u.carry && u.carry.amount >= cap) return goDropoff(w, u, o);
 
   let t = resolve(w, o.target);
   if (t?.inside && o.target.kind === 'entity' && farmTaken(w, o.target.id, u)) {
@@ -321,13 +323,13 @@ function gather(w: World, u: Unit, o: Extract<Order, { type: 'gather' }>): void 
   u.state = 'gather';
   u.repaths = 0;
   if (t.x + t.size / 2 !== u.x) u.face = t.x + t.size / 2 > u.x ? 1 : -1;
-  u.gatherAcc += economy.gatherRates[RATE_KEY[o.source as Source]] * DT;
+  u.gatherAcc += economy.gatherRates[RATE_KEY[o.source as Source]] * (w.players[u.owner]?.mods.gather[o.source] ?? 1) * DT;
   while (u.gatherAcc >= 1) {
     u.gatherAcc -= 1;
     if (!takeOne(w, o.target)) break;
     if (!u.carry) u.carry = { res: o.res, amount: 0 };
     u.carry.amount++;
-    if (u.carry.amount >= CAPACITY) break;
+    if (u.carry.amount >= cap) break;
   }
 }
 
@@ -490,7 +492,8 @@ export function constructionTick(w: World): void {
     const def = BUILDING_DEFS[b.type];
     // Extra builders help with diminishing returns: 1 builder = 1x, 4 builders = 2x.
     const before = b.progress;
-    b.progress = Math.min(1, b.progress + (DT / def.buildTime) * ((n + 2) / 3));
+    const speed = w.players[b.owner]?.mods.buildSpeed ?? 1;
+    b.progress = Math.min(1, b.progress + (DT / def.buildTime) * ((n + 2) / 3) * speed);
     b.hp = Math.min(def.hp, b.hp + (b.progress - before) * def.hp);
     if (b.progress >= 1) {
       b.complete = true;

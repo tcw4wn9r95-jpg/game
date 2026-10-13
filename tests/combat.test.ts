@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { damageOf } from '../src/sim/combat';
-import type { Unit, UnitType } from '../src/sim/entities';
+import { UNIT_DEFS, type Unit, type UnitType } from '../src/sim/entities';
 import { Feature, type GameMap } from '../src/sim/terrain';
 import { TICK_RATE, World } from '../src/sim/world';
 
@@ -93,13 +93,13 @@ describe('combat: counters (M4 acceptance)', () => {
     const militia = w.spawnUnit('militia', 1, 6, 5);
     const archer = w.spawnUnit('archer', 1, 7, 5);
     // Spear vs scout: 5 x 2.5 - 0 armour.
-    expect(damageOf('spearman', scout)).toBe(12.5);
+    expect(damageOf(UNIT_DEFS.spearman, scout)).toBe(12.5);
     // Archer vs militia: 4 x 2 - 1 pierce armour.
-    expect(damageOf('archer', militia)).toBe(7);
+    expect(damageOf(UNIT_DEFS.archer, militia)).toBe(7);
     // Skirmisher vs archer: 2 x 2.5.
-    expect(damageOf('skirmisher', archer)).toBe(5);
+    expect(damageOf(UNIT_DEFS.skirmisher, archer)).toBe(5);
     // Never less than 1.
-    expect(damageOf('villager', w.spawnUnit('knight', 1, 8, 5))).toBe(1);
+    expect(damageOf(UNIT_DEFS.villager, w.spawnUnit('knight', 1, 8, 5))).toBe(1);
   });
 });
 

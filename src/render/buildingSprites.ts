@@ -14,10 +14,39 @@ type Painter = (g: G, n: number, team: string, rng: Rng, variant: number) => voi
 const RISE = 150;
 const PAD = 26;
 
-const PLASTER = { base: '#d3c39f', frame: '#4a3019', plinth: 3 };
-const STONE = { base: '#9a958b', mat: 'stone' as const };
-const THATCH = { color: '#bf9f55', kind: 'thatch' as const };
-const SHINGLE = { color: '#8a6a48', kind: 'shingle' as const };
+// Materials by age: the town is restyled as it advances, thatch and wattle giving
+// way to timber and shingle, then a stone ground storey under clay tile, then
+// dressed stone under slate. Set by style() before each sprite is painted.
+type Wall = { base: string; frame?: string | null; plinth?: number; mat?: 'plaster' | 'stone' | 'planks' };
+type Roof = { color: string; kind: 'thatch' | 'shingle' | 'canvas'; trim?: string };
+let PLASTER: Wall = { base: '#d3c39f', frame: '#4a3019', plinth: 3 };
+let STONE: Wall = { base: '#9a958b', mat: 'stone' };
+let THATCH: Roof = { color: '#bf9f55', kind: 'thatch' };
+let SHINGLE: Roof = { color: '#8a6a48', kind: 'shingle' };
+/** Gilded finials and trims in the last age. */
+let ORNATE = false;
+
+function style(age: number): void {
+  ORNATE = age >= 3;
+  STONE = { base: age >= 3 ? '#b8b1a2' : '#9a958b', mat: 'stone' };
+  if (age === 0) {
+    PLASTER = { base: '#d3c39f', frame: '#4a3019', plinth: 3 };
+    THATCH = { color: '#bf9f55', kind: 'thatch' };
+    SHINGLE = { color: '#8a6a48', kind: 'shingle' };
+  } else if (age === 1) {
+    PLASTER = { base: '#dccfae', frame: '#3a2412', plinth: 6 };
+    THATCH = { color: '#7e5d3e', kind: 'shingle' };
+    SHINGLE = { color: '#6f5236', kind: 'shingle' };
+  } else if (age === 2) {
+    PLASTER = { base: '#d6cbb0', frame: '#3a2412', plinth: 14 };
+    THATCH = { color: '#a5523a', kind: 'shingle' };
+    SHINGLE = { color: '#93482f', kind: 'shingle' };
+  } else {
+    PLASTER = { base: '#c4bcab', mat: 'stone', frame: null, plinth: 4 };
+    THATCH = { color: '#56606e', kind: 'shingle' };
+    SHINGLE = { color: '#4c5562', kind: 'shingle' };
+  }
+}
 
 function flag(g: G, x: number, y: number, z: number, team: string, s = 1): void {
   const [bx, by] = P(x, y, z);
@@ -29,8 +58,21 @@ function flag(g: G, x: number, y: number, z: number, team: string, s = 1): void 
   g.fillRect(bx - 0.7, by - 24 * s, 1.4, 24 * s);
   g.fillStyle = '#e0b54a';
   g.beginPath();
-  g.arc(bx, by - 24.5 * s, 1.2, 0, Math.PI * 2);
+  g.arc(bx, by - 24.5 * s, ORNATE ? 2 : 1.2, 0, Math.PI * 2);
   g.fill();
+  if (ORNATE) {
+    // A gilded crown finial in the Dominion Age.
+    g.beginPath();
+    g.moveTo(bx - 2.2, by - 26 * s);
+    g.lineTo(bx - 2.2, by - 29 * s);
+    g.lineTo(bx - 1, by - 27.5 * s);
+    g.lineTo(bx, by - 30 * s);
+    g.lineTo(bx + 1, by - 27.5 * s);
+    g.lineTo(bx + 2.2, by - 29 * s);
+    g.lineTo(bx + 2.2, by - 26 * s);
+    g.closePath();
+    g.fill();
+  }
   // Pennant rippling in the wind, lit on the bellies of its folds.
   const top = by - 22.5 * s, bot = by - 14.5 * s, len = 15 * s;
   g.beginPath();
@@ -280,7 +322,7 @@ const PAINTERS: Record<BuildingType, Painter> = {
         g.fillRect(len * 0.25, 68, len * 0.5, 10);
       },
     }, 35);
-    hipRoof(g, t0, t0, t1, t1, 84, 26, { color: '#b9a46a', kind: 'shingle' }, 0.15, 5);
+    hipRoof(g, t0, t0, t1, t1, 84, 26, THATCH.kind === 'thatch' ? { color: '#b9a46a', kind: 'shingle' } : SHINGLE, 0.15, 5);
     flag(g, n / 2, n / 2, 110, team, 1.2);
     // Chimney with a wisp of smoke.
     box(g, n - 1.3, 1.0, n - 1.0, 1.3, 64, STONE, {}, 37);
@@ -306,7 +348,7 @@ const PAINTERS: Record<BuildingType, Painter> = {
   house: (g, n, team) => {
     groundPatch(g, n, '#806a4a', 0.15);
     boxShadow(g, 0.25, 0.25, n - 0.2, n - 0.2, 44);
-    box(g, 0.25, 0.3, n - 0.25, n - 0.2, 22, { ...PLASTER, plinth: 4 }, {
+    box(g, 0.25, 0.3, n - 0.25, n - 0.2, 22, { ...PLASTER, plinth: Math.max(PLASTER.plinth ?? 0, 4) }, {
       left: (len) => {
         doorAt(g, len * 0.33, 6.5, 11);
         windowAt(g, len * 0.72, 9, 4, 5);
@@ -388,7 +430,7 @@ const PAINTERS: Record<BuildingType, Painter> = {
     box(g, 0.3, 0.35, n - 0.3, n - 0.3, 18, STONE, {
       left: (len) => doorAt(g, len * 0.4, 6, 10),
     }, 61);
-    box(g, 0.45, 0.5, n - 0.45, n - 0.45, 40, { ...PLASTER, plinth: 0 }, {
+    box(g, 0.45, 0.5, n - 0.45, n - 0.45, 40, { ...PLASTER, plinth: Math.max(PLASTER.plinth ?? 0, 0) }, {
       left: (len) => windowAt(g, len * 0.5, 26, 4, 5),
       right: (len) => windowAt(g, len / 2, 26, 4, 5),
     }, 63);
@@ -438,7 +480,7 @@ const PAINTERS: Record<BuildingType, Painter> = {
   barracks: (g, n, team) => {
     groundPatch(g, n, '#836748', 0.2);
     boxShadow(g, 0.2, 0.2, n - 0.2, n * 0.55, 50);
-    box(g, 0.2, 0.2, n - 0.2, n * 0.55, 28, { ...PLASTER, plinth: 5 }, {
+    box(g, 0.2, 0.2, n - 0.2, n * 0.55, 28, { ...PLASTER, plinth: Math.max(PLASTER.plinth ?? 0, 5) }, {
       left: (len) => {
         doorAt(g, len / 2, 9, 14);
         for (const u of [len * 0.18, len * 0.82]) windowAt(g, u, 14, 4.5, 6);
@@ -562,7 +604,7 @@ const PAINTERS: Record<BuildingType, Painter> = {
     groundPatch(g, n, '#84694a', 0.2);
     // Open-fronted range house at the back, shooting lane and straw butts in front.
     boxShadow(g, 0.2, 0.2, n - 0.2, n * 0.45, 40);
-    box(g, 0.2, 0.2, n - 0.2, n * 0.45, 22, { ...PLASTER, plinth: 4 }, {
+    box(g, 0.2, 0.2, n - 0.2, n * 0.45, 22, { ...PLASTER, plinth: Math.max(PLASTER.plinth ?? 0, 4) }, {
       left: (len) => {
         for (const u of [len * 0.25, len * 0.5, len * 0.75]) {
           g.fillStyle = '#1e130a';
@@ -723,6 +765,158 @@ const PAINTERS: Record<BuildingType, Painter> = {
     g.fill();
     flag(g, 0.4, 0.4, 40, team, 0.8);
   },
+  blacksmith: (g, n, team) => {
+    groundPatch(g, n, '#6f6150', 0.2);
+    // Stone forge with a tall chimney; the open front shows the glowing hearth and anvil.
+    boxShadow(g, 0.2, 0.2, n - 0.2, n * 0.6, 50);
+    box(g, 0.2, 0.2, n - 0.2, n * 0.6, 26, STONE, {
+      left: (len) => {
+        // Open forge bay with a fire glow.
+        g.fillStyle = '#140b05';
+        g.fillRect(len * 0.18, 0, len * 0.42, 15);
+        const glow = g.createRadialGradient(len * 0.39, 4, 0.5, len * 0.39, 4, 9);
+        glow.addColorStop(0, 'rgba(255,190,80,0.95)');
+        glow.addColorStop(0.4, 'rgba(255,90,20,0.6)');
+        glow.addColorStop(1, 'rgba(255,60,10,0)');
+        g.fillStyle = glow;
+        g.fillRect(len * 0.18, 0, len * 0.42, 15);
+        g.fillStyle = mat(g, 'woodH', '#4a3019', 111);
+        g.fillRect(len * 0.16, 15, len * 0.46, 2);
+        windowAt(g, len * 0.8, 12, 4, 5);
+        banner(g, len * 0.08, 22, team);
+      },
+      right: (len) => windowAt(g, len / 2, 12, 4, 5),
+    }, 113);
+    gableRoof(g, 0.2, 0.2, n - 0.2, n * 0.6, 26, 18, SHINGLE, 'x', 0.15, 29);
+    box(g, n - 0.85, 0.35, n - 0.45, 0.75, 62, STONE, {}, 115);
+    boxTop(g, n - 0.85, 0.35, n - 0.45, 0.75, 62, 'stone', '#3c3833');
+    const [cx, cy] = P(n - 0.65, 0.55, 64);
+    for (let k = 0; k < 4; k++) {
+      const sm = g.createRadialGradient(cx + k * 2.5, cy - k * 6, 0, cx + k * 2.5, cy - k * 6, 4 + k * 1.6);
+      sm.addColorStop(0, `rgba(70,68,66,${0.45 - k * 0.09})`);
+      sm.addColorStop(1, 'rgba(70,68,66,0)');
+      g.fillStyle = sm;
+      g.beginPath();
+      g.arc(cx + k * 2.5, cy - k * 6, 4 + k * 1.6, 0, Math.PI * 2);
+      g.fill();
+    }
+    // Anvil on a stump, quench barrel and a rack of blades in the yard.
+    const [ax, ay] = P(n * 0.45, n * 0.8, 0);
+    g.fillStyle = 'rgba(8,12,4,0.35)';
+    g.beginPath();
+    g.ellipse(ax + 2, ay, 5, 1.8, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = mat(g, 'woodV', '#5a3a1c', 117);
+    g.fillRect(ax - 2.4, ay - 6, 4.8, 6);
+    const anvil = g.createLinearGradient(ax - 5, 0, ax + 5, 0);
+    anvil.addColorStop(0, '#8a9296');
+    anvil.addColorStop(1, '#2e3336');
+    g.fillStyle = anvil;
+    g.beginPath();
+    g.moveTo(ax - 5.5, ay - 9.5);
+    g.lineTo(ax + 4, ay - 9.5);
+    g.quadraticCurveTo(ax + 7, ay - 9, ax + 7.5, ay - 8);
+    g.lineTo(ax + 2, ay - 7.6);
+    g.lineTo(ax + 1.5, ay - 6);
+    g.lineTo(ax - 2.5, ay - 6);
+    g.lineTo(ax - 3, ay - 7.6);
+    g.lineTo(ax - 5.5, ay - 8);
+    g.closePath();
+    g.fill();
+    barrel(g, n * 0.7, n * 0.85, 3, 7);
+    for (let k = 0; k < 4; k++) line3(g, [n * 0.12 + k * 0.08, n * 0.85, 0], [n * 0.12 + k * 0.08, n * 0.85, 14], k % 2 ? '#c9d1d6' : '#aab3b8', 0.9);
+    line3(g, [n * 0.08, n * 0.85, 11], [n * 0.42, n * 0.85, 11], '#4e331b', 1.1);
+    flag(g, 0.3, 0.3, 32, team, 0.8);
+  },
+  market: (g, n, team) => {
+    groundPatch(g, n, '#8a7254', 0.25);
+    // Three striped stalls around a small square, heaped with produce.
+    const stall = (x0: number, y0: number, x1: number, y1: number, goods: string[]) => {
+      boxShadow(g, x0, y0, x1, y1, 26);
+      for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]] as const) post(g, x, y, 15, 1.8);
+      // Counter with goods.
+      box(g, x0 + 0.05, y1 - 0.2, x1 - 0.05, y1, 6, { base: '#7a5634', mat: 'planks' }, {}, 121);
+      for (let k = 0; k < goods.length * 4; k++) {
+        const t = (k + 0.5) / (goods.length * 4);
+        const [gx, gy] = P(x0 + 0.1 + (x1 - x0 - 0.2) * t, y1 - 0.1, 6.5);
+        const c = goods[k % goods.length];
+        const ball = g.createRadialGradient(gx - 0.5, gy - 0.8, 0.1, gx, gy - 0.5, 1.6);
+        ball.addColorStop(0, shadeColor(c, 1.35));
+        ball.addColorStop(1, shadeColor(c, 0.65));
+        g.fillStyle = ball;
+        g.beginPath();
+        g.arc(gx, gy - 0.6, 1.3, 0, Math.PI * 2);
+        g.fill();
+      }
+      hipRoof(g, x0, y0, x1, y1, 15, 9, { color: '#efe4c8', kind: 'canvas', trim: team }, 0.08);
+      // Awning stripes in the team colour.
+      for (let k = 1; k < 4; k++) {
+        const f = k / 4;
+        line3(g, [x0 + (x1 - x0) * f, y1 + 0.08, 15], [x0 + (x1 - x0) * f, (y0 + y1) / 2, 24], shadeColor(team, 1.1), 1.4);
+      }
+    };
+    stall(0.15, 0.2, n * 0.48, n * 0.42, ['#c4392b', '#e8a33a']);
+    stall(n * 0.55, 0.2, n - 0.15, n * 0.42, ['#6f9a3a', '#d8c36a']);
+    stall(n * 0.55, n * 0.55, n - 0.15, n * 0.8, ['#8a4a8a', '#c4392b']);
+    // Sacks, a barrel and crates in the square.
+    sack(g, n * 0.25, n * 0.7);
+    sack(g, n * 0.35, n * 0.78, 0.85);
+    barrel(g, n * 0.15, n * 0.85, 3, 7.5);
+    crate(g, n * 0.3, n * 0.52, 0.3);
+    flag(g, n * 0.1, n * 0.1, 30, team, 0.9);
+  },
+  university: (g, n, team) => {
+    groundPatch(g, n, '#8c8068', 0.2);
+    // A dressed-stone hall with tall arched windows and a domed observatory.
+    boxShadow(g, 0.25, 0.25, n - 0.25, n * 0.62, 70);
+    box(g, 0.25, 0.25, n - 0.25, n * 0.62, 32, { base: '#b5ae9f', mat: 'stone', plinth: 5 }, {
+      left: (len) => {
+        doorAt(g, len / 2, 8, 14);
+        for (const u of [len * 0.15, len * 0.3, len * 0.7, len * 0.85]) {
+          g.fillStyle = '#1a120a';
+          g.beginPath();
+          g.moveTo(u - 2.4, 9);
+          g.lineTo(u - 2.4, 21);
+          g.arc(u, 21, 2.4, Math.PI, 0, true);
+          g.lineTo(u + 2.4, 9);
+          g.closePath();
+          g.fill();
+          g.fillStyle = 'rgba(255,215,140,0.25)';
+          g.fill();
+        }
+        banner(g, len * 0.5, 30, team);
+      },
+      right: (len) => {
+        for (const u of [len * 0.3, len * 0.7]) windowAt(g, u, 14, 3.5, 7);
+      },
+    }, 131);
+    gableRoof(g, 0.25, 0.25, n - 0.25, n * 0.62, 32, 20, SHINGLE, 'x', 0.15, 33);
+    // Observatory drum and dome at the east end.
+    const dx = n - 0.75, dy = n * 0.45;
+    box(g, dx - 0.35, dy - 0.35, dx + 0.35, dy + 0.35, 58, { base: '#bdb6a7', mat: 'stone' }, { left: (len) => windowAt(g, len / 2, 44, 3, 6), right: (len) => windowAt(g, len / 2, 44, 3, 6) }, 133);
+    const [cx, cy] = P(dx, dy, 58);
+    const dome = g.createRadialGradient(cx - 5, cy - 8, 1, cx, cy - 3, 16);
+    dome.addColorStop(0, ORNATE ? '#f2d27a' : '#a8c4c0');
+    dome.addColorStop(1, ORNATE ? '#8a6a1c' : '#3e5a58');
+    g.fillStyle = dome;
+    g.beginPath();
+    g.ellipse(cx, cy - 2, 22.4 / 2, 15, 0, Math.PI, 0);
+    g.lineTo(cx + 11.2, cy);
+    g.ellipse(cx, cy, 11.2, 5.6, 0, 0, Math.PI);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = 'rgba(20,30,30,0.5)';
+    g.lineWidth = 0.6;
+    for (const k of [-0.5, 0, 0.5]) {
+      g.beginPath();
+      g.moveTo(cx + k * 11, cy + 2.8 * Math.cos(k));
+      g.quadraticCurveTo(cx + k * 6, cy - 12, cx, cy - 17);
+      g.stroke();
+    }
+    g.fillStyle = '#d9b44a';
+    g.fillRect(cx - 0.6, cy - 22, 1.2, 5);
+    flag(g, 0.4, 0.4, 38, team, 0.8);
+  },
 };
 
 /** Building sprites for one zoom level, cached per type, player and variant. */
@@ -732,17 +926,17 @@ export class BuildingSprites {
   /** `tw`: device px across one tile diamond. */
   constructor(readonly tw: number) {}
 
-  get(type: BuildingType, size: number, player: number, variant = 0): Sprite {
-    const key = `${type}|${player}|${variant}`;
+  get(type: BuildingType, size: number, player: number, variant = 0, age = 0): Sprite {
+    const key = `${type}|${player}|${variant}|${age}`;
     let sp = this.cache.get(key);
     if (!sp) {
-      sp = this.render(type, size, player, variant);
+      sp = this.render(type, size, player, variant, age);
       this.cache.set(key, sp);
     }
     return sp;
   }
 
-  private render(type: BuildingType, n: number, player: number, variant: number): Sprite {
+  private render(type: BuildingType, n: number, player: number, variant: number, age: number): Sprite {
     const k = this.tw / 64;
     const halfW = n * 32 + PAD;
     const c = document.createElement('canvas');
@@ -752,6 +946,7 @@ export class BuildingSprites {
     g.scale(k, k);
     g.translate(halfW, RISE);
     setScale(k);
+    style(age);
     PAINTERS[type](g, n, PLAYER_COLORS[player % PLAYER_COLORS.length], new Rng(n * 31 + type.length), variant);
     grade(c, 0.06, n * 97 + variant);
     // Anchor = footprint's north corner.

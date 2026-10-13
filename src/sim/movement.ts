@@ -1,5 +1,6 @@
 import { DT } from './constants';
 import { UNIT_DEFS, type Unit } from './entities';
+import { unitStats } from './techs';
 import type { World } from './world';
 
 /** Separation strength per tick (fraction of overlap resolved). */
@@ -12,7 +13,7 @@ const FLOW_EXIT = 2.5;
 export function moveUnit(w: World, u: Unit): void {
   if (u.flow) return flowMove(w, u);
   if (!u.path) return;
-  let step = UNIT_DEFS[u.type].speed * DT;
+  let step = unitStats(w, u.owner, u.type).speed * DT;
   while (step > 0 && u.pathIdx < u.path.length) {
     const wp = u.path[u.pathIdx];
     // A building or other obstacle appeared on the route: plan again.
@@ -51,7 +52,7 @@ export function moveUnit(w: World, u: Unit): void {
  */
 function flowMove(w: World, u: Unit): void {
   const f = u.flow!;
-  let step = UNIT_DEFS[u.type].speed * DT;
+  let step = unitStats(w, u.owner, u.type).speed * DT;
   for (let guard = 0; guard < 4 && step > 0; guard++) {
     const tx = Math.floor(u.x), ty = Math.floor(u.y);
     const here = f.field.at(tx, ty);

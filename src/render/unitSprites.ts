@@ -47,6 +47,9 @@ const LOOKS: Look[] = Array.from({ length: 8 }, (_, i) => ({
 }));
 export const lookIndex = (id: number) => (id * 2654435761) >>> 29;
 
+/** The tech that upgrades each unit line (and changes its kit). */
+export const UPGRADE_TECH: Partial<Record<UnitType, string>> = { militia: 'swordsman', spearman: 'pikeman', archer: 'crossbowman', scout: 'light_cavalry' };
+
 export interface UnitPose {
   view: View;
   /** Side view facing left. */
@@ -62,11 +65,11 @@ export class UnitSprites {
 
   constructor(readonly s: number) {}
 
-  get(type: UnitType, player: number, look: number, p: UnitPose): Sprite {
-    const key = `${type}|${player}|${look}|${p.view}|${p.left ? 1 : 0}|${p.anim}|${p.frame}|${p.tool}|${p.carry ?? ''}`;
+  get(type: UnitType, player: number, look: number, p: UnitPose, elite = false): Sprite {
+    const key = `${type}|${player}|${look}|${p.view}|${p.left ? 1 : 0}|${p.anim}|${p.frame}|${p.tool}|${p.carry ?? ''}|${elite ? 1 : 0}`;
     let sp = this.cache.get(key);
     if (!sp) {
-      sp = this.render(type, player, look, p);
+      sp = this.render(type, player, look, p, elite);
       this.cache.set(key, sp);
     }
     return sp;
@@ -87,11 +90,11 @@ export class UnitSprites {
     return c;
   }
 
-  private spec(player: number, look: number, p: UnitPose): FigureSpec {
-    return { view: p.view, anim: p.anim, frame: p.frame, tool: p.tool, carry: p.carry, team: PLAYER_COLORS[player % PLAYER_COLORS.length], look: LOOKS[look % LOOKS.length] };
+  private spec(player: number, look: number, p: UnitPose, elite = false): FigureSpec {
+    return { view: p.view, anim: p.anim, frame: p.frame, tool: p.tool, carry: p.carry, team: PLAYER_COLORS[player % PLAYER_COLORS.length], look: LOOKS[look % LOOKS.length], elite };
   }
 
-  private render(type: UnitType, player: number, look: number, p: UnitPose): Sprite {
+  private render(type: UnitType, player: number, look: number, p: UnitPose, elite: boolean): Sprite {
     const d = DEFS[type];
     const k = (this.s * d.tilesPer100) / 100; // device px per figure unit
     const c = document.createElement('canvas');
@@ -102,7 +105,7 @@ export class UnitSprites {
     g.translate(ax, ay);
     if (p.left) g.scale(-1, 1);
     g.scale(k, k);
-    d.draw(g, this.spec(player, look, p));
+    d.draw(g, this.spec(player, look, p, elite));
     grade(c, 0.05, look * 13 + p.frame);
     return { c, ax, ay };
   }

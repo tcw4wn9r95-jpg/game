@@ -16,7 +16,8 @@ import { PLAYER_COLORS } from './palette';
 import { type Sprite, SpriteSet } from './sprites';
 import { TerrainTextures } from './textures';
 import { tileHash } from './tiles';
-import { type UnitPose, UnitSprites, lookIndex, unitHeight } from './unitSprites';
+import { buildingMaxHp, unitStats } from '../sim/techs';
+import { UPGRADE_TECH, type UnitPose, UnitSprites, lookIndex, unitHeight } from './unitSprites';
 
 /** Time (ms) per frame spent building chunks after the first frame; at least one is built.
  * Chunks still missing draw from another zoom level meanwhile. */
@@ -360,10 +361,13 @@ export class Renderer {
     // Stagger animation phase per unit so crowds don't move in lockstep.
     const t = v.now + (u.id % 7) * 0.13;
     const p = this.poseFor(u, x, y, t);
-    this.put(v, v.art.units.get(u.type, u.owner, lookIndex(u.id), p), x, y);
+    const up = UPGRADE_TECH[u.type];
+    const elite = !!up && (this.world.players[u.owner]?.techs as string[] | undefined)?.includes(up) === true;
+    this.put(v, v.art.units.get(u.type, u.owner, lookIndex(u.id), p, elite), x, y);
     // Health shows on selection, and for a few seconds after any hit.
-    const hurt = u.attackedAt > this.world.tick - 50 && u.hp < UNIT_DEFS[u.type].hp;
-    if (selected || hurt) this.hpBar(v, px, py - S * SPRITE_K * (unitHeight(u.type) + 0.12), S * 0.9, u.hp / UNIT_DEFS[u.type].hp, u.owner);
+    const maxHp = unitStats(this.world, u.owner, u.type).hp;
+    const hurt = u.attackedAt > this.world.tick - 50 && u.hp < maxHp;
+    if (selected || hurt) this.hpBar(v, px, py - S * SPRITE_K * (unitHeight(u.type) + 0.12), S * 0.9, u.hp / maxHp, u.owner);
   }
 
   /** A fallen soldier lying on its side, fading out. */
@@ -596,7 +600,7 @@ export class Renderer {
     const def = BUILDING_DEFS[b.type];
     // Farms show how much crop is left.
     const variant = b.type === 'farm' && b.complete ? Math.max(1, Math.ceil((b.amount / (def.food ?? 1)) * 3)) : 0;
-    const sprite = v.art.buildings.get(b.type, b.size, b.owner, variant);
+    const sprite = v.art.buildings.get(b.type, b.size, b.owner, variant, this.world.players[b.owner]?.age ?? 0);
     const selected = v.overlay.selection.has(b.id);
     const ny = this.sy(v, b.x, b.y);
     const k = v.exact ? 1 : v.k;
@@ -635,18 +639,19 @@ export class Renderer {
       ctx.stroke();
     }
     if (selected && b.rally && b.owner === this.player) this.drawRally(v, b);
-    if (b.complete && b.hp < def.hp * 0.6 && !def.walkable) {
+    const maxHp = buildingMaxHp(this.world, b);
+    if (b.complete && b.hp < maxHp * 0.6 && !def.walkable) {
       // Burning: smoke from the start, flames once badly hurt.
-      const frac = b.hp / def.hp;
+      const frac = b.hp / maxHp;
       const top = S * b.size * 0.55;
       this.smoke(v, b.x + b.size * 0.5, b.y + b.size * 0.5, top, 1.2 - frac, b.id);
       if (frac < 0.45) this.flames(v, b.x + b.size * 0.35, b.y + b.size * 0.7, top * 0.5, 0.5 + b.size * 0.12, b.id);
       if (frac < 0.25) this.flames(v, b.x + b.size * 0.75, b.y + b.size * 0.4, top * 0.7, 0.45 + b.size * 0.1, b.id + 3);
     }
-    if (selected || !b.complete || (b.hp < def.hp && !def.walkable)) {
+    if (selected || !b.complete || (b.hp < maxHp - 0.5 && !def.walkable)) {
       const cx = this.sx(v, b.x + b.size / 2, b.y + b.size / 2);
       const top = def.walkable ? this.sy(v, b.x, b.y) - S * 0.6 : ny - S * (0.4 + b.size * 0.55);
-      this.hpBar(v, cx, top, Math.min(b.size * S * 1.2, S * 3), b.complete ? b.hp / def.hp : b.progress, b.owner, !b.complete);
+      this.hpBar(v, cx, top, Math.min(b.size * S * 1.2, S * 3), b.complete ? b.hp / maxHp : b.progress, b.owner, !b.complete);
     }
   }
 
@@ -694,7 +699,7 @@ export class Renderer {
     ctx.strokeStyle = gh.valid ? 'rgba(170,255,180,0.95)' : 'rgba(255,140,130,0.95)';
     ctx.lineWidth = Math.max(1.5, v.S / 14);
     ctx.stroke();
-    this.put(v, v.art.buildings.get(gh.type, size, this.player, gh.type === 'farm' ? 3 : 0), gh.x, gh.y, 0.6);
+    this.put(v, v.art.buildings.get(gh.type, size, this.player, gh.type === 'farm' ? 3 : 0, this.world.players[this.player]?.age ?? 0), gh.x, gh.y, 0.6);
   }
 
   /** AoE-style health bar in the owner's colour (gold while under construction). */

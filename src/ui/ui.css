@@ -965,3 +965,63 @@
   border-color: #c4392b;
   cursor: pointer;
 }
+
+.ageplate {
+  position: relative;
+}
+
+.ageplate-bar {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 3px;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ageplate-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #c8962a, #ffe28a);
+}
+
+.age-banner {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--safe-t) + 64px);
+  transform: translateX(-50%);
+  padding: 10px 34px 12px;
+  text-align: center;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(40, 22, 6, 0.92), rgba(40, 22, 6, 0.6) 70%, rgba(40, 22, 6, 0));
+  animation: banner-in 0.6s ease-out;
+  transition: opacity 1s;
+}
+
+.age-banner.fade {
+  opacity: 0;
+}
+
+.age-banner-title {
+  font: 700 26px/1.1 var(--title-font);
+  letter-spacing: 0.08em;
+  color: #ffe9a8;
+  text-shadow: 0 2px 2px #000, 0 0 18px rgba(255, 200, 80, 0.6);
+}
+
+.age-banner-sub {
+  margin-top: 4px;
+  font: 600 14px/1.2 var(--body-font, 'Alegreya Sans', sans-serif);
+  color: #f1e3c0;
+  text-shadow: 0 1px 1px #000;
+}
+
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(1.25);
+  }
+}
