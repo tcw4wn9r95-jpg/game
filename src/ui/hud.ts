@@ -115,13 +115,19 @@ export class Hud {
   }
 
   /** Short message that fades after a few seconds. */
-  toast(message: string): void {
-    const t = el('div', 'toast frame');
+  toast(message: string, onTap?: () => void): void {
+    const t = el('div', onTap ? 'toast frame alert' : 'toast frame');
     t.textContent = message;
+    if (onTap) {
+      t.addEventListener('click', () => {
+        onTap();
+        t.remove();
+      });
+    }
     this.toasts.appendChild(t);
     while (this.toasts.children.length > 3) this.toasts.firstElementChild!.remove();
-    setTimeout(() => t.classList.add('fade'), 2200);
-    setTimeout(() => t.remove(), 2800);
+    setTimeout(() => t.classList.add('fade'), onTap ? 4200 : 2200);
+    setTimeout(() => t.remove(), onTap ? 4800 : 2800);
   }
 
   update(world: World, player: number, idleVillagers = 0, idleMilitary = 0): void {

@@ -2,7 +2,7 @@
 import type { Camera } from '../render/camera';
 import type { Effect } from '../render/renderer';
 import { isGatherer, sourceOf } from '../sim/economy';
-import { BUILDING_DEFS, type Building, type BuildingType, type Entity, type GatherTarget, type Unit } from '../sim/entities';
+import { BUILDING_DEFS, type Building, type BuildingType, type Entity, type GatherTarget, UNIT_DEFS, type Unit } from '../sim/entities';
 import { unitHeight } from '../render/unitSprites';
 import type { Command } from '../sim/commands';
 import { Feature } from '../sim/terrain';
@@ -100,7 +100,23 @@ export class Controller {
     const units = this.ownUnits();
     const me = this.host.player;
 
-    if (pick.kind === 'entity' && pick.e.kind === 'unit' && pick.e.owner === me) return this.select([pick.e.id]);
+    if (pick.kind === 'entity' && pick.e.kind !== 'resource' && pick.e.owner !== me && units.length) {
+      // Tapping an enemy with units selected: attack it (monks convert).
+      this.issue({ type: 'attack', ids: units.map((u) => u.id), id: pick.e.id });
+      const p = pick.e.kind === 'building' ? { x: pick.e.x + pick.e.size / 2, y: pick.e.y + pick.e.size / 2 } : pick.e;
+      this.ring(p.x, p.y, '#ff6a50');
+      return;
+    }
+    if (pick.kind === 'entity' && pick.e.kind === 'unit' && pick.e.owner === me) {
+      const t = pick.e;
+      const monks = units.filter((u) => UNIT_DEFS[u.type].healer);
+      if (monks.length && monks.length === units.length && t.hp < UNIT_DEFS[t.type].hp && !monks.some((m) => m.id === t.id)) {
+        this.issue({ type: 'attack', ids: monks.map((u) => u.id), id: t.id });
+        this.ring(t.x, t.y, '#fff0b0');
+        return;
+      }
+      return this.select([t.id]);
+    }
     if (pick.kind === 'entity' && pick.e.kind === 'building' && pick.e.owner === me) {
       const b = pick.e;
       const farmers = units.filter(isGatherer);

@@ -6,7 +6,7 @@ import type { ResourceKind } from '../sim/constants';
 
 export type View = 'front' | 'side' | 'back';
 export type Anim = 'idle' | 'walk' | 'work';
-export type Tool = 'none' | 'axe' | 'pick' | 'hammer' | 'basket' | 'knife' | 'spear' | 'hoe' | 'sword';
+export type Tool = 'none' | 'axe' | 'pick' | 'hammer' | 'basket' | 'knife' | 'spear' | 'hoe' | 'sword' | 'bow' | 'javelin' | 'staff';
 
 export interface Look {
   female: boolean;
@@ -234,6 +234,19 @@ function workPose(tool: Tool, frame: number): Pose {
     case 'spear': {
       const k = [[-20, 40], [10, 70], [45, 95], [20, 60]][frame];
       return { bob: 0, lean: 10, ...legs, armN: [k[0], k[1]], armF: [k[0] - 15, k[1] - 10] };
+    }
+    case 'bow': {
+      // Nock, draw, full draw, loose; the bow arm stays levelled at the target.
+      const k = [[70, 100], [76, -40], [82, -88], [55, 30]][frame];
+      return { bob: 0, lean: -2, near: [16, 6], far: [-14, -6], armN: [k[0], k[1]], armF: [86, 90] };
+    }
+    case 'javelin': {
+      const k = [[-120, -150], [-150, -175], [70, 85], [35, 50]][frame];
+      return { bob: 0, lean: k[0] > 0 ? 14 : -6, near: [22, 8], far: [-16, -8], armN: [k[0], k[1]], armF: [40, 70] };
+    }
+    case 'staff': {
+      const k = [[-140, -150], [-160, -170], [-130, -140], [-150, -165]][frame];
+      return { bob: 0, lean: -4, ...legs, armN: [k[0], k[1]], armF: [k[0] + 15, k[1] + 10] };
     }
     default:
       return IDLE;
@@ -646,9 +659,57 @@ function gallop(frame: number, offset: number, hind: boolean): [number, number] 
 }
 
 export function drawScout(g: G, f: FigureSpec): void {
+  drawHorseman(g, f, false);
+}
+
+export function drawKnight(g: G, f: FigureSpec): void {
+  drawHorseman(g, f, true);
+}
+
+/** Heater shield with a team field, gold cross and a rim; (x, y) is its centre. */
+function kiteShield(g: G, x: number, y: number, s: number, team: string) {
+  g.beginPath();
+  g.moveTo(x - 6 * s, y - 8 * s);
+  g.quadraticCurveTo(x, y - 9.5 * s, x + 6 * s, y - 8 * s);
+  g.quadraticCurveTo(x + 6.5 * s, y + 2 * s, x, y + 10 * s);
+  g.quadraticCurveTo(x - 6.5 * s, y + 2 * s, x - 6 * s, y - 8 * s);
+  g.closePath();
+  g.strokeStyle = OUT;
+  g.lineWidth = 1.4;
+  g.stroke();
+  g.fillStyle = roundLight(g, x, y - 2 * s, 7 * s, 9 * s, team);
+  g.fill();
+  g.strokeStyle = '#e0b84a';
+  g.lineWidth = 1.6 * s;
+  g.beginPath();
+  g.moveTo(x, y - 8 * s);
+  g.lineTo(x, y + 8 * s);
+  g.moveTo(x - 5 * s, y - 3 * s);
+  g.lineTo(x + 5 * s, y - 3 * s);
+  g.stroke();
+}
+
+/** Flat-topped great helm with an eye slit and breaths, over a mail coif. */
+function greatHelm(g: G, x: number, y: number, view: View) {
+  const helm = g.createLinearGradient(x - 8, 0, x + 8, 0);
+  helm.addColorStop(0, '#9aa4a9');
+  helm.addColorStop(0.3, '#f2f6f8');
+  helm.addColorStop(0.5, '#a7b0b5');
+  helm.addColorStop(1, '#4b5459');
+  poly(g, [[x - 8, y - 9], [x + 8, y - 9], [x + 8.5, y + 7], [x - 8.5, y + 7]], helm);
+  if (view === 'back') return;
+  const sx = view === 'side' ? x + 2 : x - 6;
+  g.fillStyle = '#141414';
+  g.fillRect(sx, y - 2.5, view === 'side' ? 7 : 12, 1.6);
+  if (view === 'front') g.fillRect(x - 0.5, y - 2.5, 1, 7);
+  for (let k = 0; k < 3; k++) blob(g, (view === 'side' ? x + 5 : x + 3) + (k % 2), y + 2 + k * 1.6, 0.4, 0.4, '#141414', 0, false);
+}
+
+function drawHorseman(g: G, f: FigureSpec, knight: boolean): void {
   const moving = f.anim === 'walk';
+  const striking = f.anim === 'work';
   const bob = moving ? -Math.abs(Math.sin((f.frame / 6) * Math.PI * 2)) * 3 : 0;
-  const coat = '#7b4f2b', coatDark = '#5a3619', mane = '#2a1a0e';
+  const coat = knight ? '#8d8882' : '#7b4f2b', coatDark = knight ? '#5f5a55' : '#5a3619', mane = knight ? '#e8e2d6' : '#2a1a0e';
   groundShadow(g, f.view === 'side' ? 40 : 22, 8, 6);
 
   if (f.view === 'side') {
@@ -771,33 +832,63 @@ export function drawScout(g: G, f: FigureSpec): void {
     g.quadraticCurveTo(bx + 30, by - 22, bx + 10, by - 26);
     g.stroke();
     blob(g, bx + 52, by - 23, 1, 1, '#c8c8c8', 0, false);
-    // Caparison in team colour with a gold hem.
-    poly(g, [[body[0] - 18, body[1] - 12], [body[0] + 16, body[1] - 12], [body[0] + 20, body[1] + 10], [body[0] - 22, body[1] + 10]], f.team);
+    // Caparison in team colour with a gold hem; a knight's barding falls to the knees.
+    const drop = knight ? 20 : 10;
+    poly(g, [[body[0] - 20, body[1] - 12], [body[0] + 18, body[1] - 12], [body[0] + 22, body[1] + drop], [body[0] - 24, body[1] + drop]], f.team);
+    g.save();
+    g.beginPath();
+    g.rect(body[0] - 24, body[1] - 12, 46, drop + 12);
+    g.clip();
+    g.strokeStyle = 'rgba(0,0,0,0.22)';
+    g.lineWidth = 1.2;
+    for (let k = -3; k <= 3; k++) {
+      g.beginPath();
+      g.moveTo(body[0] + k * 6, body[1] - 10);
+      g.quadraticCurveTo(body[0] + k * 6.5 + 1.5, body[1] + drop / 2, body[0] + k * 7, body[1] + drop);
+      g.stroke();
+    }
+    g.restore();
     g.fillStyle = '#e2bc4c';
-    g.fillRect(body[0] - 22, body[1] + 8, 42, 2.5);
+    g.fillRect(body[0] - 24, body[1] + drop - 2, 46, 2.5);
+    if (knight) {
+      // Heraldic cross on the barding and a chanfron over the face.
+      g.fillStyle = '#e2bc4c';
+      g.fillRect(body[0] - 13, body[1] - 6, 3, 14);
+      g.fillRect(body[0] - 18, body[1] - 1, 13, 3);
+      poly(g, [[body[0] + 40, body[1] - 42], [body[0] + 49, body[1] - 34], [body[0] + 54, body[1] - 25], [body[0] + 47, body[1] - 27], [body[0] + 39, body[1] - 34]], STEEL);
+    }
     // Rider.
     const seat: P = [body[0] - 1, body[1] - 14];
-    limb(g, seat, [seat[0] + 8, seat[1] + 14], 7, '#6b5a42');
-    limb(g, [seat[0] + 8, seat[1] + 14], [seat[0] + 6, seat[1] + 26], 5.5, BOOT);
+    limb(g, seat, [seat[0] + 8, seat[1] + 14], 8, knight ? '#7d868b' : '#6b5a42', 0.8);
+    limb(g, [seat[0] + 8, seat[1] + 14], [seat[0] + 6, seat[1] + 26], 6, knight ? '#5b6368' : BOOT, 0.85);
     const sh: P = [seat[0] + 2, seat[1] - 26];
     const mail = g.createLinearGradient(seat[0] - 9, 0, seat[0] + 9, 0);
     mail.addColorStop(0, '#c9cfd2');
     mail.addColorStop(1, '#6f787d');
     poly(g, [[sh[0] - 8, sh[1]], [sh[0] + 8, sh[1]], [seat[0] + 9, seat[1] + 2], [seat[0] - 9, seat[1] + 2]], mail);
-    poly(g, [[sh[0] - 5, sh[1] + 2], [sh[0] + 6, sh[1] + 2], [seat[0] + 6, seat[1] + 3], [seat[0] - 5, seat[1] + 3]], f.team);
-    // Shield slung on the far side.
-    blob(g, sh[0] - 9, sh[1] + 12, 6.5, 9, f.team);
-    blob(g, sh[0] - 9, sh[1] + 12, 2, 2, '#e2bc4c', 0, false);
-    // Head with helmet and nasal.
-    blob(g, sh[0] + 2, sh[1] - 9, 7.5, 7.5, f.look.skin);
-    poly(g, [[sh[0] - 6, sh[1] - 10], [sh[0] + 2, sh[1] - 22], [sh[0] + 10, sh[1] - 10]], STEEL);
-    limb(g, [sh[0] + 7, sh[1] - 11], [sh[0] + 8, sh[1] - 4], 1.5, STEEL_DARK);
-    // Arm and spear.
-    const elbow = seg(sh, 40, 12);
-    const hand = seg(elbow, -60, 11);
-    limb(g, sh, elbow, 5, '#9aa3a8');
-    limb(g, elbow, hand, 4.5, f.look.skin);
-    drawTool(g, 'spear', hand, -150);
+    poly(g, [[sh[0] - 5, sh[1] + 2], [sh[0] + 6, sh[1] + 2], [seat[0] + 7, seat[1] + (knight ? 8 : 3)], [seat[0] - 6, seat[1] + (knight ? 8 : 3)]], f.team);
+    if (knight) kiteShield(g, sh[0] - 8, sh[1] + 12, 1.05, f.team);
+    else {
+      blob(g, sh[0] - 9, sh[1] + 12, 6.5, 9, f.team);
+      blob(g, sh[0] - 9, sh[1] + 12, 2, 2, '#e2bc4c', 0, false);
+    }
+    if (knight) greatHelm(g, sh[0] + 2, sh[1] - 9, 'side');
+    else {
+      blob(g, sh[0] + 2, sh[1] - 9, 7.5, 7.5, f.look.skin);
+      poly(g, [[sh[0] - 6, sh[1] - 10], [sh[0] + 2, sh[1] - 22], [sh[0] + 10, sh[1] - 10]], STEEL);
+      limb(g, [sh[0] + 7, sh[1] - 11], [sh[0] + 8, sh[1] - 4], 1.5, STEEL_DARK);
+    }
+    // Arm and weapon: the lance is couched level and drives forward on the strike.
+    const thrust = striking ? [0, 4, 10, 6][f.frame % 4] : 0;
+    const elbow = seg(sh, knight ? 60 : 40, 12);
+    const hand: P = knight ? [elbow[0] + 6 + thrust, elbow[1] + 2] : seg(elbow, -60 + thrust * 4, 11);
+    limb(g, sh, elbow, 5.5, '#9aa3a8');
+    limb(g, elbow, hand, 4.8, knight ? '#7d868b' : f.look.skin);
+    if (knight) {
+      limb(g, [hand[0] - 18, hand[1] + 3], [hand[0] + 44, hand[1] - 5], 2.6, HANDLE, 0.7);
+      poly(g, [[hand[0] + 43, hand[1] - 6.5], [hand[0] + 52, hand[1] - 6.2], [hand[0] + 43, hand[1] - 3.5]], STEEL);
+      poly(g, [[hand[0] - 2, hand[1] - 3], [hand[0] + 3, hand[1] - 3.5], [hand[0] + 3, hand[1] + 3], [hand[0] - 2, hand[1] + 3.5]], STEEL_DARK);
+    } else drawTool(g, 'spear', hand, -150 + thrust * 6);
     return;
   }
 
@@ -823,9 +914,10 @@ export function drawScout(g: G, f: FigureSpec): void {
     g.lineTo(bx, by + 10);
     g.stroke();
   } else blob(g, bx, by, 17, 16, coat);
-  poly(g, [[-15, by - 6], [15, by - 6], [16, by + 12], [-16, by + 12]], f.team);
+  const drop = knight ? 20 : 12;
+  poly(g, [[-15, by - 6], [15, by - 6], [17, by + drop], [-17, by + drop]], f.team);
   g.fillStyle = '#e2bc4c';
-  g.fillRect(-16, by + 10, 32, 2.5);
+  g.fillRect(-17, by + drop - 2, 34, 2.5);
   if (f.view === 'front') {
     // Neck and a long face with a white blaze, eyes on the sides of the head.
     poly(g, [[-7, by - 14], [7, by - 14], [6, by - 2], [-6, by - 2]], shade(coat, 0.9));
@@ -866,17 +958,25 @@ export function drawScout(g: G, f: FigureSpec): void {
   mail.addColorStop(0, '#c9cfd2');
   mail.addColorStop(1, '#6f787d');
   poly(g, [[-10, sh[1]], [10, sh[1]], [9, body[1] - 12], [-9, body[1] - 12]], mail);
-  poly(g, [[-5, sh[1] + 2], [5, sh[1] + 2], [5, body[1] - 12], [-5, body[1] - 12]], f.team);
+  poly(g, [[-5.5, sh[1] + 2], [5.5, sh[1] + 2], [6, body[1] - 10], [-6, body[1] - 10]], f.team);
   if (f.view === 'back') {
-    blob(g, 0, sh[1] + 13, 8, 11, f.team);
-    blob(g, 0, sh[1] + 13, 2.2, 2.2, '#e2bc4c', 0, false);
+    if (knight) kiteShield(g, 0, sh[1] + 13, 1.1, f.team);
+    else {
+      blob(g, 0, sh[1] + 13, 8, 11, f.team);
+      blob(g, 0, sh[1] + 13, 2.2, 2.2, '#e2bc4c', 0, false);
+    }
   }
-  blob(g, 0, sh[1] - 9, 7.5, 7.5, f.view === 'back' ? STEEL_DARK : f.look.skin);
-  poly(g, [[-8, sh[1] - 10], [0, sh[1] - 22], [8, sh[1] - 10]], STEEL);
-  if (f.view === 'front') limb(g, [0, sh[1] - 11], [0, sh[1] - 4], 1.6, STEEL_DARK);
-  limb(g, [12, sh[1] + 4], [14, sh[1] + 18], 4.5, '#9aa3a8');
-  limb(g, [14, sh[1] + 30], [14, sh[1] - 34], 2.4, HANDLE);
-  poly(g, [[12, sh[1] - 34], [14, sh[1] - 44], [16, sh[1] - 34]], STEEL);
+  if (knight) greatHelm(g, 0, sh[1] - 9, f.view);
+  else {
+    blob(g, 0, sh[1] - 9, 7.5, 7.5, f.view === 'back' ? STEEL_DARK : f.look.skin);
+    poly(g, [[-8, sh[1] - 10], [0, sh[1] - 22], [8, sh[1] - 10]], STEEL);
+    if (f.view === 'front') limb(g, [0, sh[1] - 11], [0, sh[1] - 4], 1.6, STEEL_DARK);
+  }
+  limb(g, [12, sh[1] + 4], [14, sh[1] + 18], 5, '#9aa3a8');
+  const lift = striking ? [0, -4, -10, -6][f.frame % 4] : 0;
+  limb(g, [14, sh[1] + 30 + lift], [14, sh[1] - (knight ? 44 : 34) + lift], 2.4, HANDLE, 0.8);
+  poly(g, [[12, sh[1] - (knight ? 44 : 34) + lift], [14, sh[1] - (knight ? 54 : 44) + lift], [16, sh[1] - (knight ? 44 : 34) + lift]], STEEL);
+  if (knight && f.view === 'front') kiteShield(g, -12, sh[1] + 16, 0.95, f.team);
 }
 
 // ---------- militia (swordsman) ----------
@@ -974,3 +1074,245 @@ export function drawMilitia(g: G, f: FigureSpec): void {
   if (f.view === 'side') drawTool(g, 'sword', near.hand, near.fore);
   else limb(g, [near.hand[0], near.hand[1] - 2], [near.hand[0] + 1, near.hand[1] + 20], 2.2, STEEL);
 }
+
+// ---------- foot soldiers ----------
+
+/** A bow in the far hand: limbs bent toward the target, string to the drawing hand. */
+function bow(g: G, grip: P, draw: P | null) {
+  const top: P = [grip[0] - 2, grip[1] - 17], bot: P = [grip[0] - 2, grip[1] + 17];
+  g.lineCap = 'round';
+  g.strokeStyle = OUT;
+  g.lineWidth = 3.4;
+  g.beginPath();
+  g.moveTo(top[0], top[1]);
+  g.quadraticCurveTo(grip[0] + 9, grip[1], bot[0], bot[1]);
+  g.stroke();
+  const wood = g.createLinearGradient(grip[0] - 3, 0, grip[0] + 6, 0);
+  wood.addColorStop(0, '#a77a45');
+  wood.addColorStop(1, '#5a3a1c');
+  g.strokeStyle = wood;
+  g.lineWidth = 2.2;
+  g.stroke();
+  // String, drawn back to the hand when pulling.
+  const nock = draw && Math.hypot(draw[0] - grip[0], draw[1] - grip[1]) < 26 ? draw : [grip[0] - 2.5, grip[1]];
+  g.strokeStyle = 'rgba(240,235,220,0.9)';
+  g.lineWidth = 0.6;
+  g.beginPath();
+  g.moveTo(top[0], top[1]);
+  g.lineTo(nock[0], nock[1]);
+  g.lineTo(bot[0], bot[1]);
+  g.stroke();
+  if (draw && nock === draw) {
+    // Arrow on the string.
+    limb(g, [nock[0], nock[1]], [grip[0] + 7, grip[1]], 1.1, '#c9a46a', 1);
+    poly(g, [[grip[0] + 7, grip[1] - 1.4], [grip[0] + 11, grip[1]], [grip[0] + 7, grip[1] + 1.4]], STEEL, false);
+    poly(g, [[nock[0], nock[1]], [nock[0] - 3, nock[1] - 2], [nock[0] - 1.5, nock[1]], [nock[0] - 3, nock[1] + 2]], '#e8e2d2', false);
+  }
+}
+
+/** Leather quiver with fletchings showing, slung across the back. */
+function quiver(g: G, sh: P, view: View) {
+  const x = view === 'side' ? sh[0] - 9 : sh[0] + (view === 'back' ? 0 : 8), y = sh[1] + 4;
+  for (let k = 0; k < 4; k++) poly(g, [[x - 3 + k * 2, y - 12], [x - 2 + k * 2, y - 16], [x - 1 + k * 2, y - 12]], k % 2 ? '#e8e2d2' : '#b8352a', false);
+  g.save();
+  g.translate(x, y);
+  g.rotate(view === 'side' ? -0.35 : 0.2);
+  poly(g, [[-4, -12], [4, -12], [3.5, 12], [-3.5, 12]], '#6b4422');
+  g.fillStyle = '#c9a46a';
+  g.fillRect(-4, -12, 8, 1.6);
+  g.fillRect(-3.8, 6, 7.6, 1.4);
+  g.restore();
+}
+
+/** Wicker shield: woven oval with a rim, held on the far arm. */
+function wickerShield(g: G, x: number, y: number) {
+  blob(g, x, y, 8, 13, '#a88a52');
+  g.save();
+  g.beginPath();
+  g.ellipse(x, y, 8, 13, 0, 0, Math.PI * 2);
+  g.clip();
+  g.strokeStyle = 'rgba(70,50,20,0.55)';
+  g.lineWidth = 0.7;
+  for (let k = -12; k <= 12; k += 2.4) {
+    g.beginPath();
+    g.moveTo(x - 8, y + k);
+    g.quadraticCurveTo(x, y + k + 1.5, x + 8, y + k);
+    g.stroke();
+  }
+  for (let k = -6; k <= 6; k += 3) {
+    g.strokeStyle = 'rgba(255,240,200,0.25)';
+    g.beginPath();
+    g.moveTo(x + k, y - 13);
+    g.lineTo(x + k, y + 13);
+    g.stroke();
+  }
+  g.restore();
+  g.strokeStyle = '#5a3d1c';
+  g.lineWidth = 1.6;
+  g.beginPath();
+  g.ellipse(x, y, 7.4, 12.4, 0, 0, Math.PI * 2);
+  g.stroke();
+}
+
+type Kit = 'spearman' | 'archer' | 'skirmisher' | 'monk';
+
+/** Shared body for infantry and monks; the kit decides clothing, headgear and gear. */
+function drawFoot(g: G, f: FigureSpec, kit: Kit): void {
+  const look: Look = { ...f.look, female: false };
+  const tool: Tool = kit === 'spearman' ? 'spear' : kit === 'archer' ? 'bow' : kit === 'skirmisher' ? 'javelin' : 'staff';
+  const acting = f.anim === 'work';
+  const idleArms: Pose =
+    kit === 'archer' ? { ...IDLE, armF: [12, 40] } : kit === 'spearman' ? { ...IDLE, armN: [30, 70] } : kit === 'monk' ? { ...IDLE, armN: [20, 60] } : IDLE;
+  const pose = f.anim === 'walk' ? walkPose(f.frame) : acting ? workPose(tool, f.frame) : idleArms;
+  if (kit === 'monk' && f.anim === 'walk') (pose.armN = [20, 60]), (pose.armF = [-10, 10]);
+  const hip: P = [0, -48 + pose.bob];
+  const sh = seg(hip, 180 + pose.lean, 30);
+  const headC: P = [sh[0] + (f.view === 'side' ? 2 : 0) + Math.sin(pose.lean * D2R) * 4, sh[1] - 13];
+  groundShadow(g, 15, 5);
+  const cloth: Look = {
+    ...look,
+    cloth: kit === 'spearman' ? '#5a4632' : kit === 'archer' ? '#4d5a36' : kit === 'skirmisher' ? '#6b5a42' : '#3e3024',
+    female: kit === 'monk',
+  };
+  const coat = kit === 'monk' ? '#6e5236' : kit === 'archer' ? shade(f.team, 0.8) : f.team;
+
+  if (f.view === 'back') {
+    if (kit === 'archer') quiver(g, sh, 'back');
+    if (kit === 'skirmisher') wickerShield(g, sh[0], sh[1] + 16);
+  }
+  if (kit !== 'monk') legs(g, pose, f.view, hip, cloth, 'far');
+  let far: { hand: P; fore: number } | null = null;
+  if (f.view === 'side') {
+    if (kit === 'archer') quiver(g, sh, 'side');
+    far = arm(g, pose, f.view, sh, look, coat, 'far');
+    if (kit === 'skirmisher') wickerShield(g, far.hand[0] + 3, far.hand[1] - 6);
+  }
+  if (kit !== 'monk') legs(g, pose, f.view, hip, cloth, 'near');
+  else {
+    // A monk's habit falls to the ground over the feet.
+    for (const side of [-1, 1]) blob(g, hip[0] + side * 5, -1.5, 4, 2.4, '#2e2016');
+  }
+  torso(g, f.view, sh, hip, cloth, coat);
+  if (kit === 'monk') {
+    // Team-coloured stole and a knotted rope belt.
+    if (f.view !== 'back') {
+      for (const side of [-1, 1]) limb(g, [sh[0] + side * 3.5, sh[1] + 1], [hip[0] + side * 4.5, hip[1] + 26], 3.2, f.team, 1);
+    }
+    g.fillStyle = '#d8c9a0';
+    g.fillRect(hip[0] - 10, hip[1] - 4, 20, 2);
+  }
+  if (kit === 'spearman' || kit === 'skirmisher') {
+    // Quilting on the gambeson.
+    g.strokeStyle = 'rgba(0,0,0,0.22)';
+    g.lineWidth = 0.9;
+    for (let k = 1; k < 4; k++) {
+      g.beginPath();
+      g.moveTo(sh[0] - 8, sh[1] + k * 7);
+      g.lineTo(hip[0] + 8, sh[1] + k * 7);
+      g.stroke();
+    }
+  }
+  if (f.view !== 'side') {
+    far = arm(g, pose, f.view, sh, look, coat, 'far');
+  }
+  head(g, f.view, headC[0], headC[1], kit === 'monk' ? { ...look, hair: look.hair } : look, f.team);
+  const [hx, hy] = headC;
+  // Headgear.
+  if (kit === 'spearman') {
+    const cap = g.createLinearGradient(hx - 10, 0, hx + 10, 0);
+    cap.addColorStop(0, '#9a7448');
+    cap.addColorStop(1, '#4a3018');
+    g.beginPath();
+    g.moveTo(hx - 10, hy - 1);
+    g.quadraticCurveTo(hx - 10, hy - 14, hx, hy - 14);
+    g.quadraticCurveTo(hx + 10, hy - 14, hx + 10, hy - 1);
+    g.closePath();
+    g.strokeStyle = OUT;
+    g.lineWidth = 1.4;
+    g.stroke();
+    g.fillStyle = cap;
+    g.fill();
+    stroke(g, [hx - 10, hy - 1.5], [hx + 10, hy - 1.5], 1.6, '#3a2412');
+  } else if (kit === 'archer') {
+    // Hood with a liripipe falling behind.
+    const hood = shade(cloth.cloth, 1.1);
+    g.beginPath();
+    if (f.view === 'side') {
+      g.moveTo(hx + 7, hy + 4);
+      g.quadraticCurveTo(hx + 9, hy - 13, hx - 2, hy - 13);
+      g.quadraticCurveTo(hx - 13, hy - 10, hx - 16, hy + 2);
+      g.lineTo(hx - 10, hy + 1);
+      g.quadraticCurveTo(hx - 9, hy + 8, hx - 4, hy + 9);
+      g.quadraticCurveTo(hx + 1, hy - 7, hx + 7, hy + 4);
+    } else {
+      g.moveTo(hx - 10, hy + 7);
+      g.quadraticCurveTo(hx - 12, hy - 14, hx, hy - 13);
+      g.quadraticCurveTo(hx + 12, hy - 14, hx + 10, hy + 7);
+      if (f.view === 'front') {
+        g.quadraticCurveTo(hx + 8, hy - 7, hx, hy - 7);
+        g.quadraticCurveTo(hx - 8, hy - 7, hx - 10, hy + 7);
+      }
+    }
+    g.closePath();
+    g.strokeStyle = OUT;
+    g.lineWidth = 1.4;
+    g.stroke();
+    g.fillStyle = roundLight(g, hx, hy - 5, 11, 10, hood);
+    g.fill();
+  } else if (kit === 'skirmisher') {
+    stroke(g, [hx - 9.5, hy - 4], [hx + 9.5, hy - 4], 2.2, f.team);
+  } else if (f.view !== 'front') {
+    // Monk's cowl lying on the shoulders.
+    blob(g, sh[0] - (f.view === 'side' ? 4 : 0), sh[1] + 1, 9, 4, '#5a4128');
+  }
+  if (kit === 'monk' && f.view === 'front') blob(g, sh[0], sh[1] + 1, 10, 3.5, '#5a4128');
+  const near = arm(g, pose, f.view, sh, look, coat, 'near');
+  // Weapons.
+  if (kit === 'archer' && far) bow(g, f.view === 'side' ? far.hand : [far.hand[0], far.hand[1] - 4], acting && f.view === 'side' ? near.hand : null);
+  if (kit === 'archer' && f.view === 'front') quiver(g, sh, 'front');
+  if (kit === 'spearman') {
+    if (f.view === 'side') {
+      const angle = acting ? near.fore : 160;
+      const dir = (angle + (acting ? 0 : 0)) * D2R;
+      const ux = Math.sin(dir), uy = Math.cos(dir);
+      const a: P = [near.hand[0] - ux * 26, near.hand[1] - uy * 26], b: P = [near.hand[0] + ux * 40, near.hand[1] + uy * 40];
+      limb(g, a, b, 2.6, HANDLE, 0.85);
+      const px = -uy, py = ux;
+      poly(g, [[b[0] + px * 2.4, b[1] + py * 2.4], [b[0] + ux * 9, b[1] + uy * 9], [b[0] - px * 2.4, b[1] - py * 2.4]], STEEL);
+    } else {
+      limb(g, [near.hand[0], near.hand[1] + 26], [near.hand[0], near.hand[1] - 58], 2.6, HANDLE, 0.85);
+      poly(g, [[near.hand[0] - 2.4, near.hand[1] - 58], [near.hand[0], near.hand[1] - 67], [near.hand[0] + 2.4, near.hand[1] - 58]], STEEL);
+    }
+  }
+  if (kit === 'skirmisher') {
+    if (f.view === 'side') {
+      const dir = (near.fore + 90) * D2R;
+      const ux = Math.sin(dir), uy = Math.cos(dir);
+      const released = acting && f.frame >= 3;
+      if (!released) {
+        limb(g, [near.hand[0] - ux * 10, near.hand[1] - uy * 10], [near.hand[0] + ux * 18, near.hand[1] + uy * 18], 1.8, HANDLE, 0.9);
+        const t: P = [near.hand[0] + ux * 18, near.hand[1] + uy * 18];
+        poly(g, [[t[0] - uy * 1.6, t[1] + ux * 1.6], [t[0] + ux * 5, t[1] + uy * 5], [t[0] + uy * 1.6, t[1] - ux * 1.6]], STEEL);
+      }
+    } else if (f.view === 'front') wickerShield(g, sh[0] - 13, sh[1] + 18);
+  }
+  if (kit === 'monk') {
+    const top: P = [near.hand[0] + (f.view === 'side' ? 3 : 0), near.hand[1] - 30];
+    limb(g, [near.hand[0] + (f.view === 'side' ? -2 : 0), near.hand[1] + 26], top, 2.4, '#6b4a28', 1);
+    if (acting) {
+      // A glow of blessing above the raised hands.
+      const glow = g.createRadialGradient(sh[0], sh[1] - 34, 1, sh[0], sh[1] - 34, 16);
+      glow.addColorStop(0, 'rgba(255,240,170,0.7)');
+      glow.addColorStop(1, 'rgba(255,240,170,0)');
+      g.fillStyle = glow;
+      g.beginPath();
+      g.arc(sh[0], sh[1] - 34, 16, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+}
+
+export const drawSpearman = (g: G, f: FigureSpec) => drawFoot(g, f, 'spearman');
+export const drawArcher = (g: G, f: FigureSpec) => drawFoot(g, f, 'archer');
+export const drawSkirmisher = (g: G, f: FigureSpec) => drawFoot(g, f, 'skirmisher');
+export const drawMonk = (g: G, f: FigureSpec) => drawFoot(g, f, 'monk');

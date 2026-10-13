@@ -558,6 +558,171 @@ const PAINTERS: Record<BuildingType, Painter> = {
       line3(g, [n, 0, z], [n, n, z], '#4e331b', 0.9);
     }
   },
+  archery_range: (g, n, team) => {
+    groundPatch(g, n, '#84694a', 0.2);
+    // Open-fronted range house at the back, shooting lane and straw butts in front.
+    boxShadow(g, 0.2, 0.2, n - 0.2, n * 0.45, 40);
+    box(g, 0.2, 0.2, n - 0.2, n * 0.45, 22, { ...PLASTER, plinth: 4 }, {
+      left: (len) => {
+        for (const u of [len * 0.25, len * 0.5, len * 0.75]) {
+          g.fillStyle = '#1e130a';
+          g.fillRect(u - 4.5, 4, 9, 12);
+          g.fillStyle = 'rgba(0,0,0,0.4)';
+          g.fillRect(u - 4.5, 13, 9, 3);
+        }
+        banner(g, len * 0.12, 20, team);
+        banner(g, len * 0.88, 20, team);
+      },
+      right: (len) => windowAt(g, len / 2, 10, 4, 5),
+    }, 91);
+    gableRoof(g, 0.2, 0.2, n - 0.2, n * 0.45, 22, 18, SHINGLE, 'x', 0.16, 23);
+    // Straw butts with painted targets on easels.
+    for (const x of [n * 0.25, n * 0.55, n * 0.85]) {
+      const [tx, ty] = P(x, n * 0.85, 0);
+      g.fillStyle = 'rgba(8,12,4,0.35)';
+      g.beginPath();
+      g.ellipse(tx + 3, ty, 6, 2, 0, 0, Math.PI * 2);
+      g.fill();
+      line3(g, [x - 0.08, n * 0.88, 0], [x, n * 0.85, 13], '#5a3d22', 1);
+      line3(g, [x + 0.08, n * 0.82, 0], [x, n * 0.85, 13], '#5a3d22', 1);
+      const straw = g.createRadialGradient(tx - 1.5, ty - 11, 0.5, tx, ty - 10, 6);
+      straw.addColorStop(0, '#ecd590');
+      straw.addColorStop(1, '#9a7c3a');
+      g.fillStyle = straw;
+      g.beginPath();
+      g.ellipse(tx, ty - 10, 5, 5.6, 0, 0, Math.PI * 2);
+      g.fill();
+      for (const [r, c] of [[3.8, '#f2ece0'], [2.6, team], [1.4, '#f2ece0'], [0.6, '#b8352a']] as const) {
+        g.fillStyle = c;
+        g.beginPath();
+        g.ellipse(tx, ty - 10, r, r * 1.1, 0, 0, Math.PI * 2);
+        g.fill();
+      }
+      // A couple of arrows stuck in.
+      g.strokeStyle = '#3a2614';
+      g.lineWidth = 0.5;
+      g.beginPath();
+      g.moveTo(tx - 1, ty - 11);
+      g.lineTo(tx - 6, ty - 12.5);
+      g.moveTo(tx + 1.2, ty - 9);
+      g.lineTo(tx - 4, ty - 9.5);
+      g.stroke();
+    }
+    barrel(g, 0.1, n * 0.6, 2.6, 7);
+    flag(g, n - 0.25, 0.25, 34, team, 0.9);
+  },
+  stable: (g, n, team) => {
+    groundPatch(g, n, '#806446', 0.25);
+    // Long timber stable with stall doors, a hay loft and a paddock in front.
+    boxShadow(g, 0.2, 0.2, n - 0.2, n * 0.5, 44);
+    box(g, 0.2, 0.2, n - 0.2, n * 0.5, 24, { base: '#7a5634', mat: 'planks', plinth: 3 }, {
+      left: (len) => {
+        for (const u of [len * 0.2, len * 0.4, len * 0.6, len * 0.8]) {
+          // Dutch stall doors, top half open with a dark interior.
+          g.fillStyle = mat(g, 'woodV', '#5a3a1c', 93);
+          g.fillRect(u - 3.5, 0.5, 7, 6);
+          g.fillStyle = '#140c06';
+          g.fillRect(u - 3.5, 6.5, 7, 6.5);
+          g.strokeStyle = '#2a1a0c';
+          g.lineWidth = 0.5;
+          g.strokeRect(u - 3.5, 0.5, 7, 12.5);
+          g.beginPath();
+          g.moveTo(u - 3.5, 0.5);
+          g.lineTo(u + 3.5, 6.5);
+          g.stroke();
+        }
+        g.fillStyle = '#140c06';
+        g.fillRect(len / 2 - 3, 16, 6, 5);
+        g.fillStyle = '#d6bd70';
+        g.fillRect(len / 2 - 3, 16, 6, 2.2);
+        banner(g, len * 0.1, 22, team);
+      },
+      right: (len) => windowAt(g, len / 2, 12, 4, 5),
+    }, 95);
+    gableRoof(g, 0.2, 0.2, n - 0.2, n * 0.5, 24, 20, THATCH, 'x', 0.18, 25);
+    // Paddock rails and a water trough.
+    for (let x = 0.1; x <= n - 0.1; x += 0.5) post(g, x, n - 0.1, 8, 1.5);
+    for (let y = n * 0.55; y <= n - 0.1; y += 0.5) post(g, n - 0.1, y, 8, 1.5);
+    for (const z of [6.5, 3.2]) {
+      line3(g, [0.1, n - 0.1, z], [n - 0.1, n - 0.1, z], '#4e331b', 1.2);
+      line3(g, [n - 0.1, n * 0.55, z], [n - 0.1, n - 0.1, z], '#4e331b', 1.2);
+    }
+    box(g, n * 0.25, n * 0.72, n * 0.55, n * 0.8, 5, { base: '#6b4626', mat: 'planks' }, {}, 97);
+    poly3(g, [[n * 0.26, n * 0.73, 4.6], [n * 0.54, n * 0.73, 4.6], [n * 0.54, n * 0.79, 4.6], [n * 0.26, n * 0.79, 4.6]], '#3f6a7a', null);
+    hayBale(g, n * 0.68, n * 0.62);
+    hayBale(g, n * 0.72, n * 0.72);
+    flag(g, n - 0.25, 0.25, 40, team, 1);
+  },
+  monastery: (g, n, team) => {
+    groundPatch(g, n, '#8a7a5e', 0.2);
+    // Stone chapel with a bell-cote, round-arched windows and a walled garth.
+    boxShadow(g, 0.3, 0.3, n - 0.3, n * 0.6, 80);
+    box(g, 0.3, 0.3, n - 0.3, n * 0.6, 34, STONE, {
+      left: (len) => {
+        doorAt(g, len / 2, 8, 15);
+        for (const u of [len * 0.2, len * 0.8]) {
+          g.fillStyle = '#1c140c';
+          g.beginPath();
+          g.moveTo(u - 2.2, 14);
+          g.lineTo(u - 2.2, 22);
+          g.arc(u, 22, 2.2, Math.PI, 0, true);
+          g.lineTo(u + 2.2, 14);
+          g.closePath();
+          g.fill();
+          g.fillStyle = 'rgba(80,140,220,0.35)';
+          g.fill();
+        }
+        // Rose window.
+        g.fillStyle = '#1c140c';
+        g.beginPath();
+        g.arc(len / 2, 26, 3.4, 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = shadeColor(team, 1.2);
+        g.lineWidth = 0.6;
+        for (let k = 0; k < 6; k++) {
+          g.beginPath();
+          g.moveTo(len / 2, 26);
+          g.lineTo(len / 2 + Math.cos(k) * 3, 26 + Math.sin(k) * 3);
+          g.stroke();
+        }
+      },
+      right: (len) => {
+        for (const u of [len * 0.3, len * 0.7]) windowAt(g, u, 16, 3.5, 7);
+      },
+    }, 101);
+    gableRoof(g, 0.3, 0.3, n - 0.3, n * 0.6, 34, 26, { color: '#8a5a40', kind: 'shingle' }, 'y', 0.14, 27);
+    // Bell-cote on the gable with a cross.
+    const bx = n / 2, by = n * 0.6;
+    box(g, bx - 0.2, by - 0.1, bx + 0.2, by + 0.05, 74, STONE, {
+      left: (len) => {
+        g.fillStyle = '#140c06';
+        g.fillRect(len * 0.2, 62, len * 0.6, 8);
+        g.fillStyle = '#c9a24a';
+        g.beginPath();
+        g.arc(len / 2, 66, 2, Math.PI, 0);
+        g.fill();
+      },
+    }, 103);
+    const [cx, cy] = P(bx, by, 74);
+    g.fillStyle = '#d9b44a';
+    g.fillRect(cx - 0.6, cy - 12, 1.2, 12);
+    g.fillRect(cx - 3, cy - 9, 6, 1.2);
+    // Low cloister wall and a cypress in the garth.
+    for (const [a, b] of [[[0.2, n - 0.1], [n - 0.1, n - 0.1]], [[n - 0.1, n * 0.62], [n - 0.1, n - 0.1]]] as const) {
+      const [ax, ay] = a, [bx2, by2] = b;
+      box(g, Math.min(ax, bx2), Math.min(ay, by2) - 0.08, Math.max(ax, bx2), Math.max(ay, by2), 6, STONE, {}, 105);
+      boxTop(g, Math.min(ax, bx2), Math.min(ay, by2) - 0.08, Math.max(ax, bx2), Math.max(ay, by2), 6, 'stone', '#b0aa9e');
+    }
+    const [tx, ty] = P(n * 0.25, n * 0.8, 0);
+    const tree = g.createLinearGradient(tx - 3, 0, tx + 3, 0);
+    tree.addColorStop(0, '#4c7a3a');
+    tree.addColorStop(1, '#1e3a1a');
+    g.fillStyle = tree;
+    g.beginPath();
+    g.ellipse(tx, ty - 12, 3.4, 12, 0, 0, Math.PI * 2);
+    g.fill();
+    flag(g, 0.4, 0.4, 40, team, 0.8);
+  },
 };
 
 /** Building sprites for one zoom level, cached per type, player and variant. */

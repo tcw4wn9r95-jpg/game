@@ -17,10 +17,33 @@ export interface UnitDef {
   meleeArmor: number;
   pierceArmor: number;
   range: number;
+  /** Seconds between attacks. */
+  reload: number;
+  attackType: 'melee' | 'pierce';
+  /** Tiles per second; ranged units only. */
+  projectileSpeed?: number;
+  /** Age (0-3) that unlocks it. */
+  age: number;
+  /** Armour classes, matched against attackers' bonuses. */
+  classes: UnitClass[];
+  /** Damage multipliers against classes (counters). */
+  bonus: Partial<Record<UnitClass, number>>;
+  /** Default stance when trained. */
+  stance: Stance;
   description: string;
+  strong: string;
+  weak: string;
   gatherer?: boolean;
   builder?: boolean;
+  healer?: boolean;
+  converter?: boolean;
 }
+
+export type UnitClass = 'villager' | 'infantry' | 'spear' | 'archer' | 'skirmisher' | 'cavalry' | 'siege' | 'monk' | 'building';
+
+/** aggressive: chase anything seen; defensive: chase a short way then return; stand: hold position; passive: never attack. */
+export type Stance = 'aggressive' | 'defensive' | 'stand' | 'passive';
+export const STANCES: Stance[] = ['aggressive', 'defensive', 'stand', 'passive'];
 
 export interface BuildingDef {
   name: string;
@@ -36,6 +59,7 @@ export interface BuildingDef {
   description: string;
   meleeArmor: number;
   pierceArmor: number;
+  classes: UnitClass[];
   /** Units this building can train. */
   trains: UnitType[];
   /** Units can walk over it (farms). */
@@ -56,7 +80,12 @@ export type Order =
   | { type: 'move'; x: number; y: number }
   | { type: 'gather'; target: GatherTarget; res: ResourceKind; source: string }
   | { type: 'build'; id: number }
-  | { type: 'dropoff'; id: number };
+  | { type: 'dropoff'; id: number }
+  /** Attack a unit or building; `auto` when the unit picked the target itself (stance behaviour). */
+  | { type: 'attack'; id: number; auto?: boolean }
+  /** Monks: heal a friendly unit or convert an enemy one. */
+  | { type: 'heal'; id: number; auto?: boolean }
+  | { type: 'convert'; id: number };
 
 export interface Unit {
   id: number;
@@ -79,7 +108,7 @@ export interface Unit {
   /** True while waiting for the path service. */
   pathPending: boolean;
   /** What the unit is doing this tick, for animation and the HUD. */
-  state: 'idle' | 'walk' | 'gather' | 'build';
+  state: 'idle' | 'walk' | 'gather' | 'build' | 'attack' | 'heal' | 'convert';
   carry: { res: ResourceKind; amount: number } | null;
   /** Fractional gather progress not yet moved into `carry`. */
   gatherAcc: number;
@@ -87,6 +116,25 @@ export interface Unit {
   resume: Order | null;
   /** Path searches for the current order that ended without reaching it (gives up after a few). */
   repaths: number;
+  stance: Stance;
+  /** Ticks until the next attack can land. */
+  cooldown: number;
+  /** Where a defensive or stand-ground unit returns to after a chase. */
+  guard: { x: number; y: number } | null;
+  /** Shared flow field for a group move, followed instead of an A* path. */
+  flow: FlowRef | null;
+  /** Last enemy that hit this unit, and when (tick), for retaliation and alerts. */
+  attackedBy: number;
+  attackedAt: number;
+  /** Monk conversion progress, 0..1. */
+  faith: number;
+}
+
+/** A unit's handle on a group flow field and its own destination slot. */
+export interface FlowRef {
+  field: import('./flowfield').FlowField;
+  x: number;
+  y: number;
 }
 
 export interface Building {

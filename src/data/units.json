@@ -10,13 +10,148 @@
       "food": 50
     },
     "trainTime": 25,
-    "gatherer": true,
-    "builder": true,
     "attack": 3,
+    "reload": 2.0,
+    "attackType": "melee",
     "meleeArmor": 0,
     "pierceArmor": 0,
     "range": 0,
-    "description": "Gathers resources, builds and repairs. The heart of your economy."
+    "age": 0,
+    "classes": [
+      "villager"
+    ],
+    "bonus": {},
+    "stance": "passive",
+    "gatherer": true,
+    "builder": true,
+    "description": "Gathers resources, builds and repairs. The heart of your economy.",
+    "strong": "",
+    "weak": "Everything; keep them safe"
+  },
+  "militia": {
+    "name": "Militia",
+    "hp": 45,
+    "speed": 0.9,
+    "los": 4,
+    "radius": 0.24,
+    "pop": 1,
+    "cost": {
+      "food": 60,
+      "gold": 20
+    },
+    "trainTime": 21,
+    "attack": 5,
+    "reload": 2.0,
+    "attackType": "melee",
+    "meleeArmor": 0,
+    "pierceArmor": 1,
+    "range": 0,
+    "age": 0,
+    "classes": [
+      "infantry"
+    ],
+    "bonus": {
+      "infantry": 1.5,
+      "building": 2.0
+    },
+    "stance": "aggressive",
+    "description": "Sword-and-shield foot soldier.",
+    "strong": "Infantry, buildings",
+    "weak": "Archers"
+  },
+  "spearman": {
+    "name": "Spearman",
+    "hp": 45,
+    "speed": 1.0,
+    "los": 4,
+    "radius": 0.24,
+    "pop": 1,
+    "cost": {
+      "food": 35,
+      "wood": 25
+    },
+    "trainTime": 22,
+    "attack": 5,
+    "reload": 2.5,
+    "attackType": "melee",
+    "meleeArmor": 0,
+    "pierceArmor": 0,
+    "range": 0,
+    "age": 1,
+    "classes": [
+      "infantry",
+      "spear"
+    ],
+    "bonus": {
+      "cavalry": 2.5
+    },
+    "stance": "aggressive",
+    "description": "Cheap infantry with a long spear that stops horsemen.",
+    "strong": "Cavalry",
+    "weak": "Archers, infantry"
+  },
+  "archer": {
+    "name": "Archer",
+    "hp": 30,
+    "speed": 0.96,
+    "los": 6,
+    "radius": 0.22,
+    "pop": 1,
+    "cost": {
+      "wood": 25,
+      "gold": 45
+    },
+    "trainTime": 35,
+    "attack": 4,
+    "reload": 2.0,
+    "attackType": "pierce",
+    "meleeArmor": 0,
+    "pierceArmor": 0,
+    "range": 4,
+    "projectileSpeed": 7,
+    "age": 1,
+    "classes": [
+      "archer"
+    ],
+    "bonus": {
+      "infantry": 2.0
+    },
+    "stance": "aggressive",
+    "description": "Shoots from a distance. Keep it behind your front line.",
+    "strong": "Infantry, spearmen",
+    "weak": "Skirmishers, cavalry, siege"
+  },
+  "skirmisher": {
+    "name": "Skirmisher",
+    "hp": 30,
+    "speed": 0.96,
+    "los": 6,
+    "radius": 0.22,
+    "pop": 1,
+    "cost": {
+      "food": 25,
+      "wood": 35
+    },
+    "trainTime": 22,
+    "attack": 2,
+    "reload": 3.0,
+    "attackType": "pierce",
+    "meleeArmor": 0,
+    "pierceArmor": 3,
+    "range": 4,
+    "projectileSpeed": 8,
+    "age": 1,
+    "classes": [
+      "archer",
+      "skirmisher"
+    ],
+    "bonus": {
+      "archer": 2.5
+    },
+    "stance": "aggressive",
+    "description": "Javelin thrower with a wicker shield, cheap and hard to hurt with arrows.",
+    "strong": "Archers",
+    "weak": "Infantry, cavalry"
   },
   "scout": {
     "name": "Scout",
@@ -30,27 +165,86 @@
     },
     "trainTime": 30,
     "attack": 3,
+    "reload": 2.0,
+    "attackType": "melee",
     "meleeArmor": 0,
     "pierceArmor": 2,
     "range": 0,
-    "description": "Fast mounted explorer. Strong against archers and villagers, weak against spearmen."
+    "age": 0,
+    "classes": [
+      "cavalry"
+    ],
+    "bonus": {
+      "archer": 2.0,
+      "villager": 1.5,
+      "siege": 2.0,
+      "monk": 2.0
+    },
+    "stance": "aggressive",
+    "description": "Fast mounted explorer and raider.",
+    "strong": "Archers, villagers, siege, monks",
+    "weak": "Spearmen"
   },
-  "militia": {
-    "name": "Militia",
-    "hp": 40,
-    "speed": 0.9,
+  "knight": {
+    "name": "Knight",
+    "hp": 100,
+    "speed": 1.35,
     "los": 4,
-    "radius": 0.24,
+    "radius": 0.34,
     "pop": 1,
     "cost": {
       "food": 60,
-      "gold": 20
+      "gold": 75
     },
-    "trainTime": 21,
-    "attack": 4,
-    "meleeArmor": 0,
-    "pierceArmor": 1,
+    "trainTime": 30,
+    "attack": 10,
+    "reload": 1.8,
+    "attackType": "melee",
+    "meleeArmor": 2,
+    "pierceArmor": 2,
     "range": 0,
-    "description": "Basic swordsman. Strong against infantry and buildings, weak against archers."
+    "age": 2,
+    "classes": [
+      "cavalry"
+    ],
+    "bonus": {
+      "archer": 1.5,
+      "infantry": 1.5,
+      "siege": 1.5,
+      "spear": 0.6
+    },
+    "stance": "aggressive",
+    "description": "Heavily armoured lance on a warhorse.",
+    "strong": "Archers, infantry, siege",
+    "weak": "Spearmen, monks"
+  },
+  "monk": {
+    "name": "Monk",
+    "hp": 30,
+    "speed": 0.7,
+    "los": 11,
+    "radius": 0.22,
+    "pop": 1,
+    "cost": {
+      "gold": 100
+    },
+    "trainTime": 51,
+    "attack": 0,
+    "reload": 1.0,
+    "attackType": "melee",
+    "meleeArmor": 0,
+    "pierceArmor": 0,
+    "range": 9,
+    "age": 2,
+    "classes": [
+      "monk"
+    ],
+    "bonus": {},
+    "stance": "defensive",
+    "healer": true,
+    "converter": true,
+    "description": "Heals nearby wounded and converts enemy units to your side.",
+    "strong": "Converts enemies, heals",
+    "weak": "Light cavalry"
   }
 }

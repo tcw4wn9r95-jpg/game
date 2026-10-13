@@ -63,6 +63,22 @@ export class Game {
     this.bench = debug.bench ? new Bench(this.camera, map.size, hudRoot.querySelector('#bench')!) : null;
   }
 
+  /** Seconds-clock of the last attack alert, and where, so alerts don't spam. */
+  private lastAlert = -100;
+  private alertAt: { x: number; y: number } | null = null;
+  private deaths = 0;
+
+  /** Toasts an alert (at most every 12 s unless forced); tapping it jumps the camera there. */
+  private alert(message: string, x: number, y: number, now: number, force = false): void {
+    if (!force && now - this.lastAlert < 12) return;
+    this.lastAlert = now;
+    this.alertAt = { x, y };
+    this.hud.toast(message, () => {
+      if (this.alertAt) this.camera.centerOn(this.alertAt.x, this.alertAt.y);
+    });
+    this.minimap.ping(x, y, now);
+  }
+
   private addEffect(e: Omit<Effect, 'born'>): void {
     this.renderer.effects.push({ ...e, born: performance.now() / 1000 });
   }
@@ -76,8 +92,17 @@ export class Game {
         this.acc -= TICK_MS;
       }
     }
+    const nowS = performance.now() / 1000;
     for (const ev of this.world.drainEvents()) {
+      // Battle aftermath is drawn for every side.
+      if (ev.type === 'death') this.renderer.addDeath(ev, this.deaths++, nowS);
+      else if (ev.type === 'destroyed') this.renderer.addRuin(ev, nowS);
+      if (ev.type === 'converted' && ev.from === this.player) this.alert('A unit was converted by an enemy monk!', ev.x, ev.y, nowS, true);
       if (ev.owner !== this.player) continue;
+      if (ev.type === 'hit' && ev.by !== this.player && ev.by >= 0) {
+        this.alert(ev.building ? 'Your town is under attack!' : 'Your units are under attack!', ev.x, ev.y, nowS);
+        continue;
+      }
       if (ev.type === 'dropoff') this.addEffect({ kind: 'text', x: ev.x, y: ev.y, text: `+${ev.amount}`, color: RES_COLORS[ev.res] });
       else if (ev.type === 'error') this.hud.toast(ev.message);
     }

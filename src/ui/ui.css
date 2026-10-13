@@ -955,3 +955,13 @@
   background-origin: border-box;
   box-shadow: 0 0 10px rgba(255, 90, 60, 0.8);
 }
+
+.tooltip .strong { color: #9cf59a; font-weight: 700; }
+.tooltip .weak { color: #ff9b8a; font-weight: 700; }
+
+.toast.alert {
+  pointer-events: auto;
+  color: #ffd2c8;
+  border-color: #c4392b;
+  cursor: pointer;
+}

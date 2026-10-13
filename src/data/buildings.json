@@ -23,6 +23,9 @@
     "pierceArmor": 5,
     "trains": [
       "villager"
+    ],
+    "classes": [
+      "building"
     ]
   },
   "house": {
@@ -41,7 +44,10 @@
     "description": "Supports 5 population.",
     "meleeArmor": 0,
     "pierceArmor": 7,
-    "trains": []
+    "trains": [],
+    "classes": [
+      "building"
+    ]
   },
   "lumber_camp": {
     "name": "Lumber Camp",
@@ -61,7 +67,10 @@
     "description": "Drop-off for wood. Build it beside a forest.",
     "meleeArmor": 0,
     "pierceArmor": 7,
-    "trains": []
+    "trains": [],
+    "classes": [
+      "building"
+    ]
   },
   "mining_camp": {
     "name": "Mining Camp",
@@ -82,7 +91,10 @@
     "description": "Drop-off for gold and stone. Build it beside a mine.",
     "meleeArmor": 0,
     "pierceArmor": 7,
-    "trains": []
+    "trains": [],
+    "classes": [
+      "building"
+    ]
   },
   "mill": {
     "name": "Mill",
@@ -102,7 +114,10 @@
     "description": "Drop-off for food from berries, hunting and farms.",
     "meleeArmor": 0,
     "pierceArmor": 7,
-    "trains": []
+    "trains": [],
+    "classes": [
+      "building"
+    ]
   },
   "barracks": {
     "name": "Barracks",
@@ -121,7 +136,11 @@
     "meleeArmor": 0,
     "pierceArmor": 7,
     "trains": [
-      "militia"
+      "militia",
+      "spearman"
+    ],
+    "classes": [
+      "building"
     ]
   },
   "farm": {
@@ -143,6 +162,80 @@
     "trains": [],
     "walkable": true,
     "food": 175,
-    "requires": "mill"
+    "requires": "mill",
+    "classes": [
+      "building"
+    ]
+  },
+  "archery_range": {
+    "name": "Archery Range",
+    "size": 3,
+    "hp": 1200,
+    "buildTime": 50,
+    "cost": {
+      "wood": 175
+    },
+    "pop": 0,
+    "los": 5,
+    "dropoff": [],
+    "age": 1,
+    "buildable": true,
+    "description": "Trains archers and skirmishers.",
+    "meleeArmor": 0,
+    "pierceArmor": 7,
+    "trains": [
+      "archer",
+      "skirmisher"
+    ],
+    "classes": [
+      "building"
+    ]
+  },
+  "stable": {
+    "name": "Stable",
+    "size": 3,
+    "hp": 1200,
+    "buildTime": 50,
+    "cost": {
+      "wood": 175
+    },
+    "pop": 0,
+    "los": 5,
+    "dropoff": [],
+    "age": 1,
+    "buildable": true,
+    "description": "Trains scouts and knights.",
+    "meleeArmor": 0,
+    "pierceArmor": 7,
+    "trains": [
+      "scout",
+      "knight"
+    ],
+    "classes": [
+      "building"
+    ]
+  },
+  "monastery": {
+    "name": "Monastery",
+    "size": 3,
+    "hp": 1400,
+    "buildTime": 60,
+    "cost": {
+      "wood": 175
+    },
+    "pop": 0,
+    "los": 5,
+    "dropoff": [],
+    "age": 2,
+    "buildable": true,
+    "description": "Trains monks.",
+    "meleeArmor": 0,
+    "pierceArmor": 7,
+    "trains": [
+      "monk"
+    ],
+    "classes": [
+      "building"
+    ]
   }
 }

@@ -1,7 +1,9 @@
 // Player commands. Touch input and the AI both produce these; the world applies
 // them at the start of the next tick, so the simulation stays deterministic.
+import { setStance } from './combat';
 import { findResource, gatherOrder, isBuilder, isGatherer, setOrder, sourceOf } from './economy';
-import { BUILDING_DEFS, type BuildingType, type GatherTarget, type Unit, type UnitType } from './entities';
+import { FlowField } from './flowfield';
+import { BUILDING_DEFS, type BuildingType, type GatherTarget, type Stance, UNIT_DEFS, type Unit, type UnitType } from './entities';
 import { cancelQueued, canAfford, enqueue, pay } from './production';
 import type { World } from './world';
 
@@ -16,14 +18,40 @@ export type Command =
   | { type: 'rally'; ids: number[]; x: number; y: number; target: GatherTarget | null }
   | { type: 'repeat'; id: number; on: boolean }
   | { type: 'delete'; ids: number[] }
-  | { type: 'autoReseed'; on: boolean };
+  | { type: 'autoReseed'; on: boolean }
+  | { type: 'attack'; ids: number[]; id: number }
+  | { type: 'stance'; ids: number[]; stance: Stance };
 
 export function applyCommand(w: World, player: number, cmd: Command): void {
   const ids = 'ids' in cmd ? cmd.ids : [];
   const units = ids.map((id) => w.unit(id)).filter((u): u is Unit => !!u && u.owner === player);
   switch (cmd.type) {
     case 'move':
-      return moveGroup(units, cmd.x, cmd.y);
+      return moveGroup(w, units, cmd.x, cmd.y);
+    case 'attack': {
+      const t = w.get(cmd.id);
+      if (!t || t.kind === 'resource') return;
+      for (const u of units) {
+        const def = UNIT_DEFS[u.type];
+        if (t.owner === player) {
+          // Monks heal friends; nobody attacks their own side.
+          if (def.healer && t.kind === 'unit') setOrder(u, { type: 'heal', id: t.id });
+          continue;
+        }
+        if (def.converter) {
+          if (t.kind === 'unit') setOrder(u, { type: 'convert', id: t.id });
+          continue;
+        }
+        if (def.attack <= 0) continue;
+        setOrder(u, { type: 'attack', id: t.id });
+        u.resume = null;
+        u.guard = null;
+      }
+      return;
+    }
+    case 'stance':
+      for (const u of units) setStance(u, cmd.stance);
+      return;
     case 'stop':
       for (const u of units) {
         setOrder(u, null);
@@ -94,20 +122,41 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
         if (!b.complete && isBuilder(u)) setOrder(u, { type: 'build', id: b.id });
         else if (b.complete && u.carry && (BUILDING_DEFS[b.type].dropoff as string[]).includes(u.carry.res))
           setOrder(u, { type: 'dropoff', id: b.id });
-        else moveGroup([u], b.x + b.size / 2, b.y + b.size + 0.5);
+        else moveGroup(w, [u], b.x + b.size / 2, b.y + b.size + 0.5);
       }
       return;
     }
   }
 }
 
-/** Spreads a group around the target point so they don't all stand on one tile. */
-function moveGroup(units: Unit[], x: number, y: number): void {
+/** Groups this size or larger share one flow field instead of searching a path each. */
+const FLOW_GROUP = 5;
+
+/**
+ * Spreads a group around the target point so they don't all stand on one tile.
+ * Big groups share a flow field toward their slots; each unit keeps its slot.
+ */
+function moveGroup(w: World, units: Unit[], x: number, y: number): void {
   const sorted = [...units].sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y));
-  sorted.forEach((u, k) => {
+  const slots = sorted.map((_, k) => {
     const [ox, oy] = spiral(k);
-    setOrder(u, { type: 'move', x: x + ox * 0.9, y: y + oy * 0.9 });
+    return { x: x + ox * 0.9, y: y + oy * 0.9 };
+  });
+  let field: FlowField | null = null;
+  if (units.length >= FLOW_GROUP) {
+    const goals = slots.map((s) => ({ x: Math.floor(s.x), y: Math.floor(s.y) })).filter((g) => w.grid.isWalkable(g.x, g.y));
+    if (goals.length) {
+      field = new FlowField(w.grid, goals, units);
+      // The way round an obstacle can run outside the window: search the whole map instead.
+      const lost = units.filter((u) => field!.at(Math.floor(u.x), Math.floor(u.y)) === Infinity).length;
+      if (lost > units.length / 2) field = new FlowField(w.grid, goals, units, w.map.size);
+    }
+  }
+  sorted.forEach((u, k) => {
+    setOrder(u, { type: 'move', x: slots[k].x, y: slots[k].y });
     u.resume = null;
+    u.guard = null;
+    if (field && field.at(Math.floor(u.x), Math.floor(u.y)) < Infinity) u.flow = { field, x: slots[k].x, y: slots[k].y };
   });
 }
 
@@ -131,7 +180,7 @@ function gatherGroup(w: World, units: Unit[], target: GatherTarget): void {
   if (others.length) {
     const tx = target.kind === 'tile' ? target.x + 0.5 : (w.get(target.id) as { x: number }).x;
     const ty = target.kind === 'tile' ? target.y + 0.5 : (w.get(target.id) as { y: number }).y;
-    moveGroup(others, tx, ty);
+    moveGroup(w, others, tx, ty);
   }
   let spots: GatherTarget[] = [target];
   if (source === 'farm' && gatherers.length > 1) {

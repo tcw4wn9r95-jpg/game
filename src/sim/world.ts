@@ -1,6 +1,7 @@
 import economy from '../data/economy.json';
 import mapsData from '../data/maps.json';
 import { applyCommand, type Command } from './commands';
+import { combatThink, type Projectile, projectileTick } from './combat';
 import { constructionTick, goalFor, think, unreachable } from './economy';
 import { type ResourceKind, TICK_RATE } from './constants';
 import {
@@ -19,6 +20,7 @@ import { moveUnit, separate } from './movement';
 import { productionTick } from './production';
 import { Pathfinder } from './pathfinding';
 import { Rng } from './rng';
+import { SpatialHash } from './spatial';
 import { type GameMap, Terrain } from './terrain';
 
 export { DT, RESOURCE_KINDS, TICK_MS, TICK_RATE, type ResourceKind } from './constants';
@@ -42,7 +44,12 @@ export type SimEvent =
   | { type: 'dropoff'; owner: number; x: number; y: number; res: ResourceKind; amount: number }
   | { type: 'built'; owner: number; id: number }
   | { type: 'trained'; owner: number; id: number }
-  | { type: 'error'; owner: number; message: string };
+  | { type: 'error'; owner: number; message: string }
+  /** `owner` is the side that was hit; `by` the attacking side. */
+  | { type: 'hit'; owner: number; by: number; id: number; x: number; y: number; amount: number; building: boolean }
+  | { type: 'death'; owner: number; unit: UnitType; x: number; y: number; face: number; by: number }
+  | { type: 'destroyed'; owner: number; building: BuildingType; x: number; y: number; size: number; by: number }
+  | { type: 'converted'; owner: number; from: number; id: number; x: number; y: number };
 
 /** Game state, advanced only by step(); input and AI both act through issue(). */
 export class World {
@@ -58,6 +65,11 @@ export class World {
   events: SimEvent[] = [];
   /** Builders working on each foundation this tick. */
   readonly builders = new Map<number, number>();
+  /** Units by position, rebuilt each tick. */
+  readonly spatial: SpatialHash;
+  /** Arrows and javelins in flight. */
+  projectiles: Projectile[] = [];
+  nextProjectileId = 1;
   private nextId = 1;
   private pending: Array<{ player: number; cmd: Command }> = [];
   private pathQueue: number[] = [];
@@ -70,6 +82,7 @@ export class World {
     this.rng = new Rng(map.seed ^ 0x9e3779b9);
     this.grid = new NavGrid(map);
     this.paths = new Pathfinder(this.grid);
+    this.spatial = new SpatialHash(map.size);
     this.popLimit = mapsData.sizes[map.sizeName].popCap;
     this.players = map.starts.map(() => ({
       resources: { ...economy.startResources },
@@ -148,6 +161,13 @@ export class World {
       py: y,
       hp: UNIT_DEFS[type].hp,
       face: 1,
+      stance: UNIT_DEFS[type].stance,
+      cooldown: 0,
+      guard: null,
+      flow: null,
+      attackedBy: 0,
+      attackedAt: -1000,
+      faith: 0,
       order: null,
       path: null,
       pathIdx: 0,
@@ -265,14 +285,16 @@ export class World {
     this.pending = [];
 
     this.builders.clear();
+    this.spatial.rebuild(this.units());
     for (const u of this.units()) {
       u.px = u.x;
       u.py = u.y;
-      think(this, u);
+      if (!combatThink(this, u)) think(this, u);
     }
     this.processPaths();
     for (const u of this.units()) moveUnit(this, u);
     separate(this);
+    projectileTick(this);
     constructionTick(this);
     productionTick(this);
     this.updatePopulation();

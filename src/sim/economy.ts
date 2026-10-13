@@ -246,6 +246,8 @@ export function setOrder(u: Unit, order: Order | null): void {
   u.path = null;
   u.pathPending = false;
   u.repaths = 0;
+  u.flow = null;
+  u.faith = 0;
 }
 
 function walkTo(w: World, u: Unit): void {
@@ -266,9 +268,20 @@ export function think(w: World, u: Unit): void {
   }
   switch (o.type) {
     case 'move':
-      if (!u.path && !u.pathPending && Math.hypot(u.x - o.x, u.y - o.y) < 0.6) setOrder(u, null), (u.state = 'idle');
-      else walkTo(w, u);
+      if (u.flow) {
+        u.state = 'walk';
+        return;
+      }
+      if (!u.path && !u.pathPending && Math.hypot(u.x - o.x, u.y - o.y) < 0.6) {
+        setOrder(u, null);
+        u.state = 'idle';
+        u.guard = { x: u.x, y: u.y };
+      } else walkTo(w, u);
       return;
+    case 'attack':
+    case 'heal':
+    case 'convert':
+      return; // handled by combat
     case 'gather':
       return gather(w, u, o);
     case 'dropoff':
@@ -430,6 +443,15 @@ export function goalFor(w: World, u: Unit): Goal | null {
       const b = w.building(o.id);
       if (!b) return null;
       return { x0: b.x, y0: b.y, x1: b.x + b.size - 1, y1: b.y + b.size - 1, reach: 1 };
+    }
+    case 'attack':
+    case 'heal':
+    case 'convert': {
+      const t = w.get(o.id);
+      if (!t || t.kind === 'resource') return null;
+      if (t.kind === 'building') return { x0: t.x, y0: t.y, x1: t.x + t.size - 1, y1: t.y + t.size - 1, reach: 1 };
+      const tx = Math.floor(t.x), ty = Math.floor(t.y);
+      return { x0: tx, y0: ty, x1: tx, y1: ty, reach: 1 };
     }
   }
 }

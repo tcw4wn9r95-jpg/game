@@ -24,6 +24,8 @@ export class Minimap {
   private fogVersion = -1;
   private lastDraw = 0;
   private dirty = true;
+  /** Alert pings: where and when (seconds). */
+  private pings: Array<{ x: number; y: number; at: number }> = [];
 
   constructor(
     parent: HTMLElement,
@@ -62,6 +64,12 @@ export class Minimap {
 
   destroy(): void {
     this.el.remove();
+  }
+
+  /** Flashes an expanding ring at a spot (an attack) for a few seconds. */
+  ping(x: number, y: number, now: number): void {
+    this.pings.push({ x, y, at: now });
+    this.dirty = true;
   }
 
   draw(now: number): void {
@@ -123,6 +131,20 @@ export class Minimap {
       g.fillStyle = PLAYER_COLORS[u.owner % PLAYER_COLORS.length];
       g.fillRect(x - dot / 2, y - dot / 2, dot, dot);
     }
+
+    // Alert pings: red rings pulsing outward.
+    const t = now / 1000;
+    this.pings = this.pings.filter((p) => t - p.at < 4);
+    for (const p of this.pings) {
+      const [x, y] = at(p.x, p.y);
+      const k = ((t - p.at) % 1) / 1;
+      g.strokeStyle = `rgba(255,70,50,${1 - k})`;
+      g.lineWidth = Math.max(1.5, W / 120);
+      g.beginPath();
+      g.ellipse(x, y, 4 + k * W * 0.06, (4 + k * W * 0.06) / 2, 0, 0, Math.PI * 2);
+      g.stroke();
+    }
+    if (this.pings.length) this.dirty = true;
 
     // The camera's view: the four screen corners mapped back onto the ground.
     const cam = this.camera;

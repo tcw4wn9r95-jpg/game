@@ -5,8 +5,12 @@ import type { World } from './world';
 /** Separation strength per tick (fraction of overlap resolved). */
 const PUSH = 0.35;
 
-/** Advances a unit along its path at its speed. */
+/** Within this many tiles of its slot, a unit leaves the flow field and walks straight to the slot. */
+const FLOW_EXIT = 2.5;
+
+/** Advances a unit along its path (or down its group's flow field) at its speed. */
 export function moveUnit(w: World, u: Unit): void {
+  if (u.flow) return flowMove(w, u);
   if (!u.path) return;
   let step = UNIT_DEFS[u.type].speed * DT;
   while (step > 0 && u.pathIdx < u.path.length) {
@@ -37,6 +41,48 @@ export function moveUnit(w: World, u: Unit): void {
       u.order = null;
       u.state = 'idle';
     }
+  }
+}
+
+/**
+ * Descends the group's flow field. Looks two steps ahead and heads for that tile
+ * when the way is clear, so units cut corners smoothly instead of zig-zagging
+ * from tile centre to tile centre.
+ */
+function flowMove(w: World, u: Unit): void {
+  const f = u.flow!;
+  let step = UNIT_DEFS[u.type].speed * DT;
+  for (let guard = 0; guard < 4 && step > 0; guard++) {
+    const tx = Math.floor(u.x), ty = Math.floor(u.y);
+    const here = f.field.at(tx, ty);
+    if (here === Infinity || here < FLOW_EXIT || Math.hypot(u.x - f.x, u.y - f.y) < FLOW_EXIT) {
+      // Off the field or nearly there: finish with an ordinary path to the slot.
+      u.flow = null;
+      u.path = null;
+      return;
+    }
+    const n1 = f.field.next(tx, ty);
+    if (!n1) {
+      u.flow = null;
+      return;
+    }
+    const n2 = f.field.next(n1.x, n1.y);
+    const aim = n2 && w.grid.isWalkable(Math.floor((u.x + n2.x + 0.5) / 2), Math.floor((u.y + n2.y + 0.5) / 2)) ? n2 : n1;
+    const ax = aim.x + 0.5, ay = aim.y + 0.5;
+    const dx = ax - u.x, dy = ay - u.y;
+    const d = Math.hypot(dx, dy);
+    if (Math.abs(dx) > 0.05) u.face = dx > 0 ? 1 : -1;
+    const move = Math.min(step, d);
+    const nx = u.x + (dx / d) * move, ny = u.y + (dy / d) * move;
+    if (!w.grid.isWalkable(Math.floor(nx), Math.floor(ny))) {
+      u.flow = null;
+      u.path = null;
+      return;
+    }
+    u.x = nx;
+    u.y = ny;
+    step -= move;
+    if (d > move) break;
   }
 }
 

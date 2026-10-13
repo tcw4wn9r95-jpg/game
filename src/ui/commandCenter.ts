@@ -3,7 +3,7 @@
 // for groups). Appears only while something is selected or a building is being sited.
 import type { Controller } from '../input/controller';
 import { isGatherer } from '../sim/economy';
-import { BUILDING_DEFS, type BuildingType, type Entity, UNIT_DEFS, type Unit } from '../sim/entities';
+import { BUILDING_DEFS, STANCES, type Stance, type BuildingType, type Entity, UNIT_DEFS, type Unit } from '../sim/entities';
 import type { World } from '../sim/world';
 import { ICONS } from './icons';
 import { portrait } from './portraits';
@@ -17,7 +17,7 @@ const CAP = 10;
 /** Build tabs; buildings arrive in later milestones and simply join their tab. */
 const TABS: Array<{ key: string; name: string; icon: string; types: BuildingType[] }> = [
   { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'mill', 'lumber_camp', 'mining_camp', 'farm'] },
-  { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks'] },
+  { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks', 'archery_range', 'stable', 'monastery'] },
   { key: 'defense', name: 'Defense', icon: ICONS.meleeArmor, types: [] },
   { key: 'naval', name: 'Naval', icon: ICONS.ship, types: [] },
 ];
@@ -69,8 +69,29 @@ function status(w: World, u: Unit): string {
       const b = w.building(o.id);
       return `${u.state === 'build' ? 'Building' : 'Going to build'} ${b ? BUILDING_DEFS[b.type].name : ''}`;
     }
+    case 'attack': {
+      const t = w.get(o.id);
+      const name = t?.kind === 'unit' ? UNIT_DEFS[t.type].name : t?.kind === 'building' ? BUILDING_DEFS[t.type].name : 'enemy';
+      return `${u.state === 'attack' ? 'Fighting' : 'Charging'} ${name}`;
+    }
+    case 'heal':
+      return u.state === 'heal' ? 'Healing' : 'Going to heal';
+    case 'convert':
+      return u.state === 'convert' ? 'Converting' : 'Going to convert';
   }
 }
+
+/** "Strong vs / weak vs" line for a unit's tooltip. */
+function matchup(d: { strong: string; weak: string }): string {
+  return `${d.strong ? `<br><span class="strong">Strong vs</span> ${d.strong}` : ''}${d.weak ? `<br><span class="weak">Weak vs</span> ${d.weak}` : ''}`;
+}
+
+const STANCE_TEXT: Record<Stance, [string, string]> = {
+  aggressive: ['Aggressive', 'Attack any enemy in sight and chase it.'],
+  defensive: ['Defensive', 'Attack enemies nearby, then return to post.'],
+  stand: ['Stand Ground', 'Hold position; attack only what comes within reach.'],
+  passive: ['No Attack', 'Never attack, even when struck. Good for scouting.'],
+};
 
 export class CommandCenter {
   private readonly root: HTMLElement;
@@ -180,6 +201,25 @@ export class CommandCenter {
         });
     }
     if (own.length) slots.push({ icon: ICONS.stop, label: 'Stop', run: () => ctl.stop(), tip: () => tipHtml('Stop', 'Abandon the current task.') });
+    const soldiers = own.filter((u) => !isGatherer(u));
+    if (soldiers.length && !villagers) {
+      // One button cycles the stance; its icon shows the current one.
+      const current = () => soldiers[0].stance;
+      const btn: Cmd = {
+        icon: ICON[current()],
+        label: 'Stance',
+        caption: STANCE_TEXT[current()][0],
+        run: () => {
+          const next = STANCES[(STANCES.indexOf(current()) + 1) % STANCES.length];
+          ctl.command({ type: 'stance', ids: soldiers.map((u) => u.id), stance: next });
+          // The stance applies next tick; show it now.
+          for (const u of soldiers) u.stance = next;
+          this.shown = '';
+        },
+        tip: () => tipHtml(`Stance: ${STANCE_TEXT[current()][0]}`, `${STANCE_TEXT[current()][1]}<br><i>Tap to cycle: Aggressive, Defensive, Stand Ground, No Attack.</i>`),
+      };
+      slots.push(btn);
+    }
     while (slots.length < 4) slots.push(null);
     slots.push(own.length ? this.deleteCmd() : null);
     slots.push({ icon: ICONS.close, label: 'Deselect', run: () => ctl.deselect() });
@@ -216,7 +256,7 @@ export class CommandCenter {
           caption: Object.values(cost).join('/'),
           run: () => this.ctl.command({ type: 'train', id: b.id, unit }),
           disabled: () => Object.entries(cost).some(([k, v]) => res[k as Res] < v),
-          tip: () => tipHtml(`Train ${u.name}`, `${u.description}<br>${u.trainTime}s · ${u.hp} HP`, cost),
+          tip: () => tipHtml(`Train ${u.name}`, `${u.description}<br>${u.trainTime}s · ${u.hp} HP${matchup(u)}`, cost),
         });
       }
       if (def.trains.length)
@@ -379,6 +419,12 @@ export class CommandCenter {
     for (const [icon, value, label] of items) {
       const s = el('span', 'stat-chip', `<span class="icon">${ICON[icon]}</span>${value ? `<b>${value}</b>` : ''}`);
       tip(s, () => tipHtml(label, ''));
+      box.appendChild(s);
+    }
+    if (e.kind === 'unit') {
+      const d = UNIT_DEFS[e.type];
+      const s = el('span', 'stat-chip matchup', `<span class="icon">${ICON.attack}</span>`);
+      tip(s, () => tipHtml(d.name, matchup(d).replace(/^<br>/, '')));
       box.appendChild(s);
     }
   }

@@ -1,7 +1,7 @@
 // Isometric world renderer: cached terrain chunks, depth-sorted trees, decor,
 // buildings and units, fog, then effects. Tile (x, y) maps to screen
 // ((x - y) * Z, (x + y) * Z / 2), Z being device px per tile at the current zoom.
-import { BUILDING_DEFS, type Building, type BuildingType, UNIT_DEFS, type Unit } from '../sim/entities';
+import { BUILDING_DEFS, type Building, type BuildingType, UNIT_DEFS, type Unit, type UnitType } from '../sim/entities';
 import type { Fog } from '../sim/fog';
 import { Feature, Terrain } from '../sim/terrain';
 import type { World } from '../sim/world';
@@ -27,6 +27,12 @@ const EFFECT_S = 1.3;
 const TEXTURE_K = Math.SQRT2;
 /** Sprite px per 32-unit tile, relative to Z: a tree is about one diamond wide. */
 const SPRITE_K = 1.6;
+
+/** Weapon each unit swings in its attack animation. */
+const ATTACK_TOOL: Record<string, Tool> = { villager: 'axe', militia: 'sword', spearman: 'spear', archer: 'bow', skirmisher: 'javelin', scout: 'spear', knight: 'spear', monk: 'staff' };
+/** How long the fallen stay on the field, and rubble after a building falls (seconds). */
+const CORPSE_S = 14;
+const RUIN_S = 45;
 
 const TOOL_FOR: Record<string, Tool> = { tree: 'axe', gold: 'pick', stone: 'pick', berries: 'basket', sheep: 'knife', deer: 'knife', fish: 'spear', farm: 'hoe' };
 
@@ -85,6 +91,8 @@ export class Renderer {
   private readonly biome: Biome;
   private readonly items: Drawable[] = [];
   readonly effects: Effect[] = [];
+  private readonly corpses: Array<{ x: number; y: number; type: UnitType; owner: number; look: number; left: boolean; born: number }> = [];
+  private readonly ruins: Array<{ x: number; y: number; size: number; born: number; seed: number }> = [];
   /** Last drawn position and facing per unit, to pick a view from movement. */
   private readonly lastPos = new Map<number, { x: number; y: number }>();
   private readonly lastView = new Map<number, { view: 'front' | 'side' | 'back'; left: boolean }>();
@@ -125,6 +133,17 @@ export class Renderer {
 
   dispose(): void {
     this.chunks.dispose();
+  }
+
+  /** A unit fell: leave its body on the field for a while. */
+  addDeath(e: { x: number; y: number; unit: UnitType; owner: number; face: number }, id: number, now: number): void {
+    this.corpses.push({ x: e.x, y: e.y, type: e.unit, owner: e.owner, look: lookIndex(id), left: e.face < 0, born: now });
+    if (this.corpses.length > 200) this.corpses.shift();
+  }
+
+  /** A building fell: scorched ground and rubble. */
+  addRuin(e: { x: number; y: number; size: number }, now: number): void {
+    this.ruins.push({ x: e.x, y: e.y, size: e.size, born: now, seed: (e.x * 73 + e.y * 151) | 0 });
   }
 
   /** alpha: fraction of the way from the last tick to the next; now: seconds, for animation. */
@@ -275,6 +294,30 @@ export class Renderer {
         items.push({ d: e.x + e.y, draw: () => put(s, e.x, e.y) });
       }
     }
+    for (let i = this.ruins.length - 1; i >= 0; i--) {
+      const r = this.ruins[i];
+      if (v.now - r.born > RUIN_S) {
+        this.ruins.splice(i, 1);
+        continue;
+      }
+      if (!onScreen(r.x + r.size / 2, r.y + r.size / 2, pad + r.size * v.S) || !fog.isExplored(r.x + r.size / 2, r.y + r.size / 2)) continue;
+      items.push({ d: r.x + r.y - 1, draw: () => this.drawRuin(v, r) });
+    }
+    for (let i = this.corpses.length - 1; i >= 0; i--) {
+      const c = this.corpses[i];
+      if (v.now - c.born > CORPSE_S) {
+        this.corpses.splice(i, 1);
+        continue;
+      }
+      if (!onScreen(c.x, c.y, pad) || !fog.isVisible(c.x, c.y)) continue;
+      items.push({ d: c.x + c.y - 0.4, draw: () => this.drawCorpse(v, c) });
+    }
+    for (const p of world.projectiles) {
+      const t = Math.min(1, p.t + p.dt * v.alpha);
+      const x = p.sx + (p.tx - p.sx) * t, y = p.sy + (p.ty - p.sy) * t;
+      if (!onScreen(x, y, pad) || !fog.isVisible(x, y)) continue;
+      items.push({ d: x + y + 0.6, draw: () => this.drawProjectile(v, p, t) });
+    }
     const gh = v.overlay.ghost;
     if (gh) items.push({ d: gh.x + gh.y + BUILDING_DEFS[gh.type].size, draw: () => this.drawGhost(v, gh) });
     items.sort((a, b) => a.d - b.d);
@@ -309,7 +352,7 @@ export class Renderer {
     if (selected) {
       ctx.strokeStyle = u.owner === this.player ? 'rgba(255,255,255,0.95)' : 'rgba(255,90,80,0.95)';
       ctx.lineWidth = Math.max(1.5, S / 16);
-      const r = S * (u.type === 'scout' ? 0.75 : 0.5);
+      const r = S * (u.type === 'scout' || u.type === 'knight' ? 0.75 : 0.5);
       ctx.beginPath();
       ctx.ellipse(px, py, r, r / 2, 0, 0, Math.PI * 2);
       ctx.stroke();
@@ -318,7 +361,171 @@ export class Renderer {
     const t = v.now + (u.id % 7) * 0.13;
     const p = this.poseFor(u, x, y, t);
     this.put(v, v.art.units.get(u.type, u.owner, lookIndex(u.id), p), x, y);
-    if (selected) this.hpBar(v, px, py - S * SPRITE_K * (unitHeight(u.type) + 0.12), S * 0.9, u.hp / UNIT_DEFS[u.type].hp, u.owner);
+    // Health shows on selection, and for a few seconds after any hit.
+    const hurt = u.attackedAt > this.world.tick - 50 && u.hp < UNIT_DEFS[u.type].hp;
+    if (selected || hurt) this.hpBar(v, px, py - S * SPRITE_K * (unitHeight(u.type) + 0.12), S * 0.9, u.hp / UNIT_DEFS[u.type].hp, u.owner);
+  }
+
+  /** A fallen soldier lying on its side, fading out. */
+  private drawCorpse(v: FrameView, c: Renderer['corpses'][number]): void {
+    const { ctx } = this.view;
+    const age = v.now - c.born;
+    const sp = v.art.units.get(c.type, c.owner, c.look, { view: 'side', left: c.left, anim: 'idle', frame: 0, tool: 'none', carry: null });
+    const px = this.sx(v, c.x, c.y), py = this.sy(v, c.x, c.y);
+    const k = v.exact ? 1 : v.k;
+    // Topples over in the first half second, then lies still and fades.
+    const fall = Math.min(1, age / 0.5);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, (CORPSE_S - age) / 4));
+    ctx.translate(px, py);
+    if (c.type === 'scout' || c.type === 'knight') {
+      // A horse goes down on its side: it sinks and flattens rather than toppling end over end.
+      ctx.rotate((c.left ? 1 : -1) * fall * 0.18);
+      ctx.scale(k, k * (1 - fall * 0.55));
+    } else {
+      ctx.rotate((c.left ? 1 : -1) * fall * Math.PI * 0.47);
+      ctx.scale(k, k * (1 - fall * 0.35));
+    }
+    ctx.drawImage(sp.c, -sp.ax, -sp.ay);
+    ctx.restore();
+  }
+
+  /** Scorched footprint with heaped rubble and charred beams, fading over time. */
+  private drawRuin(v: FrameView, r: Renderer['ruins'][number]): void {
+    const { ctx } = this.view;
+    const { S } = v;
+    const age = v.now - r.born;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, (RUIN_S - age) / 8));
+    this.diamond(v, r.x - 0.1, r.y - 0.1, r.size + 0.2);
+    ctx.fillStyle = 'rgba(30,22,14,0.55)';
+    ctx.fill();
+    let s = r.seed * 9301 + 49297;
+    const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    const n = 10 + r.size * 8;
+    for (let i = 0; i < n; i++) {
+      const x = r.x + 0.2 + rnd() * (r.size - 0.4), y = r.y + 0.2 + rnd() * (r.size - 0.4);
+      const X = this.sx(v, x, y), Y = this.sy(v, x, y);
+      if (rnd() < 0.3) {
+        // Charred beam.
+        ctx.strokeStyle = '#2a1a10';
+        ctx.lineWidth = Math.max(1, S * 0.08);
+        ctx.beginPath();
+        const a = rnd() * Math.PI;
+        ctx.moveTo(X - Math.cos(a) * S * 0.3, Y - Math.sin(a) * S * 0.12);
+        ctx.lineTo(X + Math.cos(a) * S * 0.3, Y + Math.sin(a) * S * 0.12);
+        ctx.stroke();
+      } else {
+        const rr = S * (0.08 + rnd() * 0.12);
+        const g = ctx.createRadialGradient(X - rr * 0.3, Y - rr * 0.6, rr * 0.1, X, Y - rr * 0.3, rr * 1.2);
+        g.addColorStop(0, '#b8b0a2');
+        g.addColorStop(1, '#4a443c');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(X, Y - rr * 0.3, rr, rr * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // Smoke still rising for the first while.
+    if (age < 20) this.smoke(v, r.x + r.size / 2, r.y + r.size / 2, 0, 1 - age / 20, r.seed);
+    ctx.restore();
+  }
+
+  /** Rising, drifting smoke puffs above a point (z in device px). */
+  private smoke(v: FrameView, x: number, y: number, z: number, strength: number, seed: number): void {
+    const { ctx } = this.view;
+    const { S } = v;
+    const X = this.sx(v, x, y), Y = this.sy(v, x, y) - z;
+    for (let k = 0; k < 5; k++) {
+      const t = (v.now * 0.35 + k / 5 + (seed % 7) * 0.13) % 1;
+      const r = S * (0.25 + t * 0.6);
+      const px = X + t * S * 0.8 + Math.sin(v.now + k) * S * 0.1, py = Y - t * S * 2.4;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, r);
+      g.addColorStop(0, `rgba(60,58,56,${0.35 * (1 - t) * strength})`);
+      g.addColorStop(1, 'rgba(60,58,56,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(px - r, py - r, r * 2, r * 2);
+    }
+  }
+
+  /** Licking flames at a point (z in device px). */
+  private flames(v: FrameView, x: number, y: number, z: number, size: number, seed: number): void {
+    const { ctx } = this.view;
+    const { S } = v;
+    const X = this.sx(v, x, y), Y = this.sy(v, x, y) - z;
+    for (let k = 0; k < 4; k++) {
+      const f = Math.sin(v.now * 9 + k * 1.7 + seed) * 0.5 + 0.5;
+      const h = S * size * (0.5 + f * 0.5);
+      const w = S * size * 0.22;
+      const dx = (k - 1.5) * w * 0.7;
+      const g = ctx.createLinearGradient(0, Y, 0, Y - h);
+      g.addColorStop(0, 'rgba(255,90,20,0.9)');
+      g.addColorStop(0.5, 'rgba(255,190,60,0.8)');
+      g.addColorStop(1, 'rgba(255,240,180,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(X + dx - w, Y);
+      ctx.quadraticCurveTo(X + dx - w * 0.6, Y - h * 0.6, X + dx + Math.sin(v.now * 5 + k) * w * 0.4, Y - h);
+      ctx.quadraticCurveTo(X + dx + w * 0.6, Y - h * 0.6, X + dx + w, Y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    const glow = ctx.createRadialGradient(X, Y - S * size * 0.3, 0, X, Y - S * size * 0.3, S * size);
+    glow.addColorStop(0, 'rgba(255,160,60,0.25)');
+    glow.addColorStop(1, 'rgba(255,160,60,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(X - S * size, Y - S * size * 1.3, S * size * 2, S * size * 2);
+  }
+
+  /** An arrow (or javelin) on its arc, with its shadow on the ground. */
+  private drawProjectile(v: FrameView, p: World['projectiles'][number], t: number): void {
+    const { ctx } = this.view;
+    const { S } = v;
+    const at = (q: number) => {
+      const x = p.sx + (p.tx - p.sx) * q, y = p.sy + (p.ty - p.sy) * q;
+      const z = p.arc * 4 * q * (1 - q) + 0.55 * (1 - q) + 0.25 * q;
+      return { X: this.sx(v, x, y), Y: this.sy(v, x, y), Z: z * S };
+    };
+    const a = at(t), b = at(Math.min(1, t + 0.04));
+    let dx = b.X - a.X, dy = b.Y - b.Z - (a.Y - a.Z);
+    const l = Math.hypot(dx, dy) || 1;
+    dx /= l;
+    dy /= l;
+    const javelin = p.from === 'skirmisher';
+    const len = S * (javelin ? 0.55 : 0.4);
+    // Shadow.
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(a.X, a.Y, len * 0.35, len * 0.08, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const hx = a.X + dx * len * 0.5, hy = a.Y - a.Z + dy * len * 0.5;
+    const tx = a.X - dx * len * 0.5, ty = a.Y - a.Z - dy * len * 0.5;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(20,12,4,0.8)';
+    ctx.lineWidth = Math.max(1.2, S * (javelin ? 0.06 : 0.04));
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(hx, hy);
+    ctx.stroke();
+    ctx.strokeStyle = javelin ? '#8a6038' : '#c9a46a';
+    ctx.lineWidth = Math.max(0.8, S * (javelin ? 0.035 : 0.022));
+    ctx.stroke();
+    // Steel head and (for arrows) pale fletching.
+    ctx.fillStyle = '#d4dadd';
+    ctx.beginPath();
+    ctx.moveTo(hx + dx * S * 0.08, hy + dy * S * 0.08);
+    ctx.lineTo(hx - dy * S * 0.03, hy + dx * S * 0.03);
+    ctx.lineTo(hx + dy * S * 0.03, hy - dx * S * 0.03);
+    ctx.closePath();
+    ctx.fill();
+    if (!javelin) {
+      ctx.strokeStyle = '#f0ebe0';
+      ctx.lineWidth = Math.max(1, S * 0.04);
+      ctx.beginPath();
+      ctx.moveTo(tx, ty);
+      ctx.lineTo(tx + dx * S * 0.08, ty + dy * S * 0.08);
+      ctx.stroke();
+    }
   }
 
   /** Where a working unit's job is, to face it. */
@@ -330,9 +537,10 @@ export class Renderer {
       if (!e) return null;
       return e.kind === 'building' ? { x: e.x + e.size / 2, y: e.y + e.size / 2 } : { x: e.x, y: e.y };
     }
-    if (o?.type === 'build') {
-      const b = this.world.building(o.id);
-      return b ? { x: b.x + b.size / 2, y: b.y + b.size / 2 } : null;
+    if (o?.type === 'build' || o?.type === 'attack' || o?.type === 'heal' || o?.type === 'convert') {
+      const e = this.world.get(o.id);
+      if (!e) return null;
+      return e.kind === 'building' ? { x: e.x + e.size / 2, y: e.y + e.size / 2 } : { x: e.x, y: e.y };
     }
     return null;
   }
@@ -351,7 +559,8 @@ export class Renderer {
         view = Math.abs(sdy) > Math.abs(sdx) * 1.1 ? { view: sdy > 0 ? 'front' : 'back', left: false } : { view: 'side', left: sdx < 0 };
     }
     this.lastPos.set(u.id, { x, y });
-    const working = u.state === 'gather' || u.state === 'build';
+    const fighting = u.state === 'attack' || u.state === 'heal' || u.state === 'convert';
+    const working = u.state === 'gather' || u.state === 'build' || fighting;
     if (working) {
       // Work plays side-on, facing the job.
       const j = this.jobPoint(u);
@@ -362,11 +571,20 @@ export class Renderer {
     let tool: Tool = 'none';
     if (u.state === 'build') tool = 'hammer';
     else if (u.state === 'gather' && u.order?.type === 'gather') tool = TOOL_FOR[u.order.source] ?? 'none';
-    const fps = u.type === 'scout' ? 12 : 10;
+    else if (fighting) tool = ATTACK_TOOL[u.type] ?? 'none';
+    const fps = u.type === 'scout' || u.type === 'knight' ? 12 : 10;
+    let frame = working ? Math.floor(t * 5) % 4 : moving ? Math.floor(t * fps) % 6 : 0;
+    if (u.state === 'attack') {
+      // Time the swing to the reload: the blow lands (or the arrow looses) as the cooldown restarts.
+      const reload = UNIT_DEFS[u.type].reload * 10;
+      const q = 1 - u.cooldown / reload;
+      const seq = tool === 'bow' ? [3, 0, 1, 2] : [2, 3, 0, 1];
+      frame = seq[q < 0.15 ? 0 : q < 0.35 ? 1 : q < 0.7 ? 2 : 3];
+    }
     return {
       ...view,
       anim: working ? 'work' : moving ? 'walk' : 'idle',
-      frame: working ? Math.floor(t * 5) % 4 : moving ? Math.floor(t * fps) % 6 : 0,
+      frame,
       tool,
       carry: u.carry && u.carry.amount > 0 && !working ? u.carry.res : null,
     };
@@ -417,7 +635,15 @@ export class Renderer {
       ctx.stroke();
     }
     if (selected && b.rally && b.owner === this.player) this.drawRally(v, b);
-    if (selected || !b.complete) {
+    if (b.complete && b.hp < def.hp * 0.6 && !def.walkable) {
+      // Burning: smoke from the start, flames once badly hurt.
+      const frac = b.hp / def.hp;
+      const top = S * b.size * 0.55;
+      this.smoke(v, b.x + b.size * 0.5, b.y + b.size * 0.5, top, 1.2 - frac, b.id);
+      if (frac < 0.45) this.flames(v, b.x + b.size * 0.35, b.y + b.size * 0.7, top * 0.5, 0.5 + b.size * 0.12, b.id);
+      if (frac < 0.25) this.flames(v, b.x + b.size * 0.75, b.y + b.size * 0.4, top * 0.7, 0.45 + b.size * 0.1, b.id + 3);
+    }
+    if (selected || !b.complete || (b.hp < def.hp && !def.walkable)) {
       const cx = this.sx(v, b.x + b.size / 2, b.y + b.size / 2);
       const top = def.walkable ? this.sy(v, b.x, b.y) - S * 0.6 : ny - S * (0.4 + b.size * 0.55);
       this.hpBar(v, cx, top, Math.min(b.size * S * 1.2, S * 3), b.complete ? b.hp / def.hp : b.progress, b.owner, !b.complete);

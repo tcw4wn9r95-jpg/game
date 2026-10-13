@@ -151,6 +151,68 @@ export const ICONS = {
     <path d="M7 14h8M7 17h8" stroke="rgba(0,0,0,.35)" stroke-width=".9"/>
     <circle cx="6" cy="15" r="3.6" fill="#3f6fb0" stroke="${INK}" stroke-width="1"/><circle cx="6" cy="15" r="1" fill="#d9b44a"/>
     <path d="M17 13l5-9" stroke="#c9d1d6" stroke-width="1.8" stroke-linecap="round"/><path d="M15.5 12.5l3 1.6" stroke="#c8962a" stroke-width="1.6"/>`),
+  spearman: svg(`
+    <circle cx="10" cy="7.5" r="3.3" fill="#e0b48c" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M6.6 7c0-2.8 1.6-4 3.4-4s3.4 1.2 3.4 4z" fill="#7a5230" stroke="${INK}" stroke-width=".8"/>
+    <path d="M5 21l1.4-8c.4-2 2-3 3.6-3s3.2 1 3.6 3L15 21z" fill="#3f6fb0" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M6 14.5h8M6 17.5h8" stroke="rgba(0,0,0,.35)" stroke-width=".9"/>
+    <path d="M17 23L20 2" stroke="#7a5430" stroke-width="1.6" stroke-linecap="round"/><path d="M19.2 4.5L20.4 0l1 4.7z" fill="#c9d1d6" stroke="${INK}" stroke-width=".6"/>`),
+  archer: svg(`
+    <path d="M7 10c0-4 2-7 5-7s5 3 5 7c-1 2-9 2-10 0z" fill="#56683e" stroke="${INK}" stroke-width="1"/>
+    <circle cx="12" cy="8.5" r="2.6" fill="#e0b48c"/>
+    <path d="M6.5 21l1.4-8c.4-2 2-3 4.1-3s3.7 1 4.1 3L17.5 21z" fill="#2f5aa0" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M19 3c4 5 4 13 0 18" fill="none" stroke="#8a5a2b" stroke-width="1.8" stroke-linecap="round"/><path d="M19 3v18" stroke="#f1e9d6" stroke-width=".6"/>
+    <path d="M9 12l10 0" stroke="#c9a46a" stroke-width="1"/><path d="M19 11l2 1-2 1z" fill="#c9d1d6"/>`),
+  skirmisher: svg(`
+    <circle cx="12" cy="7" r="3.2" fill="#e0b48c" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M8.8 5.8h6.4" stroke="#2f5aa0" stroke-width="1.6"/>
+    <path d="M7.5 21l1.4-8c.4-2 1.6-3 3.1-3s2.7 1 3.1 3L16.5 21z" fill="#6b5a42" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <ellipse cx="6" cy="15" rx="4" ry="6" fill="#b8975a" stroke="${INK}" stroke-width="1"/><path d="M2.5 12.5c2 1 5 1 7 0M2.3 15c2 1 5.4 1 7.4 0M2.5 17.5c2 1 5 1 7 0" stroke="#7a5a28" stroke-width=".7" fill="none"/>
+    <path d="M15 14l7-11M17 15l6-10" stroke="#7a5430" stroke-width="1.2" stroke-linecap="round"/><path d="M21.2 4.2l1.6-2.5.2 3z" fill="#c9d1d6"/>`),
+  knight: svg(`
+    <path d="M2 17c0-3 2-5 6-5h7l3-4 3 1-2 5v4" fill="#8f8a84" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M3 15h15v3H3z" fill="#2f5aa0" stroke="${INK}" stroke-width=".8"/>
+    <path d="M4 18v4M8 18v4M14 18v4M17 18v4" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M8.5 12l1-6h4l1 6z" fill="#2f5aa0" stroke="${INK}" stroke-width="1"/>
+    <rect x="9.6" y="1.2" width="4.4" height="4.6" rx=".5" fill="#c4ccd1" stroke="${INK}" stroke-width=".9"/><path d="M10.3 3.4h3" stroke="#1a1a1a" stroke-width=".8"/>
+    <path d="M13 9l11-2" stroke="#7a5430" stroke-width="1.4" stroke-linecap="round"/>`),
+  monk: svg(`
+    <circle cx="12" cy="6.5" r="3.3" fill="#e0b48c" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M9.2 5.2a3 2 0 015.6 0" fill="none" stroke="#6b4a28" stroke-width="1.4"/>
+    <path d="M6 22l1.6-10c.4-2 2.2-3 4.4-3s4 1 4.4 3L18 22z" fill="#6e5236" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M10.5 10v11M13.5 10v11" stroke="#2f5aa0" stroke-width="1.4"/><path d="M8 15h8" stroke="#d8c9a0" stroke-width="1"/>
+    <path d="M19.5 22V4" stroke="#6b4a28" stroke-width="1.5" stroke-linecap="round"/><path d="M17.8 5.5h3.4M19.5 3.5v4" stroke="#d9b44a" stroke-width="1"/>`),
+  archery_range: svg(`
+    <path d="M2 14v-4h14v4z" fill="#d8c8a0" stroke="${INK}" stroke-width="1"/>
+    <path d="M1 10.5L4 6.5h10l3 4z" fill="#8a6a48" stroke="${INK}" stroke-width="1" stroke-linejoin="round"/>
+    <circle cx="17" cy="16" r="5" fill="#e8d08a" stroke="${INK}" stroke-width="1"/><circle cx="17" cy="16" r="3.2" fill="#2f5aa0"/><circle cx="17" cy="16" r="1.4" fill="#f2ece0"/>
+    <path d="M10 15.5l6.2.4" stroke="#3a2614" stroke-width="1"/><path d="M15 22l2-6 2 6" stroke="#5a3d22" stroke-width="1" fill="none"/>`),
+  stable: svg(`
+    <path d="M2 21v-9h20v9z" fill="#8a6440" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M1 12.5L5 7h14l4 5.5z" fill="#d1ae5c" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M5 21v-6h4v6M15 21v-6h4v6" fill="#2a1a0c" stroke="${INK}" stroke-width=".8"/>
+    <path d="M10.5 11.5h3v2h-3z" fill="#e0c870"/>
+    <path d="M15.3 15.5c1-1.5 2.4-1.8 3.2-.5l-.4 2" fill="#8a5a30" stroke="${INK}" stroke-width=".7"/>`),
+  monastery: svg(`
+    <path d="M3 21V11h12v10z" fill="#a8a194" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M2 11.5L9 5l7 6.5z" fill="#8a5a40" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M15 21V8h5v13z" fill="#b5ae9f" stroke="${INK}" stroke-width="1.1"/><path d="M14.5 8.5l3-3.5 3 3.5z" fill="#8a5a40" stroke="${INK}" stroke-width="1"/>
+    <path d="M17.5 5V1.5M16.2 2.8h2.6" stroke="#d9b44a" stroke-width="1"/>
+    <path d="M7.5 21v-4a1.5 1.5 0 013 0v4z" fill="#3a2412"/><circle cx="9" cy="13.5" r="1.4" fill="#2f5aa0" stroke="${INK}" stroke-width=".6"/>`),
+  aggressive: svg(`
+    <path d="M4 20L18 5M20 20L6 5" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M4 20L18 5M20 20L6 5" stroke="#d6dde1" stroke-width="2" stroke-linecap="round"/>
+    <path d="M3 16l5 5M21 16l-5 5" stroke="#c8962a" stroke-width="2.2" stroke-linecap="round"/>`),
+  defensive: svg(`
+    <path d="M12 2l8 3v6c0 5.5-3.5 9-8 11-4.5-2-8-5.5-8-11V5z" fill="#2f5aa0" stroke="${INK}" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M12 2v20M4.5 10h15" stroke="#d9b44a" stroke-width="1.6"/>`),
+  stand: svg(`
+    <path d="M6 22h12" stroke="${INK}" stroke-width="3.4" stroke-linecap="round"/><path d="M6 22h12" stroke="#8a6a44" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M9 22V3" stroke="${INK}" stroke-width="3" stroke-linecap="round"/><path d="M9 22V3" stroke="#a77a45" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M10 4h10l-3 4 3 4H10z" fill="#c4572f" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>`),
+  passive: svg(`
+    <path d="M7 22V3" stroke="${INK}" stroke-width="3" stroke-linecap="round"/><path d="M7 22V3" stroke="#a77a45" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M8 4c4-2 7 2 13 0v9c-6 2-9-2-13 0z" fill="#f4f1e8" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>`),
   barracks: svg(`
     <path d="M2 20v-8h20v8z" fill="#d8c8a0" stroke="${INK}" stroke-width="1.1"/>
     <path d="M1 12.5L5 7h14l4 5.5z" fill="#d1ae5c" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>

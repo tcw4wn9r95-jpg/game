@@ -1,6 +1,7 @@
 // Debug view (?sheet): every unit pose drawn large, for reviewing the art.
 import type { View } from '../render/canvas';
 import type { Tool } from '../render/figures';
+import type { UnitType } from '../sim/entities';
 import { BuildingSprites } from '../render/buildingSprites';
 import { UnitSprites } from '../render/unitSprites';
 
@@ -12,9 +13,9 @@ export function drawSpriteSheet(view: View, zoom = 4): void {
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   const cell = 32 * zoom * view.dpr * 1.05;
   let col = 0, row = 0;
-  const put = (type: 'villager' | 'scout' | 'militia', player: number, look: number, pose: Parameters<UnitSprites['get']>[3]) => {
+  const put = (type: UnitType, player: number, look: number, pose: Parameters<UnitSprites['get']>[3]) => {
     const sp = sprites.get(type, player, look, pose);
-    const x = (col + 0.5) * cell * (type === 'scout' ? 1.5 : 1), y = (row + 0.9) * cell * 1.3;
+    const x = (col + 0.5) * cell * (type === 'scout' || type === 'knight' ? 1.5 : 1), y = (row + 0.9) * cell * 1.3;
     ctx.drawImage(sp.c, x - sp.ax, y - sp.ay);
     col++;
   };
@@ -30,6 +31,17 @@ export function drawSpriteSheet(view: View, zoom = 4): void {
   for (const v of ['front', 'back'] as const) put('villager', 3, 5, { ...base, view: v, anim: 'walk', frame: 1, carry: 'stone' });
   for (const v of ['front', 'side', 'back'] as const) put('militia', 0, 1, { ...base, view: v, anim: 'idle' });
   put('militia', 1, 2, { ...base, view: 'side', anim: 'work', frame: 2 });
+  row++;
+  col = 0;
+  for (const t of ['spearman', 'archer', 'skirmisher', 'monk'] as const) {
+    const tool: Tool = t === 'spearman' ? 'spear' : t === 'archer' ? 'bow' : t === 'skirmisher' ? 'javelin' : 'staff';
+    put(t, 0, 3, { ...base, view: 'front', anim: 'idle' });
+    put(t, 1, 3, { ...base, view: 'side', anim: 'work', frame: 2, tool });
+  }
+  put('knight', 0, 0, { ...base, view: 'side', anim: 'idle' });
+  put('knight', 1, 0, { ...base, view: 'front', anim: 'walk', frame: 1 });
+  row++;
+  col = 0;
   put('scout', 0, 0, { ...base, view: 'side', anim: 'idle' });
   put('scout', 1, 0, { ...base, view: 'side', anim: 'walk', frame: 2 });
   put('scout', 2, 0, { ...base, view: 'front', anim: 'walk', frame: 1 });
@@ -51,8 +63,10 @@ export function drawBuildingSheet(view: View, z = 48): void {
     ['lumber_camp', 2, 0],
     ['mining_camp', 2, 0],
     ['barracks', 3, 0],
+    ['archery_range', 3, 0],
+    ['stable', 3, 0],
+    ['monastery', 3, 0],
     ['farm', 3, 3],
-    ['farm', 3, 1],
   ] as const;
   let x = 10, y = 10, rowH = 0;
   for (const [type, size, variant] of list) {
