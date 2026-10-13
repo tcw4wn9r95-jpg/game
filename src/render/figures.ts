@@ -27,6 +27,8 @@ export interface FigureSpec {
   look: Look;
   /** Upgraded (Swordsman, Pikeman, Crossbowman, Light Cavalry): better kit. */
   elite?: boolean;
+  /** Trebuchets: folded for travel. */
+  packed?: boolean;
 }
 
 /** A dyed horsehair crest or plume on top of a helm at (x, y). */
@@ -1192,12 +1194,12 @@ function wickerShield(g: G, x: number, y: number) {
   g.stroke();
 }
 
-type Kit = 'spearman' | 'archer' | 'skirmisher' | 'monk';
+type Kit = 'spearman' | 'archer' | 'skirmisher' | 'monk' | 'petard';
 
 /** Shared body for infantry and monks; the kit decides clothing, headgear and gear. */
 function drawFoot(g: G, f: FigureSpec, kit: Kit): void {
   const look: Look = { ...f.look, female: false };
-  const tool: Tool = kit === 'spearman' ? 'spear' : kit === 'archer' ? 'bow' : kit === 'skirmisher' ? 'javelin' : 'staff';
+  const tool: Tool = kit === 'spearman' ? 'spear' : kit === 'archer' ? 'bow' : kit === 'skirmisher' || kit === 'petard' ? 'javelin' : 'staff';
   const acting = f.anim === 'work';
   const idleArms: Pose =
     kit === 'archer' ? { ...IDLE, armF: [12, 40] } : kit === 'spearman' ? { ...IDLE, armN: [30, 70] } : kit === 'monk' ? { ...IDLE, armN: [20, 60] } : IDLE;
@@ -1239,7 +1241,7 @@ function drawFoot(g: G, f: FigureSpec, kit: Kit): void {
     g.fillStyle = '#d8c9a0';
     g.fillRect(hip[0] - 10, hip[1] - 4, 20, 2);
   }
-  if (kit === 'spearman' || kit === 'skirmisher') {
+  if (kit === 'spearman' || kit === 'skirmisher' || kit === 'petard') {
     // Quilting on the gambeson.
     g.strokeStyle = 'rgba(0,0,0,0.22)';
     g.lineWidth = 0.9;
@@ -1298,7 +1300,7 @@ function drawFoot(g: G, f: FigureSpec, kit: Kit): void {
     g.stroke();
     g.fillStyle = roundLight(g, hx, hy - 5, 11, 10, hood);
     g.fill();
-  } else if (kit === 'skirmisher') {
+  } else if (kit === 'skirmisher' || kit === 'petard') {
     stroke(g, [hx - 9.5, hy - 4], [hx + 9.5, hy - 4], 2.2, f.team);
   } else if (f.view !== 'front') {
     // Monk's cowl lying on the shoulders.
@@ -1340,6 +1342,20 @@ function drawFoot(g: G, f: FigureSpec, kit: Kit): void {
       poly(g, [[near.hand[0] - 2.4, near.hand[1] - 58], [near.hand[0], near.hand[1] - 67], [near.hand[0] + 2.4, near.hand[1] - 58]], STEEL);
     }
   }
+  if (kit === 'petard') {
+    // A keg of powder hugged to the chest, fuse smoking.
+    const kx = f.view === 'side' ? near.hand[0] + 2 : near.hand[0] - 6, ky = near.hand[1] - 4;
+    blob(g, kx, ky, 7, 8, '#7a5230');
+    g.strokeStyle = '#2b2622';
+    g.lineWidth = 1.4;
+    for (const dy of [-5, 5]) {
+      g.beginPath();
+      g.ellipse(kx, ky + dy, 7, 1.5, 0, 0, Math.PI);
+      g.stroke();
+    }
+    stroke(g, [kx, ky - 8], [kx + 2, ky - 13], 1, '#d8c9a0');
+    blob(g, kx + 2, ky - 14, 1.6, 1.6, '#ffb030', 0, false);
+  }
   if (kit === 'skirmisher') {
     if (f.view === 'side') {
       const dir = (near.fore + 90) * D2R;
@@ -1372,3 +1388,8 @@ export const drawSpearman = (g: G, f: FigureSpec) => drawFoot(g, f, 'spearman');
 export const drawArcher = (g: G, f: FigureSpec) => drawFoot(g, f, 'archer');
 export const drawSkirmisher = (g: G, f: FigureSpec) => drawFoot(g, f, 'skirmisher');
 export const drawMonk = (g: G, f: FigureSpec) => drawFoot(g, f, 'monk');
+
+// Shared with the siege engine figures.
+export { blob, limb, poly, roundLight, stroke, OUT, HANDLE, STEEL, STEEL_DARK, drawFoot };
+
+export const drawPetard = (g: G, f: FigureSpec) => drawFoot(g, f, 'petard');

@@ -19,7 +19,7 @@ const CAP = 10;
 /** Build tabs; buildings arrive in later milestones and simply join their tab. */
 const TABS: Array<{ key: string; name: string; icon: string; types: BuildingType[] }> = [
   { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'farm', 'mill', 'lumber_camp', 'mining_camp', 'market'] },
-  { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks', 'archery_range', 'stable', 'blacksmith', 'monastery', 'university'] },
+  { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks', 'archery_range', 'stable', 'blacksmith', 'monastery', 'university', 'siege_workshop'] },
   { key: 'defense', name: 'Defense', icon: ICONS.meleeArmor, types: ['palisade_wall', 'stone_wall', 'watch_tower', 'castle'] },
   { key: 'naval', name: 'Naval', icon: ICONS.ship, types: [] },
 ];
@@ -57,7 +57,9 @@ function tipHtml(title: string, body: string, cost?: Record<string, number>): st
 /** One-line account of what a unit is doing. */
 function status(w: World, u: Unit): string {
   const o = u.order;
-  if (!o) return 'Idle';
+  if (u.state === 'pack') return u.packed ? 'Unpacking…' : 'Packing up…';
+  if (u.cargo.length) return `${u.cargo.length} aboard`;
+  if (!o) return UNIT_DEFS[u.type].packs ? (u.packed ? 'Packed' : 'Ready to fire') : 'Idle';
   switch (o.type) {
     case 'move':
       return 'Moving';
@@ -81,7 +83,9 @@ function status(w: World, u: Unit): string {
     case 'convert':
       return u.state === 'convert' ? 'Converting' : 'Going to convert';
     case 'garrison':
-      return 'Going inside';
+      return w.unit(o.id) ? 'Climbing aboard' : 'Going inside';
+    case 'attackGround':
+      return u.state === 'attack' ? 'Bombarding' : 'Moving to bombard';
     case 'repair': {
       const b = w.building(o.id);
       return `${u.state === 'repair' ? 'Repairing' : 'Going to repair'} ${b ? BUILDING_DEFS[b.type].name : ''}`;
@@ -242,6 +246,36 @@ export class CommandCenter {
       };
       slots.push(btn);
     }
+    // Siege: bombard a spot, pack or unpack, let riders out.
+    if (!villagers && soldiers.some((u) => UNIT_DEFS[u.type].groundAttack))
+      slots.push({
+        icon: ICONS.attackGround,
+        label: 'Attack ground',
+        active: () => ctl.targeting === 'ground',
+        run: () => ctl.armTargeting('ground'),
+        tip: () => tipHtml('Attack ground', 'Tap a spot to bombard it until told otherwise.'),
+      });
+    const trebs = soldiers.filter((u) => UNIT_DEFS[u.type].packs);
+    if (trebs.length && slots.length < 4)
+      slots.push({
+        icon: trebs[0].packed ? ICONS.unpack : ICONS.pack,
+        label: trebs[0].packed ? 'Unpack' : 'Pack',
+        run: () => {
+          ctl.command({ type: 'pack', ids: trebs.map((u) => u.id), packed: !trebs[0].packed });
+          this.shown = '';
+        },
+        tip: () => tipHtml(trebs[0].packed ? 'Unpack' : 'Pack', 'Trebuchets must unpack to fire and pack to move (5 seconds each). They do it themselves when ordered to attack or move.'),
+      });
+    const carriers = soldiers.filter((u) => u.cargo.length);
+    if (carriers.length && slots.length < 4)
+      slots.push({
+        icon: ICONS.ungarrison,
+        label: 'Unload',
+        run: () => {
+          for (const c of carriers) ctl.command({ type: 'ungarrison', id: c.id });
+        },
+        tip: () => tipHtml('Unload', 'Let the riders out. A siege tower next to an enemy wall puts them down on the far side.'),
+      });
     while (slots.length < 4) slots.push(null);
     slots.push(own.length ? this.deleteCmd() : null);
     slots.push({ icon: ICONS.close, label: 'Deselect', run: () => ctl.deselect() });

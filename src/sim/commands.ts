@@ -1,6 +1,7 @@
 // Player commands. Touch input and the AI both produce these; the world applies
 // them at the start of the next tick, so the simulation stays deterministic.
 import { setStance } from './combat';
+import { canBoard, setPacked, unload } from './siege';
 import { findResource, gatherOrder, isBuilder, isGatherer, setOrder, sourceOf } from './economy';
 import { FlowField } from './flowfield';
 import { WALL_TYPES, canShelter, placeWall, setGateLock, shelterRoom, ungarrison } from './fortify';
@@ -29,7 +30,9 @@ export type Command =
   | { type: 'garrison'; ids: number[]; id: number }
   | { type: 'ungarrison'; id: number }
   | { type: 'buildWall'; ids: number[]; kind: 'palisade' | 'stone'; tiles: Array<{ x: number; y: number; gate?: boolean }> }
-  | { type: 'lockGate'; id: number; locked: boolean };
+  | { type: 'lockGate'; id: number; locked: boolean }
+  | { type: 'attackGround'; ids: number[]; x: number; y: number }
+  | { type: 'pack'; ids: number[]; packed: boolean };
 
 export function applyCommand(w: World, player: number, cmd: Command): void {
   const ids = 'ids' in cmd ? cmd.ids : [];
@@ -67,6 +70,17 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
       return;
     }
     case 'garrison': {
+      const carrier = w.unit(cmd.id);
+      if (carrier) {
+        // Board a ram or siege tower.
+        let room = (UNIT_DEFS[carrier.type].cargo ?? 0) - carrier.cargo.length;
+        for (const u of units) {
+          if (room <= 0 || !canBoard(carrier, u)) continue;
+          setOrder(u, { type: 'garrison', id: carrier.id });
+          room--;
+        }
+        return;
+      }
       const b = w.building(cmd.id);
       if (!b) return;
       let room = shelterRoom(b);
@@ -81,8 +95,23 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
     case 'ungarrison': {
       const b = w.building(cmd.id);
       if (b && b.owner === player) ungarrison(w, b);
+      const c = w.unit(cmd.id);
+      if (c && c.owner === player) unload(w, c);
       return;
     }
+    case 'attackGround':
+      for (const u of units) {
+        if (!UNIT_DEFS[u.type].groundAttack) continue;
+        setOrder(u, { type: 'attackGround', x: cmd.x, y: cmd.y });
+        u.resume = null;
+      }
+      return;
+    case 'pack':
+      for (const u of units) {
+        setOrder(u, null);
+        setPacked(u, cmd.packed);
+      }
+      return;
     case 'lockGate': {
       const b = w.building(cmd.id);
       if (b && b.owner === player) setGateLock(w, b, cmd.locked);

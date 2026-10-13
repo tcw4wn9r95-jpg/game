@@ -53,7 +53,8 @@ export interface Overlay {
 }
 
 export interface Effect {
-  kind: 'text' | 'ring';
+  kind: 'text' | 'ring' | 'blast';
+  size?: number;
   x: number;
   y: number;
   text?: string;
@@ -383,7 +384,7 @@ export class Renderer {
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, (CORPSE_S - age) / 4));
     ctx.translate(px, py);
-    if (c.type === 'scout' || c.type === 'knight') {
+    if (c.type === 'scout' || c.type === 'knight' || UNIT_DEFS[c.type].classes.includes('siege')) {
       // A horse goes down on its side: it sinks and flattens rather than toppling end over end.
       ctx.rotate((c.left ? 1 : -1) * fall * 0.18);
       ctx.scale(k, k * (1 - fall * 0.55));
@@ -496,8 +497,25 @@ export class Renderer {
     const l = Math.hypot(dx, dy) || 1;
     dx /= l;
     dy /= l;
-    const javelin = p.from === 'skirmisher';
-    const len = S * (javelin ? 0.55 : 0.4);
+    if (p.splash) {
+      // A stone or boulder tumbling on its arc, with its shadow racing along the ground.
+      const r = S * (p.from === 'trebuchet' ? 0.2 : 0.13);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(a.X, a.Y, r * 1.1, r * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const sy = a.Y - a.Z;
+      const rock = ctx.createRadialGradient(a.X - r * 0.35, sy - r * 0.4, r * 0.1, a.X, sy, r);
+      rock.addColorStop(0, '#c9c4b8');
+      rock.addColorStop(1, '#4e4a44');
+      ctx.fillStyle = rock;
+      ctx.beginPath();
+      ctx.arc(a.X, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+    const javelin = p.from === 'skirmisher' || p.from === 'scorpion';
+    const len = S * (p.from === 'scorpion' ? 0.75 : javelin ? 0.55 : 0.4);
     // Shadow.
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
@@ -512,7 +530,7 @@ export class Renderer {
     ctx.moveTo(tx, ty);
     ctx.lineTo(hx, hy);
     ctx.stroke();
-    ctx.strokeStyle = javelin ? '#8a6038' : '#c9a46a';
+    ctx.strokeStyle = p.from === 'scorpion' ? '#3a2614' : javelin ? '#8a6038' : '#c9a46a';
     ctx.lineWidth = Math.max(0.8, S * (javelin ? 0.035 : 0.022));
     ctx.stroke();
     // Steel head and (for arrows) pale fletching.
@@ -565,7 +583,9 @@ export class Renderer {
     }
     this.lastPos.set(u.id, { x, y });
     const fighting = u.state === 'attack' || u.state === 'heal' || u.state === 'convert';
-    const working = u.state === 'gather' || u.state === 'build' || fighting;
+    const working = u.state === 'gather' || u.state === 'build' || u.state === 'repair' || fighting;
+    // Engines are only ever drawn side-on.
+    if (UNIT_DEFS[u.type].classes.includes('siege') && view.view !== 'side') view = { view: 'side', left: u.face < 0 };
     if (working) {
       // Work plays side-on, facing the job.
       const j = this.jobPoint(u);
@@ -574,7 +594,7 @@ export class Renderer {
     }
     this.lastView.set(u.id, view);
     let tool: Tool = 'none';
-    if (u.state === 'build') tool = 'hammer';
+    if (u.state === 'build' || u.state === 'repair') tool = 'hammer';
     else if (u.state === 'gather' && u.order?.type === 'gather') tool = TOOL_FOR[u.order.source] ?? 'none';
     else if (fighting) tool = ATTACK_TOOL[u.type] ?? 'none';
     const fps = u.type === 'scout' || u.type === 'knight' ? 12 : 10;
@@ -592,6 +612,7 @@ export class Renderer {
       frame,
       tool,
       carry: u.carry && u.carry.amount > 0 && !working ? u.carry.res : null,
+      packed: UNIT_DEFS[u.type].packs ? u.packed : undefined,
     };
   }
 
@@ -810,7 +831,28 @@ export class Renderer {
       const t = age / EFFECT_S;
       const px = this.sx(v, e.x, e.y), py = this.sy(v, e.x, e.y);
       ctx.globalAlpha = 1 - t * t;
-      if (e.kind === 'text') {
+      if (e.kind === 'blast') {
+        // Dust and debris thrown up where a stone lands or a petard blows.
+        const r = S * (e.size ?? 0.8) * (0.6 + t * 1.2);
+        const dust = ctx.createRadialGradient(px, py - r * 0.3, 0, px, py - r * 0.3, r);
+        dust.addColorStop(0, `rgba(150,130,100,${0.7 * (1 - t)})`);
+        dust.addColorStop(1, 'rgba(150,130,100,0)');
+        ctx.fillStyle = dust;
+        ctx.beginPath();
+        ctx.ellipse(px, py - r * 0.3, r, r * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (t < 0.3) {
+          ctx.fillStyle = `rgba(255,200,90,${1 - t / 0.3})`;
+          ctx.beginPath();
+          ctx.arc(px, py - S * 0.2, S * 0.25 * (e.size ?? 1), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#4a3c2c';
+        for (let k = 0; k < 6; k++) {
+          const a2 = k * 1.05;
+          ctx.fillRect(px + Math.cos(a2) * r * t * 1.2, py - S * 0.4 - Math.sin(a2) * r * 0.8 * (1 - t) + t * t * S, Math.max(1, S * 0.06), Math.max(1, S * 0.06));
+        }
+      } else if (e.kind === 'text') {
         ctx.font = `700 ${Math.round(Math.max(11, S * 0.55))}px 'Alegreya Sans', sans-serif`;
         ctx.textAlign = 'center';
         ctx.lineWidth = Math.max(2, S / 10);

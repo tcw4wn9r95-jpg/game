@@ -462,7 +462,10 @@
     "description": "A fortress that showers attackers with arrows and holds 20 men. Hard to take without siege.",
     "meleeArmor": 8,
     "pierceArmor": 11,
-    "trains": [],
+    "trains": [
+      "trebuchet",
+      "petard"
+    ],
     "classes": [
       "building",
       "castle"
@@ -475,6 +478,33 @@
       "minRange": 1
     },
     "garrison": 20,
+    "advance": true
+  },
+  "siege_workshop": {
+    "name": "Siege Workshop",
+    "size": 3,
+    "hp": 1500,
+    "buildTime": 50,
+    "cost": {
+      "wood": 200
+    },
+    "pop": 0,
+    "los": 5,
+    "dropoff": [],
+    "age": 2,
+    "buildable": true,
+    "description": "Builds rams, mangonels, scorpions and siege towers.",
+    "meleeArmor": 1,
+    "pierceArmor": 7,
+    "trains": [
+      "ram",
+      "mangonel",
+      "scorpion",
+      "siege_tower"
+    ],
+    "classes": [
+      "building"
+    ],
     "advance": true
   }
 }

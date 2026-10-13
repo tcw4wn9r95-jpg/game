@@ -6,6 +6,7 @@ import { BUILDING_DEFS, type Building, type BuildingType, type Entity, type Gath
 import { unitHeight } from '../render/unitSprites';
 import type { Command } from '../sim/commands';
 import { canShelter, shelterRoom, wallLine } from '../sim/fortify';
+import { canBoard } from '../sim/siege';
 import { buildingMaxHp } from '../sim/techs';
 import { Feature } from '../sim/terrain';
 import type { World } from '../sim/world';
@@ -33,6 +34,8 @@ export interface Placing {
 export class Controller {
   readonly selection = new Set<number>();
   placing: Placing | null = null;
+  /** Waiting for a tap to pick a spot (attack ground), or null. */
+  targeting: 'ground' | null = null;
   /** Bumped whenever selection or mode changes, so the HUD knows to rebuild. */
   version = 0;
   private idleCursor = 0;
@@ -93,6 +96,16 @@ export class Controller {
   tap(sx: number, sy: number): void {
     const { camera } = this.host;
     const t = camera.screenToTile(sx, sy);
+    if (this.targeting === 'ground') {
+      const ids = this.ownUnits().filter((u) => UNIT_DEFS[u.type].groundAttack).map((u) => u.id);
+      if (ids.length) {
+        this.issue({ type: 'attackGround', ids, x: t.x, y: t.y });
+        this.ring(t.x, t.y, '#ff6a50');
+      }
+      this.targeting = null;
+      this.changed();
+      return;
+    }
     if (this.placing?.wall) {
       // Tap a planned segment to make it a gate (or back); tap elsewhere to add one segment.
       const wp = this.placing.wall;
@@ -123,6 +136,13 @@ export class Controller {
     }
     if (pick.kind === 'entity' && pick.e.kind === 'unit' && pick.e.owner === me) {
       const t = pick.e;
+      // Infantry tapping one of your rams or siege towers climb aboard.
+      const riders = units.filter((u) => canBoard(t, u));
+      if (riders.length && riders.length === units.length) {
+        this.issue({ type: 'garrison', ids: riders.map((u) => u.id), id: t.id });
+        this.ring(t.x, t.y, '#9cc8ff');
+        return;
+      }
       const monks = units.filter((u) => UNIT_DEFS[u.type].healer);
       if (monks.length && monks.length === units.length && t.hp < UNIT_DEFS[t.type].hp && !monks.some((m) => m.id === t.id)) {
         this.issue({ type: 'attack', ids: monks.map((u) => u.id), id: t.id });
@@ -395,6 +415,12 @@ export class Controller {
   }
 
   // ---------- actions from the HUD ----------
+
+  /** Arms a one-tap target pick for the selected units. */
+  armTargeting(mode: 'ground'): void {
+    this.targeting = this.targeting === mode ? null : mode;
+    this.changed();
+  }
 
   startPlacing(type: BuildingType): void {
     const { camera } = this.host;

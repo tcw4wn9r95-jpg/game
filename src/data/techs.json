@@ -772,5 +772,115 @@
         }
       }
     ]
+  },
+  "siege_engineers": {
+    "name": "Siege Engineers",
+    "building": "university",
+    "age": 3,
+    "cost": {
+      "food": 500,
+      "wood": 600
+    },
+    "time": 45,
+    "description": "Siege +1 range and +20% damage against buildings.",
+    "effects": [
+      {
+        "type": "unit",
+        "classes": [
+          "siege"
+        ],
+        "range": 1,
+        "buildingMult": 1.2
+      }
+    ]
+  },
+  "ballistics": {
+    "name": "Ballistics",
+    "building": "university",
+    "age": 2,
+    "cost": {
+      "wood": 300,
+      "gold": 175
+    },
+    "time": 60,
+    "description": "Archers, scorpions, mangonels and towers lead moving targets.",
+    "effects": [
+      {
+        "type": "ballistics"
+      }
+    ]
+  },
+  "sappers": {
+    "name": "Sappers",
+    "building": "castle",
+    "age": 2,
+    "cost": {
+      "food": 400,
+      "gold": 200
+    },
+    "time": 10,
+    "description": "Villagers +15 attack against buildings.",
+    "effects": [
+      {
+        "type": "unit",
+        "units": [
+          "villager"
+        ],
+        "buildingAttack": 15
+      }
+    ]
+  },
+  "capped_ram": {
+    "name": "Capped Ram",
+    "building": "siege_workshop",
+    "age": 3,
+    "cost": {
+      "food": 300
+    },
+    "time": 50,
+    "description": "Rams +5 attack and +20 HP.",
+    "effects": [
+      {
+        "type": "upgrade",
+        "unit": "ram",
+        "name": "Capped Ram"
+      },
+      {
+        "type": "unit",
+        "units": [
+          "ram"
+        ],
+        "attack": 5,
+        "hp": 20
+      }
+    ],
+    "icon": "ram"
+  },
+  "onager": {
+    "name": "Onager",
+    "building": "siege_workshop",
+    "age": 3,
+    "cost": {
+      "food": 800,
+      "gold": 500
+    },
+    "time": 75,
+    "description": "Mangonels +10 attack and +1 range.",
+    "effects": [
+      {
+        "type": "upgrade",
+        "unit": "mangonel",
+        "name": "Onager"
+      },
+      {
+        "type": "unit",
+        "units": [
+          "mangonel"
+        ],
+        "attack": 10,
+        "range": 1
+      }
+    ],
+    "icon": "mangonel"
   }
 }

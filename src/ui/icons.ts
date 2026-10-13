@@ -250,6 +250,19 @@ export const ICONS = {
     <path d="M8 10V4h1.5V2.5h2V4h1v-1.5h2V4H16v6" fill="#b5ae9f" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
     <path d="M12 2.5V0" stroke="${INK}" stroke-width="1"/><path d="M12 0.5h3l-1 1 1 1h-3" fill="#2f5aa0"/>
     <path d="M9.5 21v-4a2.5 2.5 0 015 0v4z" fill="#3a2412"/>`),
+  attackGround: svg(`
+    <ellipse cx="12" cy="18" rx="9" ry="3.5" fill="none" stroke="${INK}" stroke-width="3"/><ellipse cx="12" cy="18" rx="9" ry="3.5" fill="none" stroke="#ff8a6a" stroke-width="1.4"/>
+    <circle cx="12" cy="7" r="4.4" fill="#8a857c" stroke="${INK}" stroke-width="1.2"/><circle cx="10.6" cy="5.6" r="1.2" fill="#c9c4b8"/>
+    <path d="M12 12v4" stroke="${INK}" stroke-width="1.4" stroke-dasharray="1.4 1"/>`),
+  pack: svg(`<rect x="3" y="12" width="18" height="5" rx="1" fill="#7a5430" stroke="${INK}" stroke-width="1.1"/><circle cx="7" cy="19" r="2.6" fill="#4e331b" stroke="${INK}"/><circle cx="17" cy="19" r="2.6" fill="#4e331b" stroke="${INK}"/><path d="M2 10l20-2" stroke="#a77a45" stroke-width="2.4" stroke-linecap="round"/>`),
+  unpack: svg(`<path d="M5 21L12 6l7 15" fill="none" stroke="#7a5430" stroke-width="2.6"/><path d="M3 21h18" stroke="#4e331b" stroke-width="2.4"/><path d="M12 6L3 3M12 6l8 6" stroke="#a77a45" stroke-width="2.2" stroke-linecap="round"/><rect x="17" y="12" width="5" height="5" fill="#5a3a1c" stroke="${INK}"/>`),
+  ram: svg(`<path d="M2 15l9-9 9 9z" fill="#8a6038" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M1 13h20" stroke="#6b4626" stroke-width="3" stroke-linecap="round"/><circle cx="22" cy="13" r="1.8" fill="#d9b27a" stroke="${INK}" stroke-width=".8"/><circle cx="6" cy="19" r="2.6" fill="#4e331b" stroke="${INK}"/><circle cx="16" cy="19" r="2.6" fill="#4e331b" stroke="${INK}"/>`),
+  mangonel: svg(`<path d="M2 17h20" stroke="#4e331b" stroke-width="3"/><path d="M10 17V9" stroke="#7a5430" stroke-width="2.4"/><path d="M8 15L4 3" stroke="#7a5430" stroke-width="2.2" stroke-linecap="round"/><circle cx="4" cy="3.5" r="2.4" fill="#8a857c" stroke="${INK}"/><circle cx="6" cy="19.5" r="2.4" fill="#4e331b" stroke="${INK}"/><circle cx="18" cy="19.5" r="2.4" fill="#4e331b" stroke="${INK}"/>`),
+  scorpion: svg(`<path d="M5 21l7-10 7 10" fill="none" stroke="#7a5430" stroke-width="2"/><path d="M2 10h20" stroke="#4e331b" stroke-width="3"/><path d="M17 2c3 3 3 13 0 16" fill="none" stroke="#8a6038" stroke-width="2"/><path d="M17 2L6 10l11 8" fill="none" stroke="#f1e9d6" stroke-width=".8"/><path d="M20 10l3 0-1.6-1.4" stroke="#c9d1d6" stroke-width="1.4"/>`),
+  siege_tower: svg(`<path d="M5 21l1-17h12l1 17z" fill="#8a6440" stroke="${INK}" stroke-width="1.1"/><path d="M6 8h12M6 13h12M6 18h12" stroke="#4e331b" stroke-width="1"/><path d="M18 5l5-3" stroke="#a77a45" stroke-width="2" stroke-linecap="round"/><path d="M12 4V0" stroke="${INK}"/><path d="M12 .5h4l-1 1 1 1h-4" fill="#2f5aa0"/>`),
+  trebuchet: svg(`<path d="M4 21L11 7l7 14" fill="none" stroke="#7a5430" stroke-width="2.2"/><path d="M2 21h20" stroke="#4e331b" stroke-width="2.6"/><path d="M11 7L1 2" stroke="#a77a45" stroke-width="2" stroke-linecap="round"/><path d="M11 7l6 4" stroke="#a77a45" stroke-width="2"/><rect x="15" y="11" width="5" height="5" fill="#5a3a1c" stroke="${INK}"/><circle cx="1.5" cy="5" r="1.6" fill="#8a857c"/>`),
+  petard: svg(`<circle cx="12" cy="5.5" r="3.2" fill="#e0b48c" stroke="${INK}" stroke-width="1.1"/><path d="M7 21l1.2-8c.4-2 1.8-3 3.8-3s3.4 1 3.8 3L17 21z" fill="#2f5aa0" stroke="${INK}" stroke-width="1.1"/><rect x="7" y="11" width="10" height="9" rx="3" fill="#7a5230" stroke="${INK}" stroke-width="1.1"/><path d="M7 14h10M7 17h10" stroke="#2b2622" stroke-width="1"/><path d="M14 11l2-4" stroke="#d8c9a0"/><circle cx="16.4" cy="6.5" r="1.4" fill="#ffb030"/>`),
+  siege_workshop: svg(`<path d="M2 21V10h20v11z" fill="#8a6440" stroke="${INK}" stroke-width="1.1"/><path d="M1 10.5L5 5h14l4 5.5z" fill="#6f5236" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M4 21v-7h10v7z" fill="#140c06"/><circle cx="18" cy="17" r="3" fill="none" stroke="#4e331b" stroke-width="1.6"/><path d="M15 17h6M18 14v6" stroke="#4e331b" stroke-width=".8"/>`),
   aggressive: svg(`
     <path d="M4 20L18 5M20 20L6 5" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>
     <path d="M4 20L18 5M20 20L6 5" stroke="#d6dde1" stroke-width="2" stroke-linecap="round"/>
@@ -353,6 +366,9 @@ const TECH_GLYPH: Record<string, string> = {
 };
 
 const TECH_GLYPH_OF: Record<string, string> = {
+  siege_engineers: 'crane',
+  ballistics: 'arrow',
+  sappers: 'pick',
   fortified_wall: 'masonry',
   architecture: 'crane',
   hoardings: 'masonry',
@@ -384,7 +400,7 @@ const TECH_GLYPH_OF: Record<string, string> = {
 };
 /** Second-level techs show two pips. */
 const LEVEL2 = new Set(['iron_casting', 'bodkin_arrow', 'chain_mail', 'chain_barding', 'leather_archer', 'bow_saw', 'gold_shaft', 'heavy_plow', 'hand_cart']);
-const UPGRADE_OF: Record<string, string> = { guard_tower: 'watch_tower', keep: 'watch_tower', swordsman: 'militia', pikeman: 'spearman', crossbowman: 'archer', light_cavalry: 'scout' };
+const UPGRADE_OF: Record<string, string> = { capped_ram: 'ram', onager: 'mangonel', guard_tower: 'watch_tower', keep: 'watch_tower', swordsman: 'militia', pikeman: 'spearman', crossbowman: 'archer', light_cavalry: 'scout' };
 const NUMERAL: Record<string, string> = { age2: 'II', age3: 'III', age4: 'IV' };
 
 const cacheTech = new Map<string, string>();

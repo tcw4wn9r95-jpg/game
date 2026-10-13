@@ -42,6 +42,17 @@ export function drawSpriteSheet(view: View, zoom = 4): void {
   put('knight', 1, 0, { ...base, view: 'front', anim: 'walk', frame: 1 });
   row++;
   col = 0;
+  for (const t of ['ram', 'mangonel', 'scorpion', 'siege_tower'] as const) {
+    put(t, 0, 0, { ...base, view: 'side', anim: 'idle' });
+    col += 0.5;
+  }
+  put('trebuchet', 0, 0, { ...base, view: 'side', anim: 'idle', packed: true });
+  col += 0.8;
+  put('trebuchet', 1, 0, { ...base, view: 'side', anim: 'work', frame: 2, packed: false });
+  col += 0.5;
+  put('petard', 0, 0, { ...base, view: 'side', anim: 'walk', frame: 1 });
+  row++;
+  col = 0;
   put('scout', 0, 0, { ...base, view: 'side', anim: 'idle' });
   put('scout', 1, 0, { ...base, view: 'side', anim: 'walk', frame: 2 });
   put('scout', 2, 0, { ...base, view: 'front', anim: 'walk', frame: 1 });

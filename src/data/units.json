@@ -246,5 +246,202 @@
     "description": "Heals nearby wounded and converts enemy units to your side.",
     "strong": "Converts enemies, heals",
     "weak": "Light cavalry"
+  },
+  "ram": {
+    "name": "Ram",
+    "hp": 175,
+    "speed": 0.55,
+    "los": 3,
+    "radius": 0.45,
+    "pop": 1,
+    "cost": {
+      "wood": 160,
+      "gold": 75
+    },
+    "trainTime": 36,
+    "attack": 25,
+    "reload": 4,
+    "attackType": "melee",
+    "meleeArmor": -3,
+    "pierceArmor": 50,
+    "range": 0,
+    "age": 2,
+    "classes": [
+      "siege",
+      "ram"
+    ],
+    "bonus": {
+      "building": 4
+    },
+    "stance": "aggressive",
+    "buildingsOnly": true,
+    "cargo": 4,
+    "description": "A roofed battering ram. Smashes gates and walls; shrugs off arrows. Up to 4 infantry inside push it faster.",
+    "strong": "Buildings, walls, gates",
+    "weak": "Infantry, cavalry"
+  },
+  "mangonel": {
+    "name": "Mangonel",
+    "hp": 50,
+    "speed": 0.6,
+    "los": 8,
+    "radius": 0.45,
+    "pop": 1,
+    "cost": {
+      "wood": 160,
+      "gold": 135
+    },
+    "trainTime": 46,
+    "attack": 40,
+    "reload": 6,
+    "attackType": "melee",
+    "meleeArmor": 0,
+    "pierceArmor": 6,
+    "range": 7,
+    "minRange": 3,
+    "splash": 0.9,
+    "projectileSpeed": 6,
+    "age": 2,
+    "classes": [
+      "siege"
+    ],
+    "bonus": {
+      "building": 2
+    },
+    "stance": "aggressive",
+    "groundAttack": true,
+    "description": "Hurls stones that crush whole groups, friend and foe alike. Cannot fire at close range.",
+    "strong": "Massed archers and infantry, walls",
+    "weak": "Cavalry, rams"
+  },
+  "scorpion": {
+    "name": "Scorpion",
+    "hp": 40,
+    "speed": 0.65,
+    "los": 9,
+    "radius": 0.4,
+    "pop": 1,
+    "cost": {
+      "wood": 75,
+      "gold": 75
+    },
+    "trainTime": 30,
+    "attack": 12,
+    "reload": 3.6,
+    "attackType": "pierce",
+    "meleeArmor": 0,
+    "pierceArmor": 6,
+    "range": 7,
+    "minRange": 1,
+    "pierce": true,
+    "projectileSpeed": 12,
+    "age": 2,
+    "classes": [
+      "siege"
+    ],
+    "bonus": {
+      "building": 0.3
+    },
+    "stance": "aggressive",
+    "description": "A giant crossbow whose bolts pass through every enemy in a line.",
+    "strong": "Lines of infantry and archers",
+    "weak": "Cavalry, buildings"
+  },
+  "siege_tower": {
+    "name": "Siege Tower",
+    "hp": 220,
+    "speed": 0.8,
+    "los": 7,
+    "radius": 0.5,
+    "pop": 1,
+    "cost": {
+      "wood": 200,
+      "gold": 160
+    },
+    "trainTime": 36,
+    "attack": 0,
+    "reload": 1,
+    "attackType": "melee",
+    "meleeArmor": 2,
+    "pierceArmor": 2,
+    "range": 0,
+    "age": 2,
+    "classes": [
+      "siege"
+    ],
+    "bonus": {},
+    "stance": "passive",
+    "cargo": 8,
+    "description": "Carries 8 foot soldiers up to a wall and lets them out on the far side.",
+    "strong": "Getting troops over walls",
+    "weak": "Everything; escort it"
+  },
+  "trebuchet": {
+    "name": "Trebuchet",
+    "hp": 150,
+    "speed": 0.6,
+    "los": 17,
+    "radius": 0.5,
+    "pop": 1,
+    "cost": {
+      "wood": 200,
+      "gold": 200
+    },
+    "trainTime": 50,
+    "attack": 50,
+    "reload": 10,
+    "attackType": "melee",
+    "meleeArmor": 1,
+    "pierceArmor": 10,
+    "range": 16,
+    "minRange": 4,
+    "splash": 0.6,
+    "projectileSpeed": 7,
+    "age": 3,
+    "classes": [
+      "siege"
+    ],
+    "bonus": {
+      "building": 4
+    },
+    "stance": "aggressive",
+    "packs": true,
+    "groundAttack": true,
+    "description": "The greatest siege engine: outranges every tower. Must unpack to fire and pack to move (5 s each).",
+    "strong": "Buildings, walls, castles",
+    "weak": "Cavalry, anything close"
+  },
+  "petard": {
+    "name": "Petard",
+    "hp": 50,
+    "speed": 1.0,
+    "los": 4,
+    "radius": 0.24,
+    "pop": 1,
+    "cost": {
+      "food": 65,
+      "gold": 20
+    },
+    "trainTime": 25,
+    "attack": 40,
+    "reload": 1,
+    "attackType": "melee",
+    "meleeArmor": 0,
+    "pierceArmor": 2,
+    "range": 0,
+    "splash": 0.7,
+    "age": 2,
+    "classes": [
+      "infantry"
+    ],
+    "bonus": {
+      "building": 4
+    },
+    "stance": "aggressive",
+    "selfDestruct": true,
+    "buildingsOnly": true,
+    "description": "A sapper with a keg of black powder. Blows open one wall segment or gate.",
+    "strong": "Walls and gates",
+    "weak": "Everything, once it goes off"
   }
 }

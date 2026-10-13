@@ -1,6 +1,6 @@
 import { DT } from './constants';
 import { UNIT_DEFS, type Unit } from './entities';
-import { unitStats } from './techs';
+import { readyToMove, speedOf } from './siege';
 import type { World } from './world';
 
 /** Separation strength per tick (fraction of overlap resolved). */
@@ -11,9 +11,11 @@ const FLOW_EXIT = 2.5;
 
 /** Advances a unit along its path (or down its group's flow field) at its speed. */
 export function moveUnit(w: World, u: Unit): void {
+  if (!u.path && !u.flow) return;
+  if (!readyToMove(u)) return;
   if (u.flow) return flowMove(w, u);
   if (!u.path) return;
-  let step = unitStats(w, u.owner, u.type).speed * DT;
+  let step = speedOf(w, u) * DT;
   while (step > 0 && u.pathIdx < u.path.length) {
     const wp = u.path[u.pathIdx];
     // A building or other obstacle appeared on the route: plan again.
@@ -52,7 +54,7 @@ export function moveUnit(w: World, u: Unit): void {
  */
 function flowMove(w: World, u: Unit): void {
   const f = u.flow!;
-  let step = unitStats(w, u.owner, u.type).speed * DT;
+  let step = speedOf(w, u) * DT;
   for (let guard = 0; guard < 4 && step > 0; guard++) {
     const tx = Math.floor(u.x), ty = Math.floor(u.y);
     const here = f.field.at(tx, ty);

@@ -12,6 +12,8 @@ import {
   distToRect,
 } from './entities';
 import { garrisonThink, repairThink } from './fortify';
+import { unitStats } from './techs';
+import { boardThink, readyToMove } from './siege';
 import type { Goal } from './pathfinding';
 import { Feature } from './terrain';
 import type { World } from './world';
@@ -270,6 +272,7 @@ export function think(w: World, u: Unit): void {
   }
   switch (o.type) {
     case 'move':
+      if (!readyToMove(u)) return;
       if (u.flow) {
         u.state = 'walk';
         return;
@@ -284,8 +287,13 @@ export function think(w: World, u: Unit): void {
     case 'heal':
     case 'convert':
       return; // handled by combat
-    case 'garrison':
+    case 'garrison': {
+      const carrier = w.unit(o.id);
+      if (carrier) return boardThink(u, carrier, () => walkTo(w, u));
       return garrisonThink(w, u, o, inReach, () => walkTo(w, u));
+    }
+    case 'attackGround':
+      return; // handled by combat
     case 'repair':
       return repairThink(w, u, o, inReach, () => walkTo(w, u));
     case 'gather':
@@ -445,9 +453,23 @@ export function goalFor(w: World, u: Unit): Goal | null {
       const tx = Math.floor(t.x), ty = Math.floor(t.y);
       return { x0: tx, y0: ty, x1: tx, y1: ty, reach: 1 };
     }
+    case 'attackGround': {
+      const spot = firingSpot(w, u, o.x, o.y);
+      if (!spot) return null;
+      return { x0: spot.x, y0: spot.y, x1: spot.x, y1: spot.y, reach: 0 };
+    }
+    case 'garrison': {
+      const c = w.unit(o.id);
+      if (c) {
+        const tx = Math.floor(c.x), ty = Math.floor(c.y);
+        return { x0: tx, y0: ty, x1: tx, y1: ty, reach: 1 };
+      }
+      const b = w.building(o.id);
+      if (!b) return null;
+      return { x0: b.x, y0: b.y, x1: b.x + b.size - 1, y1: b.y + b.size - 1, reach: 1 };
+    }
     case 'build':
     case 'dropoff':
-    case 'garrison':
     case 'repair': {
       const b = w.building(o.id);
       if (!b) return null;
@@ -458,6 +480,12 @@ export function goalFor(w: World, u: Unit): Goal | null {
     case 'convert': {
       const t = w.get(o.id);
       if (!t || t.kind === 'resource') return null;
+      // Ranged units only need to get within range (over walls, across water).
+      if (o.type === 'attack' && unitStats(w, u.owner, u.type).range >= 2) {
+        const cx = t.kind === 'building' ? t.x + t.size / 2 : t.x, cy = t.kind === 'building' ? t.y + t.size / 2 : t.y;
+        const spot = firingSpot(w, u, cx, cy, t.kind === 'building' ? t.size / 2 : 0);
+        if (spot) return { x0: spot.x, y0: spot.y, x1: spot.x, y1: spot.y, reach: 0 };
+      }
       if (t.kind === 'building') return { x0: t.x, y0: t.y, x1: t.x + t.size - 1, y1: t.y + t.size - 1, reach: 1 };
       const tx = Math.floor(t.x), ty = Math.floor(t.y);
       return { x0: tx, y0: ty, x1: tx, y1: ty, reach: 1 };
@@ -511,3 +539,17 @@ export function constructionTick(w: World): void {
 
 export const isGatherer = (u: Unit) => !!UNIT_DEFS[u.type].gatherer;
 export const isBuilder = (u: Unit) => !!UNIT_DEFS[u.type].builder;
+
+/**
+ * A tile the unit can reach from which a point is within its range: on the
+ * line from the point back toward the unit, a little inside maximum range
+ * (and outside minimum range), snapped to the unit's own walkable region.
+ */
+function firingSpot(w: World, u: Unit, x: number, y: number, pad = 0): { x: number; y: number } | null {
+  const def = unitStats(w, u.owner, u.type);
+  const d = Math.hypot(u.x - x, u.y - y) || 1;
+  const want = Math.max((def.minRange ?? 0) + 0.8, Math.min(d, def.range + pad - 0.7));
+  const sx = x + ((u.x - x) / d) * want, sy = y + ((u.y - y) / d) * want;
+  const region = w.grid.component(Math.floor(u.x), Math.floor(u.y), u.owner);
+  return w.grid.nearestWalkable(sx, sy, region, 6, u.owner);
+}

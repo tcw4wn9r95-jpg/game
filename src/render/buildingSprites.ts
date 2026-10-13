@@ -1195,6 +1195,52 @@ const PAINTERS: Record<BuildingType, Painter> = {
     crenels(g, 0.4, n - 0.78, n - 0.4, n - 0.27, 36, st, 0.14, 79);
     corner(n - 0.15 - T, n - 0.15 - T);
   },
+  siege_workshop: (g, n, team) => {
+    groundPatch(g, n, '#7a6448', 0.25);
+    // A tall open-fronted timber shed with a wheel and beams in the yard and a hoisting crane.
+    boxShadow(g, 0.2, 0.2, n - 0.2, n * 0.62, 60);
+    box(g, 0.2, 0.2, n - 0.2, n * 0.62, 34, { base: '#7a5634', mat: 'planks', plinth: Math.max(PLASTER.plinth ?? 0, 4) }, {
+      left: (len) => {
+        g.fillStyle = '#140c06';
+        g.fillRect(len * 0.15, 0, len * 0.5, 26);
+        g.fillStyle = mat(g, 'woodH', '#4a3019', 141);
+        g.fillRect(len * 0.13, 26, len * 0.54, 2.4);
+        // A half-built ram frame glimpsed inside.
+        g.strokeStyle = '#8a6038';
+        g.lineWidth = 1.4;
+        g.beginPath();
+        g.moveTo(len * 0.2, 2);
+        g.lineTo(len * 0.35, 16);
+        g.lineTo(len * 0.5, 2);
+        g.moveTo(len * 0.25, 8);
+        g.lineTo(len * 0.45, 8);
+        g.stroke();
+        banner(g, len * 0.82, 30, team);
+      },
+      right: (len) => windowAt(g, len / 2, 16, 4, 5),
+    }, 143);
+    gableRoof(g, 0.2, 0.2, n - 0.2, n * 0.62, 34, 22, SHINGLE, 'x', 0.18, 35);
+    // Spare wheel leaning on the wall and stacked beams.
+    const [wx, wy] = P(n * 0.85, n * 0.68, 7);
+    g.strokeStyle = '#4e331b';
+    g.lineWidth = 1.6;
+    g.beginPath();
+    g.ellipse(wx, wy, 4, 7, -0.4, 0, Math.PI * 2);
+    g.stroke();
+    g.lineWidth = 0.7;
+    for (let a = 0; a < 3; a++) {
+      g.beginPath();
+      g.moveTo(wx + Math.cos(a) * 3.6, wy + Math.sin(a) * 6.4);
+      g.lineTo(wx - Math.cos(a) * 3.6, wy - Math.sin(a) * 6.4);
+      g.stroke();
+    }
+    for (let r = 0; r < 3; r++) for (let k = 0; k < 3 - r; k++) log(g, [n * 0.15 + k * 0.15 + r * 0.075, n * 0.72], [n * 0.15 + k * 0.15 + r * 0.075, n - 0.05], 1.6 + r * 2.9, 1.5);
+    // Crane: a mast, jib and hook.
+    line3(g, [n * 0.62, n * 0.85, 0], [n * 0.62, n * 0.85, 44], '#5a3d22', 1.8);
+    line3(g, [n * 0.62, n * 0.85, 42], [n * 0.95, n * 0.85, 34], '#5a3d22', 1.4);
+    line3(g, [n * 0.93, n * 0.85, 34], [n * 0.93, n * 0.85, 20], 'rgba(200,180,140,0.8)', 0.5);
+    flag(g, n - 0.25, 0.25, 40, team, 0.9);
+  },
 };
 
 /** Building sprites for one zoom level, cached per type, player and variant. */

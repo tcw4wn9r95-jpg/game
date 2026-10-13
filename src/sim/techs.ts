@@ -22,7 +22,10 @@ export type TechEffect =
       hp?: number;
       los?: number;
       speedMult?: number;
+      buildingAttack?: number;
+      buildingMult?: number;
     }
+  | { type: 'ballistics' }
   | { type: 'upgrade'; unit: UnitType; name: string }
   | { type: 'gather'; sources: string[]; mult: number }
   | { type: 'carry'; add: number }
@@ -72,6 +75,8 @@ export interface PlayerMods {
   farmFood: number;
   buildSpeed: number;
   building: { los: number; hpMult: number; meleeArmor: number; pierceArmor: number };
+  /** Projectiles lead moving targets. */
+  ballistics: boolean;
   /** Towers, walls and castles. */
   defense: { towerHp: number; towerAttack: number; towerRange: number; towerName: string | null; wallHpMult: number; castleHpMult: number; murderHoles: boolean };
 }
@@ -85,6 +90,7 @@ export function baseMods(): PlayerMods {
     carry: 0,
     farmFood: 0,
     buildSpeed: 1,
+    ballistics: false,
     building: { los: 0, hpMult: 1, meleeArmor: 0, pierceArmor: 0 },
     defense: { towerHp: 0, towerAttack: 0, towerRange: 0, towerName: null, wallHpMult: 1, castleHpMult: 1, murderHoles: false },
   };
@@ -105,6 +111,8 @@ export function applyEffects(m: PlayerMods, id: TechId): void {
           if (e.hp) d.hp += e.hp;
           if (e.los) d.los += e.los;
           if (e.speedMult) d.speed *= e.speedMult;
+          if (e.buildingAttack) d.buildingAttack = (d.buildingAttack ?? 0) + e.buildingAttack;
+          if (e.buildingMult) d.buildingMult = (d.buildingMult ?? 1) * e.buildingMult;
         }
         break;
       case 'upgrade':
@@ -141,6 +149,9 @@ export function applyEffects(m: PlayerMods, id: TechId): void {
         if (e.murderHoles) d.murderHoles = true;
         break;
       }
+      case 'ballistics':
+        m.ballistics = true;
+        break;
       case 'age':
         break;
     }

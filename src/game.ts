@@ -96,6 +96,10 @@ export class Game {
     const nowS = performance.now() / 1000;
     for (const ev of this.world.drainEvents()) {
       // Battle aftermath is drawn for every side.
+      if (ev.type === 'blast') {
+        this.addEffect({ kind: 'blast', x: ev.x, y: ev.y, color: '', size: ev.size });
+        continue;
+      }
       if (ev.type === 'death') this.renderer.addDeath(ev, this.deaths++, nowS);
       else if (ev.type === 'destroyed') this.renderer.addRuin(ev, nowS);
       if (ev.type === 'converted' && ev.from === this.player) this.alert('A unit was converted by an enemy monk!', ev.x, ev.y, nowS, true);

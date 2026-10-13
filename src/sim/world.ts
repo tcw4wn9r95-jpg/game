@@ -3,6 +3,7 @@ import mapsData from '../data/maps.json';
 import { applyCommand, type Command } from './commands';
 import { combatThink, type Projectile, projectileTick } from './combat';
 import { towerTick, ungarrison } from './fortify';
+import { carryRiders, unload } from './siege';
 import { constructionTick, goalFor, think, unreachable } from './economy';
 import { type ResourceKind, TICK_RATE } from './constants';
 import {
@@ -58,7 +59,9 @@ export type SimEvent =
   | { type: 'death'; owner: number; unit: UnitType; x: number; y: number; face: number; by: number }
   | { type: 'destroyed'; owner: number; building: BuildingType; x: number; y: number; size: number; by: number }
   | { type: 'converted'; owner: number; from: number; id: number; x: number; y: number }
-  | { type: 'researched'; owner: number; tech: TechId };
+  | { type: 'researched'; owner: number; tech: TechId }
+  /** Stone, boulder or powder blast landing (dust and debris). */
+  | { type: 'blast'; x: number; y: number; size: number; owner?: number };
 
 /** Game state, advanced only by step(); input and AI both act through issue(). */
 export class World {
@@ -166,7 +169,10 @@ export class World {
       ungarrison(this, e);
       this.grid.setBuilding(e.x, e.y, e.size, 0);
     }
-    if (e.kind === 'unit') this.updatePopulation();
+    if (e.kind === 'unit') {
+      unload(this, e);
+      this.updatePopulation();
+    }
     this.entities.delete(id);
   }
 
@@ -186,6 +192,9 @@ export class World {
       guard: null,
       flow: null,
       inside: 0,
+      cargo: [],
+      packed: !!UNIT_DEFS[type].packs,
+      packTimer: 0,
       attackedBy: 0,
       attackedAt: -1000,
       faith: 0,
@@ -321,6 +330,7 @@ export class World {
     this.processPaths();
     for (const u of this.field()) moveUnit(this, u);
     separate(this);
+    carryRiders(this);
     towerTick(this);
     projectileTick(this);
     constructionTick(this);

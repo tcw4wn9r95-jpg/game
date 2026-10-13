@@ -37,6 +37,25 @@ export interface UnitDef {
   builder?: boolean;
   healer?: boolean;
   converter?: boolean;
+  /** Can't hit closer than this (tiles). */
+  minRange?: number;
+  /** Area damage radius at the point of impact (friendly fire included). */
+  splash?: number;
+  /** Bolts that carry on through every enemy in line. */
+  pierce?: boolean;
+  /** Attacks buildings only (rams, petards). */
+  buildingsOnly?: boolean;
+  /** Units it can carry inside (rams, siege towers). */
+  cargo?: number;
+  /** Must unpack to fire and pack to move (trebuchets). */
+  packs?: boolean;
+  /** Can be ordered to bombard a spot. */
+  groundAttack?: boolean;
+  /** Blows itself up on its first blow (petards). */
+  selfDestruct?: boolean;
+  /** Extra flat damage against buildings (Sappers), and a multiplier on it (Siege Engineers). */
+  buildingAttack?: number;
+  buildingMult?: number;
 }
 
 export type UnitClass = 'villager' | 'infantry' | 'spear' | 'archer' | 'skirmisher' | 'cavalry' | 'siege' | 'monk' | 'building' | 'wall' | 'tower' | 'castle' | 'ram';
@@ -96,8 +115,10 @@ export type Order =
   /** Monks: heal a friendly unit or convert an enemy one. */
   | { type: 'heal'; id: number; auto?: boolean }
   | { type: 'convert'; id: number }
-  /** Shelter inside a building. */
+  /** Shelter inside a building or ride in a vehicle. */
   | { type: 'garrison'; id: number }
+  /** Bombard a spot on the ground. */
+  | { type: 'attackGround'; x: number; y: number }
   /** Restore a damaged building, paying half its cost per HP. */
   | { type: 'repair'; id: number };
 
@@ -122,7 +143,7 @@ export interface Unit {
   /** True while waiting for the path service. */
   pathPending: boolean;
   /** What the unit is doing this tick, for animation and the HUD. */
-  state: 'idle' | 'walk' | 'gather' | 'build' | 'attack' | 'heal' | 'convert' | 'repair';
+  state: 'idle' | 'walk' | 'gather' | 'build' | 'attack' | 'heal' | 'convert' | 'repair' | 'pack';
   carry: { res: ResourceKind; amount: number } | null;
   /** Fractional gather progress not yet moved into `carry`. */
   gatherAcc: number;
@@ -137,8 +158,14 @@ export interface Unit {
   guard: { x: number; y: number } | null;
   /** Shared flow field for a group move, followed instead of an A* path. */
   flow: FlowRef | null;
-  /** The building this unit is sheltering in (0 = outside). */
+  /** The building or vehicle this unit is inside (0 = outside). */
   inside: number;
+  /** Units riding inside this one (rams, siege towers). */
+  cargo: number[];
+  /** Trebuchets: packed for moving (true) or set up to fire. */
+  packed: boolean;
+  /** Ticks left of packing or unpacking. */
+  packTimer: number;
   /** Last enemy that hit this unit, and when (tick), for retaliation and alerts. */
   attackedBy: number;
   attackedAt: number;

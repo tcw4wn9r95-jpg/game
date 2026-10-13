@@ -16,6 +16,7 @@ import {
   type UnitType,
   distToRect,
 } from './entities';
+import { backOff, boltVictims, packTick, setPacked, splash } from './siege';
 import { buildingArmor, unitStats } from './techs';
 import type { World } from './world';
 
@@ -55,10 +56,14 @@ export interface Projectile {
   damage?: number;
   /** Launch height in tiles (arrows from tower tops). */
   height?: number;
+  /** Lands as area damage of this radius (stones, boulders). */
+  splash?: number;
+  /** A bolt that hits every enemy along its line. */
+  pierce?: boolean;
 }
 
-const isCombatOrder = (o: Order | null): o is Extract<Order, { type: 'attack' | 'heal' | 'convert' }> =>
-  !!o && (o.type === 'attack' || o.type === 'heal' || o.type === 'convert');
+const isCombatOrder = (o: Order | null): o is Extract<Order, { type: 'attack' | 'heal' | 'convert' | 'attackGround' }> =>
+  !!o && (o.type === 'attack' || o.type === 'heal' || o.type === 'convert' || o.type === 'attackGround');
 
 export const isMilitary = (u: Unit) => !UNIT_DEFS[u.type].gatherer;
 
@@ -83,7 +88,9 @@ export function damageOf(a: UnitDef, target: Unit | Building, w?: World): number
   } else if (w) ({ melee, pierce } = buildingArmor(w, target));
   else (melee = BUILDING_DEFS[target.type].meleeArmor), (pierce = BUILDING_DEFS[target.type].pierceArmor);
   const armor = a.attackType === 'melee' ? melee : pierce;
-  return Math.max(1, a.attack * mult - armor);
+  // Against buildings: Siege Engineers' multiplier and Sappers' flat bonus.
+  const vsBuilding = target.kind === 'building' ? (a.attack * mult + (a.buildingAttack ?? 0)) * (a.buildingMult ?? 1) : a.attack * mult;
+  return Math.max(1, vsBuilding - armor);
 }
 
 /** Edge-to-edge distance from a unit to a target. */
@@ -115,6 +122,8 @@ function reach(w: World, u: Unit, o: Extract<Order, { type: 'attack' | 'heal' | 
  */
 export function combatThink(w: World, u: Unit): boolean {
   if (u.cooldown > 0) u.cooldown--;
+  if (packTick(u)) return true;
+  if (u.order?.type === 'attackGround') return groundThink(w, u, u.order);
   if (!isCombatOrder(u.order)) {
     if (u.order) return false;
     // Idle: look for something to fight, heal or return to post.
@@ -122,11 +131,12 @@ export function combatThink(w: World, u: Unit): boolean {
     if (!u.order) returnToGuard(u);
     return isCombatOrder(u.order);
   }
-  const o = u.order;
+  const o = u.order as Extract<Order, { type: 'attack' | 'heal' | 'convert' }>;
   const t = w.get(o.id);
   const valid =
     t &&
     t.kind !== 'resource' &&
+    !(UNIT_DEFS[u.type].buildingsOnly && t.kind === 'unit') &&
     !(t.kind === 'unit' && t.inside) &&
     (o.type === 'heal' ? t.kind === 'unit' && t.owner === u.owner && t.hp < unitStats(w, t.owner, t.type).hp : t.owner !== u.owner) &&
     (o.type !== 'convert' || t.kind === 'unit') &&
@@ -142,8 +152,26 @@ export function combatThink(w: World, u: Unit): boolean {
   }
 
   const g = gap(u, target);
+  const stats = unitStats(w, u.owner, u.type);
   if (g > reach(w, u, o)) {
+    // Trebuchets pack up before they can move.
+    if (stats.packs && !u.packed) {
+      setPacked(u, true);
+      return true;
+    }
     chase(w, u, target);
+    return true;
+  }
+  if (stats.minRange && g < stats.minRange) {
+    // Too close to fire: back away (stand-ground and packed engines just give up).
+    if (o.type === 'attack' && o.auto) return endCombat(w, u);
+    const c0 = centre(target);
+    backOff(w, u, c0.x, c0.y, stats.minRange);
+    return true;
+  }
+  if (stats.packs && u.packed) {
+    u.path = null;
+    setPacked(u, false);
     return true;
   }
   // In range: stop and act.
@@ -158,7 +186,40 @@ export function combatThink(w: World, u: Unit): boolean {
   const def = unitStats(w, u.owner, u.type);
   u.cooldown = Math.round(def.reload * TICK_RATE);
   if (def.range > 0) shoot(w, u, target);
-  else applyDamage(w, target, damageOf(def, target, w), u);
+  else if (def.splash) {
+    // A petard goes off: the target takes the full blast, everything near it the spread.
+    applyDamage(w, target, damageOf(def, target, w), u);
+    const c1 = centre(target);
+    splash(w, c1.x, c1.y, def.splash, (v) => damageOf(def, v, w) * 0.5, (v, amount) => applyDamage(w, v, amount, null, u.owner), u.id, target.id);
+  } else applyDamage(w, target, damageOf(def, target, w), u);
+  if (def.selfDestruct && w.get(u.id)) {
+    w.events.push({ type: 'blast', x: u.x, y: u.y, size: 1.2 });
+    applyDamage(w, u, u.hp, null, u.owner);
+  }
+  return true;
+}
+
+/** Bombarding a spot: in range, set up and fire at it until told otherwise. */
+function groundThink(w: World, u: Unit, o: { x: number; y: number }): boolean {
+  const def = unitStats(w, u.owner, u.type);
+  const d = Math.hypot(o.x - u.x, o.y - u.y);
+  if (d > def.range) {
+    if (def.packs && !u.packed) return setPacked(u, true), true;
+    u.state = 'walk';
+    if (!u.path && !u.pathPending) w.requestPath(u);
+    return true;
+  }
+  if (def.minRange && d < def.minRange) {
+    backOff(w, u, o.x, o.y, def.minRange);
+    return true;
+  }
+  u.path = null;
+  if (def.packs && u.packed) return setPacked(u, false), true;
+  u.face = o.x > u.x ? 1 : -1;
+  u.state = 'attack';
+  if (u.cooldown > 0) return true;
+  u.cooldown = Math.round(def.reload * TICK_RATE);
+  launch(w, u, 0, o.x, o.y);
   return true;
 }
 
@@ -196,7 +257,9 @@ function chase(w: World, u: Unit, t: Unit | Building): void {
   if (u.pathPending) return;
   // Re-plan when the target has moved well away from where the path leads.
   const end = u.path?.[u.path.length - 1];
-  const stale = !end || (t.kind === 'unit' && Math.hypot(end.x - t.x, end.y - t.y) > 1.5 && (w.tick + u.id) % 4 === 0);
+  // (Ranged units path to a firing spot at range, so allow for that.)
+  const slack = Math.max(1.5, unitStats(w, u.owner, u.type).range + 1);
+  const stale = !end || (t.kind === 'unit' && Math.hypot(end.x - t.x, end.y - t.y) > slack && (w.tick + u.id) % 4 === 0);
   if (stale) {
     if (end) u.path = null;
     w.requestPath(u);
@@ -263,6 +326,18 @@ function acquire(w: World, u: Unit): void {
     return;
   }
   if (u.stance === 'passive' || def.attack <= 0) return;
+  if (def.buildingsOnly || def.packs) {
+    // Rams and petards go for the nearest enemy building they can see; trebuchets for one in range.
+    let bb: Building | null = null;
+    let bd = def.packs ? def.range : def.los + 2;
+    for (const b of w.buildings()) {
+      if (b.owner === u.owner || !w.fog[u.owner]?.isExplored(b.x + b.size / 2, b.y + b.size / 2)) continue;
+      const d = distToRect(u.x, u.y, b.x, b.y, b.size);
+      if (d < bd) (bd = d), (bb = b);
+    }
+    if (bb) setOrder(u, { type: 'attack', id: (bb as Building).id, auto: true });
+    return;
+  }
   // Hit back first, if the attacker is still near.
   const radius = u.stance === 'stand' ? (def.range > 0 ? def.range + 0.5 : 1) : u.stance === 'defensive' ? Math.min(def.los, 6) : def.los;
   if (u.attackedAt >= w.tick - TICK_RATE * 2) {
@@ -277,6 +352,7 @@ function acquire(w: World, u: Unit): void {
   let bs = Infinity;
   w.spatial.query(u.x, u.y, radius, (o, d) => {
     if (o.owner === u.owner || (fog && !fog.isVisible(o.x, o.y))) return;
+    if (def.minRange && d < def.minRange + 0.5) return;
     // Prefer armed enemies and those we counter; villagers last.
     const threat = UNIT_DEFS[o.type].gatherer ? 3 : 0;
     const counter = (def.bonus[UNIT_DEFS[o.type].classes[0]] ?? 1) > 1 ? -1.5 : 0;
@@ -289,13 +365,26 @@ function acquire(w: World, u: Unit): void {
 // ---------- damage ----------
 
 function shoot(w: World, u: Unit, t: Unit | Building): void {
-  const def = unitStats(w, u.owner, u.type);
   const c = centre(t);
-  // Aim at a random point inside a building; at a unit, where it stands now.
-  const tx = t.kind === 'building' ? t.x + 0.3 + w.rng.next() * (t.size - 0.6) : c.x;
-  const ty = t.kind === 'building' ? t.y + 0.3 + w.rng.next() * (t.size - 0.6) : c.y;
+  // Aim at a random point inside a building; at a unit, where it stands now
+  // (or, with Ballistics, where it will be when the shot lands).
+  let tx = t.kind === 'building' ? t.x + 0.3 + w.rng.next() * (t.size - 0.6) : c.x;
+  let ty = t.kind === 'building' ? t.y + 0.3 + w.rng.next() * (t.size - 0.6) : c.y;
+  if (t.kind === 'unit' && w.players[u.owner]?.mods.ballistics) {
+    const def = unitStats(w, u.owner, u.type);
+    const ticks = (Math.hypot(tx - u.x, ty - u.y) / (def.projectileSpeed ?? 7)) * TICK_RATE;
+    tx += (t.x - t.px) * ticks;
+    ty += (t.y - t.py) * ticks;
+  }
+  launch(w, u, t.id, tx, ty);
+}
+
+/** Looses a projectile at a point (target 0 for a ground shot). */
+function launch(w: World, u: Unit, target: number, tx: number, ty: number): void {
+  const def = unitStats(w, u.owner, u.type);
   const dist = Math.hypot(tx - u.x, ty - u.y);
   const ticks = Math.max(1, Math.round((dist / (def.projectileSpeed ?? 7)) * TICK_RATE));
+  const t = { id: target };
   w.projectiles.push({
     id: w.nextProjectileId++,
     from: u.type,
@@ -308,7 +397,10 @@ function shoot(w: World, u: Unit, t: Unit | Building): void {
     ty,
     t: 0,
     dt: 1 / ticks,
-    arc: 0.25 + dist * 0.08,
+    arc: def.splash ? 0.6 + dist * 0.18 : def.pierce ? 0.1 + dist * 0.02 : 0.25 + dist * 0.08,
+    splash: def.splash,
+    pierce: def.pierce,
+    height: def.packs ? 1.6 : def.splash ? 0.9 : undefined,
   });
 }
 
@@ -321,6 +413,10 @@ export function projectileTick(w: World): void {
       keep.push(p);
       continue;
     }
+    if (p.splash || p.pierce) {
+      impact(w, p);
+      continue;
+    }
     const t = w.get(p.target);
     if (!t || t.kind === 'resource') continue;
     const hit = t.kind === 'building' ? distToRect(p.tx, p.ty, t.x, t.y, t.size) < 0.1 : Math.hypot(t.x - p.tx, t.y - p.ty) <= HIT_RADIUS + UNIT_DEFS[t.type].radius;
@@ -331,6 +427,28 @@ export function projectileTick(w: World): void {
     } else applyDamage(w, t, damageOf(unitStats(w, p.owner, p.from), t, w), w.unit(p.shooter) ?? null, p.owner);
   }
   w.projectiles = keep;
+}
+
+/** Stones and boulders crush an area; bolts run through a line. */
+function impact(w: World, p: Projectile): void {
+  const def = unitStats(w, p.owner, p.from);
+  const shooter = w.unit(p.shooter) ?? null;
+  if (p.pierce) {
+    const victims = boltVictims(w, p.sx, p.sy, p.tx, p.ty, def.range, p.owner);
+    for (const v of victims) applyDamage(w, v, damageOf(def, v, w), shooter, p.owner);
+    const t = w.get(p.target);
+    if (t?.kind === 'building') applyDamage(w, t, damageOf(def, t, w), shooter, p.owner);
+    return;
+  }
+  w.events.push({ type: 'blast', x: p.tx, y: p.ty, size: p.splash ?? 0.6 });
+  // A direct hit on the building aimed at takes full damage; the blast does the rest.
+  const t = w.get(p.target);
+  let skip = 0;
+  if (t?.kind === 'building' && distToRect(p.tx, p.ty, t.x, t.y, t.size) < 0.2) {
+    applyDamage(w, t, damageOf(def, t, w), shooter, p.owner);
+    skip = t.id;
+  }
+  splash(w, p.tx, p.ty, p.splash!, (v) => damageOf(def, v, w), (v, amount) => applyDamage(w, v, amount, null, p.owner), p.shooter, skip);
 }
 
 export function applyDamage(w: World, t: Unit | Building, amount: number, by: Unit | null, owner = by?.owner ?? -1): void {
