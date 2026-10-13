@@ -1,7 +1,7 @@
 import { Controller } from './input/controller';
 import type { View } from './render/canvas';
 import { Camera, ZOOM_LEVELS } from './render/camera';
-import { type Effect, Renderer } from './render/renderer';
+import { type Effect, type Overlay, Renderer } from './render/renderer';
 import type { GameMap } from './sim/terrain';
 import { TICK_MS, World } from './sim/world';
 import { Bench } from './ui/bench';
@@ -119,7 +119,15 @@ export class Game {
     this.camera.setView(this.view.width, this.view.height);
     this.camera.update(dt);
     const c = this.controller;
-    const ghost = c.placing ? { ...c.placing, valid: c.placementValid() } : null;
+    let ghost: Overlay['ghost'] = null;
+    if (c.placing) {
+      const p = c.placing;
+      ghost = { type: p.type, x: p.x, y: p.y, valid: c.placementValid() };
+      if (p.wall) {
+        const gateType = p.wall.kind === 'stone' ? 'gate' : 'palisade_gate';
+        ghost.wall = c.wallPlan().map((t) => ({ ...t, valid: this.world.canPlace(t.gate ? gateType : p.type, this.player, t.x, t.y) }));
+      }
+    }
     this.renderer.draw(this.camera, this.hud.paused ? 1 : this.acc / TICK_MS, now / 1000, { selection: c.selection, ghost });
     this.minimap.draw(now);
     this.hud.update(this.world, this.player, c.idleVillagers().length, c.idleMilitary().length);

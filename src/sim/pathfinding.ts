@@ -42,6 +42,8 @@ export class Pathfinder {
   private heapSize = 0;
   /** Nodes expanded by the last query (for budgeting). */
   lastExpanded = 0;
+  /** Whose gates are open during the current query. */
+  private player = -1;
 
   constructor(private readonly grid: NavGrid) {
     const n = grid.N * grid.N;
@@ -58,7 +60,7 @@ export class Pathfinder {
     const out: Waypoint[] = [];
     const r = goal.reach;
     for (let y = goal.y0 - r; y <= goal.y1 + r; y++)
-      for (let x = goal.x0 - r; x <= goal.x1 + r; x++) if (this.grid.isWalkable(x, y)) out.push({ x, y });
+      for (let x = goal.x0 - r; x <= goal.x1 + r; x++) if (this.grid.isWalkable(x, y, this.player)) out.push({ x, y });
     return out;
   }
 
@@ -66,13 +68,14 @@ export class Pathfinder {
    * Path from tile (sx, sy) to the goal, as smoothed waypoints at tile centres
    * (excluding the start). Returns [] if already there, null if unreachable.
    */
-  find(sx: number, sy: number, goal: Goal): Waypoint[] | null {
+  find(sx: number, sy: number, goal: Goal, player = -1): Waypoint[] | null {
     const { grid } = this;
+    this.player = player;
     const N = grid.N;
     this.lastExpanded = 0;
-    const region = grid.component(sx, sy);
+    const region = grid.component(sx, sy, player);
     if (region < 0) return null;
-    const targets = this.goalTiles(goal).filter((t) => grid.component(t.x, t.y) === region);
+    const targets = this.goalTiles(goal).filter((t) => grid.component(t.x, t.y, player) === region);
     if (!targets.length) return null;
     const r = goal.reach;
     const gx0 = goal.x0 - r, gy0 = goal.y0 - r, gx1 = goal.x1 + r, gy1 = goal.y1 + r;
@@ -106,9 +109,9 @@ export class Pathfinder {
       if (isGoal(x, y)) return this.reconstruct(cur);
       for (const [dx, dy, cost] of DIRS) {
         const nx = x + dx, ny = y + dy;
-        if (!grid.isWalkable(nx, ny)) continue;
+        if (!grid.isWalkable(nx, ny, player)) continue;
         // No squeezing diagonally between two blocked tiles or around a corner.
-        if (dx && dy && (!grid.isWalkable(x + dx, y) || !grid.isWalkable(x, y + dy))) continue;
+        if (dx && dy && (!grid.isWalkable(x + dx, y, player) || !grid.isWalkable(x, y + dy, player))) continue;
         const ni = ny * N + nx;
         if (this.closed[ni] === gen) continue;
         const ng = this.g[cur] + cost;
@@ -155,7 +158,7 @@ export class Pathfinder {
       const t = k / steps;
       const x = ax + (bx - ax) * t, y = ay + (by - ay) * t;
       for (const [ox, oy] of [[-pad, -pad], [pad, -pad], [-pad, pad], [pad, pad]])
-        if (!this.grid.isWalkable(Math.floor(x + ox), Math.floor(y + oy))) return false;
+        if (!this.grid.isWalkable(Math.floor(x + ox), Math.floor(y + oy), this.player)) return false;
     }
     return true;
   }

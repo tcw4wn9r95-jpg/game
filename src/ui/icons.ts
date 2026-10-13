@@ -223,6 +223,33 @@ export const ICONS = {
     <path d="M1.5 11.5L12 4l10.5 7.5z" fill="#8a5a40" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
     <path d="M6 13v7M10 13v7M14 13v7M18 13v7" stroke="#8a8478" stroke-width="1.6"/>
     <path d="M9 8.5h6l-3 2z" fill="#f1e9d6"/>`),
+  ungarrison: svg(`
+    <path d="M3 21V9l5-5 5 5v12z" fill="#a8a194" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M6 21v-5a2 2 0 014 0v5z" fill="#2a1a0c"/>
+    <path d="M12 15h9M17.5 11.5L21 15l-3.5 3.5" fill="none" stroke="${INK}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M12 15h9M17.5 11.5L21 15l-3.5 3.5" fill="none" stroke="#9cf59a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>`),
+  lock: svg(`
+    <path d="M7 11V8a5 5 0 0110 0v3" fill="none" stroke="${INK}" stroke-width="3.2"/><path d="M7 11V8a5 5 0 0110 0v3" fill="none" stroke="#b8c0c4" stroke-width="1.6"/>
+    <rect x="4.5" y="11" width="15" height="10" rx="1.5" fill="#d9b44a" stroke="${INK}" stroke-width="1.2"/>
+    <circle cx="12" cy="15.5" r="1.6" fill="${INK}"/><path d="M12 16v3" stroke="${INK}" stroke-width="1.4"/>`),
+  palisade_wall: svg(`
+    <path d="M3 21V8l1.5-3L6 8v13M8 21V7l1.5-3L11 7v14M13 21V8l1.5-3L16 8v13M18 21V7l1.5-3L21 7v14" fill="#9b6a3c" stroke="${INK}" stroke-width="1" stroke-linejoin="round"/>
+    <path d="M2 12h20M2 17h20" stroke="#5a3a1c" stroke-width="1.2"/>`),
+  palisade_gate: svg(`<path d="M3 21V5l2-2 2 2v16M17 21V5l2-2 2 2v16" fill="#9b6a3c" stroke="${INK}" stroke-width="1"/><path d="M7 7h10v14H7z" fill="#7a5430" stroke="${INK}" stroke-width="1"/><path d="M12 7v14" stroke="${INK}" stroke-width="1"/>`),
+  stone_wall: svg(`
+    <path d="M2 21V9h3V6h3v3h3V6h3v3h3V6h3v3h2v12z" fill="#a8a194" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M2 13h20M2 17h20M7 9v4M13 9v4M19 9v4M4 13v4M10 13v4M16 13v4M7 17v4M13 17v4M19 17v4" stroke="#6f695e" stroke-width=".9"/>`),
+  gate: svg(`<path d="M2 21V6h4V3h3v3h6V3h3v3h4v15z" fill="#a8a194" stroke="${INK}" stroke-width="1.1"/><path d="M8 21v-7a4 4 0 018 0v7z" fill="#5a381c" stroke="${INK}" stroke-width="1"/>`),
+  watch_tower: svg(`
+    <path d="M8 21V9h8v12z" fill="#a8a194" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M6 9h12v-3H6z" fill="#7a5430" stroke="${INK}" stroke-width="1"/>
+    <path d="M5 6l7-5 7 5z" fill="#8a6a48" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M11 13h2v3h-2z" fill="${INK}"/><path d="M10 21v-3a2 2 0 014 0v3z" fill="#3a2412"/>`),
+  castle: svg(`
+    <path d="M2 21V10h2V8h2v2h2V8h2v2h4V8h2v2h2V8h2v2h2v11z" fill="#a8a194" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M8 10V4h1.5V2.5h2V4h1v-1.5h2V4H16v6" fill="#b5ae9f" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M12 2.5V0" stroke="${INK}" stroke-width="1"/><path d="M12 0.5h3l-1 1 1 1h-3" fill="#2f5aa0"/>
+    <path d="M9.5 21v-4a2.5 2.5 0 015 0v4z" fill="#3a2412"/>`),
   aggressive: svg(`
     <path d="M4 20L18 5M20 20L6 5" stroke="${INK}" stroke-width="4" stroke-linecap="round"/>
     <path d="M4 20L18 5M20 20L6 5" stroke="#d6dde1" stroke-width="2" stroke-linecap="round"/>
@@ -326,6 +353,11 @@ const TECH_GLYPH: Record<string, string> = {
 };
 
 const TECH_GLYPH_OF: Record<string, string> = {
+  fortified_wall: 'masonry',
+  architecture: 'crane',
+  hoardings: 'masonry',
+  murder_holes: 'arrow',
+  arrowslits: 'arrow',
   loom: 'loom',
   town_watch: 'watch',
   wheelbarrow: 'barrow',
@@ -352,7 +384,7 @@ const TECH_GLYPH_OF: Record<string, string> = {
 };
 /** Second-level techs show two pips. */
 const LEVEL2 = new Set(['iron_casting', 'bodkin_arrow', 'chain_mail', 'chain_barding', 'leather_archer', 'bow_saw', 'gold_shaft', 'heavy_plow', 'hand_cart']);
-const UPGRADE_OF: Record<string, string> = { swordsman: 'militia', pikeman: 'spearman', crossbowman: 'archer', light_cavalry: 'scout' };
+const UPGRADE_OF: Record<string, string> = { guard_tower: 'watch_tower', keep: 'watch_tower', swordsman: 'militia', pikeman: 'spearman', crossbowman: 'archer', light_cavalry: 'scout' };
 const NUMERAL: Record<string, string> = { age2: 'II', age3: 'III', age4: 'IV' };
 
 const cacheTech = new Map<string, string>();

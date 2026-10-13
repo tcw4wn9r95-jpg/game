@@ -6,7 +6,7 @@ import type { Fog } from '../sim/fog';
 import { Feature, Terrain } from '../sim/terrain';
 import type { World } from '../sim/world';
 import { BIOMES, type Biome, pickTree } from './biome';
-import { BuildingSprites } from './buildingSprites';
+import { BuildingSprites, DIR8, wallVariant } from './buildingSprites';
 import type { View } from './canvas';
 import { type Camera, ZOOM_LEVELS } from './camera';
 import { ChunkCache } from './chunks';
@@ -48,8 +48,8 @@ interface LevelArt {
 
 export interface Overlay {
   selection: ReadonlySet<number>;
-  /** Building being placed, at its north-corner tile. */
-  ghost: { type: BuildingType; x: number; y: number; valid: boolean } | null;
+  /** Building being placed, at its north-corner tile; for walls, the planned segments. */
+  ghost: { type: BuildingType; x: number; y: number; valid: boolean; wall?: Array<{ x: number; y: number; gate: boolean; valid: boolean }> } | null;
 }
 
 export interface Effect {
@@ -279,6 +279,7 @@ export class Renderer {
       }
     for (const e of world.entities.values()) {
       if (e.kind === 'unit') {
+        if (e.inside) continue;
         const x = e.px + (e.x - e.px) * v.alpha, y = e.py + (e.y - e.py) * v.alpha;
         if (!onScreen(x, y, pad)) continue;
         if (e.owner !== this.player && !fog.isVisible(x, y)) continue;
@@ -487,7 +488,7 @@ export class Renderer {
     const { S } = v;
     const at = (q: number) => {
       const x = p.sx + (p.tx - p.sx) * q, y = p.sy + (p.ty - p.sy) * q;
-      const z = p.arc * 4 * q * (1 - q) + 0.55 * (1 - q) + 0.25 * q;
+      const z = p.arc * 4 * q * (1 - q) + (p.height ?? 0.55) * (1 - q) + 0.25 * q;
       return { X: this.sx(v, x, y), Y: this.sy(v, x, y), Z: z * S };
     };
     const a = at(t), b = at(Math.min(1, t + 0.04));
@@ -598,8 +599,9 @@ export class Renderer {
     const { ctx } = this.view;
     const { S } = v;
     const def = BUILDING_DEFS[b.type];
-    // Farms show how much crop is left.
-    const variant = b.type === 'farm' && b.complete ? Math.max(1, Math.ceil((b.amount / (def.food ?? 1)) * 3)) : 0;
+    // Farms show how much crop is left; walls how they join up and how battered they are.
+    const variant =
+      b.type === 'farm' && b.complete ? Math.max(1, Math.ceil((b.amount / (def.food ?? 1)) * 3)) : def.wall || def.classes.includes('tower') ? this.wallVariant(b) : 0;
     const sprite = v.art.buildings.get(b.type, b.size, b.owner, variant, this.world.players[b.owner]?.age ?? 0);
     const selected = v.overlay.selection.has(b.id);
     const ny = this.sy(v, b.x, b.y);
@@ -640,7 +642,7 @@ export class Renderer {
     }
     if (selected && b.rally && b.owner === this.player) this.drawRally(v, b);
     const maxHp = buildingMaxHp(this.world, b);
-    if (b.complete && b.hp < maxHp * 0.6 && !def.walkable) {
+    if (b.complete && b.hp < maxHp * 0.6 && !def.walkable && !def.wall) {
       // Burning: smoke from the start, flames once badly hurt.
       const frac = b.hp / maxHp;
       const top = S * b.size * 0.55;
@@ -653,6 +655,53 @@ export class Renderer {
       const top = def.walkable ? this.sy(v, b.x, b.y) - S * 0.6 : ny - S * (0.4 + b.size * 0.55);
       this.hpBar(v, cx, top, Math.min(b.size * S * 1.2, S * 3), b.complete ? b.hp / maxHp : b.progress, b.owner, !b.complete);
     }
+    if (b.garrison.length && (b.owner === this.player || selected)) {
+      // Garrison badge: a shield with the count.
+      const bx = this.sx(v, b.x + b.size / 2, b.y + b.size / 2), by = this.sy(v, b.x, b.y) - S * (0.6 + b.size * 0.55);
+      const r = Math.max(7, S * 0.28);
+      ctx.fillStyle = PLAYER_COLORS[b.owner % PLAYER_COLORS.length];
+      ctx.strokeStyle = '#f1d48a';
+      ctx.lineWidth = Math.max(1, S / 24);
+      ctx.beginPath();
+      ctx.moveTo(bx - r, by - r);
+      ctx.lineTo(bx + r, by - r);
+      ctx.lineTo(bx + r, by + r * 0.3);
+      ctx.quadraticCurveTo(bx, by + r * 1.4, bx - r, by + r * 0.3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fff6d8';
+      ctx.font = `700 ${Math.round(r * 1.2)}px 'Alegreya Sans', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(b.garrison.length), bx, by - r * 0.1);
+      ctx.textBaseline = 'alphabetic';
+    }
+  }
+
+  /** Neighbour joins, damage, gate state and tower level for a fortification sprite. */
+  private wallVariant(b: Building): number {
+    const def = BUILDING_DEFS[b.type];
+    const { grid } = this.world;
+    const N = this.world.map.size;
+    let mask = 0;
+    if (def.wall)
+      DIR8.forEach(([dx, dy], k) => {
+        const x = b.x + dx, y = b.y + dy;
+        if (x < 0 || y < 0 || x >= N || y >= N) return;
+        const o = this.world.building(grid.building[y * N + x]);
+        if (o && o.owner === b.owner && (BUILDING_DEFS[o.type].wall || BUILDING_DEFS[o.type].classes.includes('tower'))) mask |= 1 << k;
+      });
+    const frac = b.complete ? b.hp / buildingMaxHp(this.world, b) : 1;
+    const damage = frac < 0.33 ? 2 : frac < 0.66 ? 1 : 0;
+    let open = false;
+    if (def.gate && !b.locked)
+      this.world.spatial.query(b.x + 0.5, b.y + 0.5, 1.6, (u) => {
+        if (u.owner === b.owner) open = true;
+      });
+    const techs = (this.world.players[b.owner]?.techs ?? []) as string[];
+    const level = techs.includes('keep') ? 2 : techs.includes('guard_tower') ? 1 : 0;
+    return wallVariant(mask, damage, open, b.locked, level);
   }
 
   /** Dashed line from a building to its rally flag. */
@@ -692,6 +741,25 @@ export class Renderer {
 
   private drawGhost(v: FrameView, gh: NonNullable<Overlay['ghost']>): void {
     const { ctx } = this.view;
+    if (gh.wall) {
+      // Planned wall: each segment tinted by whether it can go there, joined to its planned neighbours.
+      const plan = [...gh.wall].sort((a, b) => a.x + a.y - (b.x + b.y));
+      const has = (x: number, y: number) => plan.some((t) => t.x === x && t.y === y);
+      const def = BUILDING_DEFS[gh.type];
+      const kind = def.wall!;
+      for (const t of plan) {
+        this.diamond(v, t.x, t.y, 1);
+        ctx.fillStyle = !t.valid ? 'rgba(230,60,50,0.45)' : t.gate ? 'rgba(255,200,60,0.45)' : 'rgba(90,220,110,0.35)';
+        ctx.fill();
+        let mask = 0;
+        DIR8.forEach(([dx, dy], k) => {
+          if (has(t.x + dx, t.y + dy)) mask |= 1 << k;
+        });
+        const type: BuildingType = t.gate ? (kind === 'stone' ? 'gate' : 'palisade_gate') : gh.type;
+        this.put(v, v.art.buildings.get(type, 1, this.player, wallVariant(mask, 0), this.world.players[this.player]?.age ?? 0), t.x, t.y, 0.65);
+      }
+      return;
+    }
     const size = BUILDING_DEFS[gh.type].size;
     this.diamond(v, gh.x, gh.y, size);
     ctx.fillStyle = gh.valid ? 'rgba(90,220,110,0.35)' : 'rgba(230,60,50,0.4)';

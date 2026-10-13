@@ -5,6 +5,8 @@ import { isGatherer, sourceOf } from '../sim/economy';
 import { BUILDING_DEFS, type Building, type BuildingType, type Entity, type GatherTarget, UNIT_DEFS, type Unit } from '../sim/entities';
 import { unitHeight } from '../render/unitSprites';
 import type { Command } from '../sim/commands';
+import { canShelter, shelterRoom, wallLine } from '../sim/fortify';
+import { buildingMaxHp } from '../sim/techs';
 import { Feature } from '../sim/terrain';
 import type { World } from '../sim/world';
 
@@ -24,6 +26,8 @@ export interface Placing {
   type: BuildingType;
   x: number;
   y: number;
+  /** Wall mode: the planned segments (gates marked) and the line being dragged. */
+  wall?: { kind: 'palisade' | 'stone'; tiles: Array<{ x: number; y: number; gate: boolean }>; line: { x0: number; y0: number; x1: number; y1: number } | null };
 }
 
 export class Controller {
@@ -89,6 +93,16 @@ export class Controller {
   tap(sx: number, sy: number): void {
     const { camera } = this.host;
     const t = camera.screenToTile(sx, sy);
+    if (this.placing?.wall) {
+      // Tap a planned segment to make it a gate (or back); tap elsewhere to add one segment.
+      const wp = this.placing.wall;
+      const tx = Math.floor(t.x), ty = Math.floor(t.y);
+      const hit = wp.tiles.find((s) => s.x === tx && s.y === ty);
+      if (hit) hit.gate = !hit.gate;
+      else wp.tiles.push({ x: tx, y: ty, gate: false });
+      this.changed();
+      return;
+    }
     if (this.placing) {
       const size = BUILDING_DEFS[this.placing.type].size;
       this.placing.x = Math.round(t.x - size / 2);
@@ -125,12 +139,20 @@ export class Controller {
         this.ring(b.x + b.size / 2, b.y + b.size / 2, '#ffe28a');
         return;
       }
-      // Villagers act on it only if there is work there: build it, or unload what they carry.
+      // Villagers act on it only if there is work there: build or repair it, or unload what they carry.
       const accepts = (BUILDING_DEFS[b.type].dropoff as string[]);
-      const helpers = units.filter((u) => (!b.complete && isGatherer(u)) || (b.complete && u.carry && accepts.includes(u.carry.res)));
+      const damaged = b.complete && b.hp < buildingMaxHp(this.world, b) - 0.5;
+      const helpers = units.filter((u) => (isGatherer(u) && (!b.complete || damaged)) || (b.complete && u.carry && accepts.includes(u.carry.res)));
       if (helpers.length) {
         this.issue({ type: 'help', ids: helpers.map((u) => u.id), id: b.id });
         this.ring(b.x + b.size / 2, b.y + b.size / 2, '#ffe28a');
+        return;
+      }
+      // Otherwise units that fit go inside a tower, castle or town centre.
+      const shelter = units.filter((u) => canShelter(b, u));
+      if (shelter.length && shelterRoom(b) > 0) {
+        this.issue({ type: 'garrison', ids: shelter.map((u) => u.id), id: b.id });
+        this.ring(b.x + b.size / 2, b.y + b.size / 2, '#9cc8ff');
         return;
       }
       return this.select([b.id]);
@@ -168,7 +190,7 @@ export class Controller {
     if (pick.kind !== 'entity' || pick.e.kind !== 'unit' || pick.e.owner !== this.host.player) return this.tap(sx, sy);
     const type = pick.e.type;
     const ids: number[] = [];
-    for (const u of this.world.units(this.host.player)) {
+    for (const u of this.world.field(this.host.player)) {
       const p = camera.tileToScreen(u.x, u.y);
       if (u.type === type && p.x >= 0 && p.x <= camera.viewW && p.y >= 0 && p.y <= camera.viewH) ids.push(u.id);
     }
@@ -186,7 +208,7 @@ export class Controller {
     if (r - l < 6 && b - tp < 6) return;
     const { camera } = this.host;
     const ids: number[] = [];
-    for (const u of this.world.units(this.host.player)) {
+    for (const u of this.world.field(this.host.player)) {
       // Test the middle of the figure, which stands above its feet.
       const p = camera.tileToScreen(u.x, u.y);
       const my = p.y - camera.scale * 0.6;
@@ -202,6 +224,13 @@ export class Controller {
     const p = this.placing;
     if (!p) return false;
     const t = this.host.camera.screenToTile(sx, sy);
+    if (p.wall) {
+      // Every drag draws a new line of wall from where the finger lands.
+      const x = Math.floor(t.x), y = Math.floor(t.y);
+      p.wall.line = { x0: x, y0: y, x1: x, y1: y };
+      this.changed();
+      return true;
+    }
     const size = BUILDING_DEFS[p.type].size;
     if (t.x < p.x - 0.5 || t.x > p.x + size + 0.5 || t.y < p.y - 1 || t.y > p.y + size + 0.5) return false;
     this.dragOffset = { x: t.x - p.x, y: t.y - p.y };
@@ -210,6 +239,16 @@ export class Controller {
 
   drag(sx: number, sy: number): void {
     const p = this.placing;
+    if (p?.wall?.line) {
+      const t = this.host.camera.screenToTile(sx, sy);
+      const x = Math.floor(t.x), y = Math.floor(t.y);
+      if (x !== p.wall.line.x1 || y !== p.wall.line.y1) {
+        p.wall.line.x1 = x;
+        p.wall.line.y1 = y;
+        this.changed();
+      }
+      return;
+    }
     if (!p || !this.dragOffset) return;
     const t = this.host.camera.screenToTile(sx, sy);
     const nx = Math.round(t.x - this.dragOffset.x), ny = Math.round(t.y - this.dragOffset.y);
@@ -222,6 +261,24 @@ export class Controller {
 
   dragEnd(): void {
     this.dragOffset = null;
+    const wp = this.placing?.wall;
+    if (wp?.line) {
+      for (const t of wallLine(wp.line.x0, wp.line.y0, wp.line.x1, wp.line.y1))
+        if (!wp.tiles.some((s) => s.x === t.x && s.y === t.y)) wp.tiles.push({ ...t, gate: false });
+      wp.line = null;
+      this.changed();
+    }
+  }
+
+  /** The planned wall segments, including the line being dragged. */
+  wallPlan(): Array<{ x: number; y: number; gate: boolean }> {
+    const wp = this.placing?.wall;
+    if (!wp) return [];
+    const out = [...wp.tiles];
+    if (wp.line)
+      for (const t of wallLine(wp.line.x0, wp.line.y0, wp.line.x1, wp.line.y1))
+        if (!out.some((s) => s.x === t.x && s.y === t.y)) out.push({ ...t, gate: false });
+    return out;
   }
 
   /** Deletes the player's selected units and buildings. */
@@ -343,19 +400,24 @@ export class Controller {
     const { camera } = this.host;
     const size = BUILDING_DEFS[type].size;
     this.placing = { type, x: Math.round(camera.x - size / 2), y: Math.round(camera.y - size / 2) };
+    const wall = BUILDING_DEFS[type].wall;
+    if (wall) this.placing.wall = { kind: wall, tiles: [], line: null };
     this.changed();
   }
 
   placementValid(): boolean {
     const p = this.placing;
+    if (p?.wall) return p.wall.tiles.length > 0;
     return !!p && this.world.canPlace(p.type, this.host.player, p.x, p.y);
   }
+
 
   confirmPlacing(): void {
     const p = this.placing;
     if (!p) return;
     const builders = this.ownUnits().filter(isGatherer);
-    this.issue({ type: 'build', ids: builders.map((u) => u.id), building: p.type, x: p.x, y: p.y });
+    if (p.wall) this.issue({ type: 'buildWall', ids: builders.map((u) => u.id), kind: p.wall.kind, tiles: p.wall.tiles });
+    else this.issue({ type: 'build', ids: builders.map((u) => u.id), building: p.type, x: p.x, y: p.y });
     this.placing = null;
     this.changed();
   }
@@ -371,7 +433,7 @@ export class Controller {
   }
 
   idleVillagers(): Unit[] {
-    return [...this.world.units(this.host.player)].filter((u) => u.type === 'villager' && !u.order);
+    return [...this.world.field(this.host.player)].filter((u) => u.type === 'villager' && !u.order);
   }
 
   /** Selects the next idle villager and centres the camera on it. */
@@ -385,11 +447,11 @@ export class Controller {
 
   /** Own units that fight (everything but villagers). */
   military(): Unit[] {
-    return [...this.world.units(this.host.player)].filter((u) => u.type !== 'villager');
+    return [...this.world.field(this.host.player)].filter((u) => u.type !== 'villager');
   }
 
   idleMilitary(): Unit[] {
-    return this.military().filter((u) => !u.order);
+    return this.military().filter((u) => !u.order && !u.inside);
   }
 
   nextIdleMilitary(): void {

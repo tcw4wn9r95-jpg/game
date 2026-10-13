@@ -28,7 +28,14 @@ export type TechEffect =
   | { type: 'carry'; add: number }
   | { type: 'farm'; add: number }
   | { type: 'building'; los?: number; hpMult?: number; meleeArmor?: number; pierceArmor?: number }
-  | { type: 'buildSpeed'; mult: number };
+  | { type: 'buildSpeed'; mult: number }
+  | {
+      type: 'defense';
+      tower?: { hp?: number; attack?: number; range?: number; name?: string };
+      wallHpMult?: number;
+      castleHpMult?: number;
+      murderHoles?: boolean;
+    };
 
 export interface TechDef {
   name: string;
@@ -65,12 +72,22 @@ export interface PlayerMods {
   farmFood: number;
   buildSpeed: number;
   building: { los: number; hpMult: number; meleeArmor: number; pierceArmor: number };
+  /** Towers, walls and castles. */
+  defense: { towerHp: number; towerAttack: number; towerRange: number; towerName: string | null; wallHpMult: number; castleHpMult: number; murderHoles: boolean };
 }
 
 export function baseMods(): PlayerMods {
   const units = {} as Record<UnitType, UnitDef>;
   for (const k of Object.keys(UNIT_DEFS) as UnitType[]) units[k] = { ...UNIT_DEFS[k], bonus: { ...UNIT_DEFS[k].bonus } };
-  return { units, gather: {}, carry: 0, farmFood: 0, buildSpeed: 1, building: { los: 0, hpMult: 1, meleeArmor: 0, pierceArmor: 0 } };
+  return {
+    units,
+    gather: {},
+    carry: 0,
+    farmFood: 0,
+    buildSpeed: 1,
+    building: { los: 0, hpMult: 1, meleeArmor: 0, pierceArmor: 0 },
+    defense: { towerHp: 0, towerAttack: 0, towerRange: 0, towerName: null, wallHpMult: 1, castleHpMult: 1, murderHoles: false },
+  };
 }
 
 /** Applies one tech's effects to a player's modifiers (age changes are applied by the caller). */
@@ -111,6 +128,19 @@ export function applyEffects(m: PlayerMods, id: TechId): void {
       case 'buildSpeed':
         m.buildSpeed *= e.mult;
         break;
+      case 'defense': {
+        const d = m.defense;
+        if (e.tower) {
+          d.towerHp += e.tower.hp ?? 0;
+          d.towerAttack += e.tower.attack ?? 0;
+          d.towerRange += e.tower.range ?? 0;
+          if (e.tower.name) d.towerName = e.tower.name;
+        }
+        d.wallHpMult *= e.wallHpMult ?? 1;
+        d.castleHpMult *= e.castleHpMult ?? 1;
+        if (e.murderHoles) d.murderHoles = true;
+        break;
+      }
       case 'age':
         break;
     }
@@ -124,9 +154,39 @@ export function unitStats(w: World, owner: number, type: UnitType): UnitDef {
   return w.players[owner]?.mods.units[type] ?? UNIT_DEFS[type];
 }
 
-/** Max HP of a building for its owner. */
+/** Max HP of a building for its owner (masonry, fortified walls, tower upgrades, hoardings). */
 export function buildingMaxHp(w: World, b: Building): number {
-  return Math.round(BUILDING_DEFS[b.type].hp * (w.players[b.owner]?.mods.building.hpMult ?? 1));
+  const def = BUILDING_DEFS[b.type];
+  const m = w.players[b.owner]?.mods;
+  if (!m) return def.hp;
+  let hp = def.hp;
+  if (def.classes.includes('tower')) hp += m.defense.towerHp;
+  hp *= m.building.hpMult;
+  if (def.wall === 'stone') hp *= m.defense.wallHpMult;
+  if (def.classes.includes('castle')) hp *= m.defense.castleHpMult;
+  return Math.round(hp);
+}
+
+/** A building's arrows after research, or null if it doesn't shoot. */
+export function buildingAttack(w: World, b: Building): { attack: number; range: number; reload: number; arrows: number; minRange: number } | null {
+  const a = BUILDING_DEFS[b.type].attack;
+  if (!a) return null;
+  const d = w.players[b.owner]?.mods.defense;
+  if (!d) return a;
+  const tower = BUILDING_DEFS[b.type].classes.includes('tower');
+  return {
+    ...a,
+    attack: a.attack + (tower ? d.towerAttack : 0),
+    range: a.range + (tower ? d.towerRange : 0),
+    minRange: d.murderHoles ? 0 : a.minRange,
+  };
+}
+
+/** Display name (towers are renamed by their upgrades). */
+export function buildingName(w: World, b: { type: BuildingType; owner: number }): string {
+  const def = BUILDING_DEFS[b.type];
+  const d = w.players[b.owner]?.mods.defense;
+  return def.classes.includes('tower') && d?.towerName ? d.towerName : def.name;
 }
 
 export function buildingArmor(w: World, b: Building): { melee: number; pierce: number } {
@@ -195,8 +255,21 @@ export function completeTech(w: World, owner: number, id: TechId): void {
   for (const e of TECH_DEFS[id].effects) if (e.type === 'age') p.age = e.age;
   // Existing units and buildings gain any added HP straight away.
   for (const u of w.units(owner)) u.hp += after.units[u.type].hp - before.units[u.type].hp;
-  if (after.building.hpMult !== before.building.hpMult)
-    for (const b of w.buildings(owner)) b.hp *= after.building.hpMult / before.building.hpMult;
+  // Buildings keep their health fraction as their maximum rises.
+  for (const b of w.buildings(owner)) {
+    if (!b.complete) continue;
+    const oldMax = maxWith(before, b), newMax = maxWith(after, b);
+    if (newMax !== oldMax) b.hp *= newMax / oldMax;
+  }
   // Farms planted from now on yield more.
   w.events.push({ type: 'researched', owner, tech: id });
+}
+
+function maxWith(m: PlayerMods, b: Building): number {
+  const def = BUILDING_DEFS[b.type];
+  let hp = def.hp + (def.classes.includes('tower') ? m.defense.towerHp : 0);
+  hp *= m.building.hpMult;
+  if (def.wall === 'stone') hp *= m.defense.wallHpMult;
+  if (def.classes.includes('castle')) hp *= m.defense.castleHpMult;
+  return hp;
 }

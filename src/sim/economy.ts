@@ -11,6 +11,7 @@ import {
   type Unit,
   distToRect,
 } from './entities';
+import { garrisonThink, repairThink } from './fortify';
 import type { Goal } from './pathfinding';
 import { Feature } from './terrain';
 import type { World } from './world';
@@ -167,11 +168,11 @@ function farmTaken(w: World, farmId: number, except: Unit): boolean {
 
 /** True if some walkable tile next to (x, y) lies in the unit's region. */
 function accessible(w: World, u: Unit, x: number, y: number): boolean {
-  const region = w.grid.component(Math.floor(u.x), Math.floor(u.y));
+  const region = w.grid.component(Math.floor(u.x), Math.floor(u.y), u.owner);
   for (let dy = -1; dy <= 1; dy++)
     for (let dx = -1; dx <= 1; dx++) {
       const tx = Math.floor(x) + dx, ty = Math.floor(y) + dy;
-      if (w.grid.isWalkable(tx, ty) && (region < 0 || w.grid.component(tx, ty) === region)) return true;
+      if (w.grid.isWalkable(tx, ty, u.owner) && (region < 0 || w.grid.component(tx, ty, u.owner) === region)) return true;
     }
   return false;
 }
@@ -283,6 +284,10 @@ export function think(w: World, u: Unit): void {
     case 'heal':
     case 'convert':
       return; // handled by combat
+    case 'garrison':
+      return garrisonThink(w, u, o, inReach, () => walkTo(w, u));
+    case 'repair':
+      return repairThink(w, u, o, inReach, () => walkTo(w, u));
     case 'gather':
       return gather(w, u, o);
     case 'dropoff':
@@ -421,9 +426,9 @@ export function goalFor(w: World, u: Unit): Goal | null {
   switch (o.type) {
     case 'move': {
       let tx = Math.floor(o.x), ty = Math.floor(o.y);
-      const region = w.grid.component(Math.floor(u.x), Math.floor(u.y));
-      if (!w.grid.isWalkable(tx, ty) || w.grid.component(tx, ty) !== region) {
-        const near = w.grid.nearestWalkable(o.x, o.y, region);
+      const region = w.grid.component(Math.floor(u.x), Math.floor(u.y), u.owner);
+      if (!w.grid.isWalkable(tx, ty, u.owner) || w.grid.component(tx, ty, u.owner) !== region) {
+        const near = w.grid.nearestWalkable(o.x, o.y, region, 24, u.owner);
         if (!near) return null;
         tx = near.x;
         ty = near.y;
@@ -441,7 +446,9 @@ export function goalFor(w: World, u: Unit): Goal | null {
       return { x0: tx, y0: ty, x1: tx, y1: ty, reach: 1 };
     }
     case 'build':
-    case 'dropoff': {
+    case 'dropoff':
+    case 'garrison':
+    case 'repair': {
       const b = w.building(o.id);
       if (!b) return null;
       return { x0: b.x, y0: b.y, x1: b.x + b.size - 1, y1: b.y + b.size - 1, reach: 1 };

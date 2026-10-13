@@ -34,6 +34,7 @@ export class FlowField {
     private readonly grid: NavGrid,
     goals: Array<{ x: number; y: number }>,
     from: Array<{ x: number; y: number }>,
+    private readonly player = -1,
     margin = MARGIN,
   ) {
     const xs = [...goals.map((g) => g.x), ...from.map((p) => Math.floor(p.x))];
@@ -62,7 +63,7 @@ export class FlowField {
     let bd = here;
     for (const [dx, dy] of DIRS) {
       const nx = x + dx, ny = y + dy;
-      if (dx && dy && (!this.grid.isWalkable(x + dx, y) || !this.grid.isWalkable(x, y + dy))) continue;
+      if (dx && dy && (!this.grid.isWalkable(x + dx, y, this.player) || !this.grid.isWalkable(x, y + dy, this.player))) continue;
       const d = this.at(nx, ny);
       if (d < bd) (bd = d), (best = { x: nx, y: ny });
     }
@@ -81,7 +82,7 @@ export class FlowField {
     let pending = 0;
     for (const g of goals) {
       const lx = g.x - x0, ly = g.y - y0;
-      if (lx < 0 || ly < 0 || lx >= w || ly >= h || !grid.isWalkable(g.x, g.y)) continue;
+      if (lx < 0 || ly < 0 || lx >= w || ly >= h || !grid.isWalkable(g.x, g.y, this.player)) continue;
       const i = ly * w + lx;
       if (cost[i] === 0) continue;
       cost[i] = 0;
@@ -91,9 +92,10 @@ export class FlowField {
     // Walkability of the window with a one-cell blocked border, so the inner loop needs no bounds checks.
     const W2 = w + 2;
     const open = new Uint8Array(W2 * (h + 2));
+    const walk = grid.walkOf(this.player);
     for (let ly = 0; ly < h; ly++) {
       const row = (ly + y0) * grid.N + x0;
-      for (let lx = 0; lx < w; lx++) open[(ly + 1) * W2 + lx + 1] = grid.walk[row + lx];
+      for (let lx = 0; lx < w; lx++) open[(ly + 1) * W2 + lx + 1] = walk[row + lx];
     }
     const steps = DIRS.map(([dx, dy, c]) => [dx, dy, c === 1 ? 10 : 14] as const);
     for (let d = 0; pending > 0; d++) {

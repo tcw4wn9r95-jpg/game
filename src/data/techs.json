@@ -638,5 +638,139 @@
         "mult": 1.2
       }
     ]
+  },
+  "guard_tower": {
+    "name": "Guard Tower",
+    "building": "watch_tower",
+    "age": 2,
+    "cost": {
+      "food": 100,
+      "stone": 250
+    },
+    "time": 30,
+    "description": "Upgrade all towers to guard towers: +500 HP, +1 attack.",
+    "effects": [
+      {
+        "type": "defense",
+        "tower": {
+          "hp": 500,
+          "attack": 1,
+          "name": "Guard Tower"
+        }
+      }
+    ]
+  },
+  "keep": {
+    "name": "Keep",
+    "building": "watch_tower",
+    "age": 3,
+    "cost": {
+      "food": 500,
+      "wood": 350
+    },
+    "time": 75,
+    "description": "Upgrade all towers to keeps: +750 HP, +2 attack, +1 range.",
+    "effects": [
+      {
+        "type": "defense",
+        "tower": {
+          "hp": 750,
+          "attack": 2,
+          "range": 1,
+          "name": "Keep"
+        }
+      }
+    ],
+    "requires": "guard_tower"
+  },
+  "fortified_wall": {
+    "name": "Fortified Wall",
+    "building": "university",
+    "age": 3,
+    "cost": {
+      "food": 200,
+      "stone": 100
+    },
+    "time": 50,
+    "description": "Stone walls and gates +60% HP.",
+    "effects": [
+      {
+        "type": "defense",
+        "wallHpMult": 1.6
+      }
+    ]
+  },
+  "architecture": {
+    "name": "Architecture",
+    "building": "university",
+    "age": 3,
+    "cost": {
+      "food": 300,
+      "wood": 200
+    },
+    "time": 70,
+    "description": "Buildings a further +10% HP and +1/+1 armour.",
+    "effects": [
+      {
+        "type": "building",
+        "hpMult": 1.1,
+        "meleeArmor": 1,
+        "pierceArmor": 1
+      }
+    ],
+    "requires": "masonry"
+  },
+  "hoardings": {
+    "name": "Hoardings",
+    "building": "university",
+    "age": 3,
+    "cost": {
+      "food": 400,
+      "wood": 400
+    },
+    "time": 75,
+    "description": "Castles +20% HP.",
+    "effects": [
+      {
+        "type": "defense",
+        "castleHpMult": 1.2
+      }
+    ]
+  },
+  "murder_holes": {
+    "name": "Murder Holes",
+    "building": "university",
+    "age": 2,
+    "cost": {
+      "food": 200,
+      "stone": 100
+    },
+    "time": 60,
+    "description": "Towers and castles hit enemies right at their walls.",
+    "effects": [
+      {
+        "type": "defense",
+        "murderHoles": true
+      }
+    ]
+  },
+  "arrowslits": {
+    "name": "Arrowslits",
+    "building": "university",
+    "age": 2,
+    "cost": {
+      "food": 250,
+      "wood": 250
+    },
+    "time": 40,
+    "description": "Towers +1 attack.",
+    "effects": [
+      {
+        "type": "defense",
+        "tower": {
+          "attack": 1
+        }
+      }
+    ]
   }
 }

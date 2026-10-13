@@ -1,36 +1,57 @@
 import { Feature, type GameMap, Terrain } from './terrain';
 
+/** Connected regions of one walkability array, rebuilt lazily after changes. */
+interface Layer {
+  walk: Uint8Array;
+  comp: Int32Array;
+  walkDirty: boolean;
+  compDirty: boolean;
+}
+
 /**
  * Land navigation layer: which tiles land units can stand on, which building
  * occupies each tile, and connected regions so unreachable goals are rejected
  * without a search.
+ *
+ * Gates are solid for everyone in the base layer; each player has its own
+ * layer in which its own unlocked gates are open. Pass the player to the
+ * queries that should see through its gates (paths, movement); omit it (-1)
+ * for questions about the ground itself (placement, spawning).
  */
 export class NavGrid {
   readonly N: number;
-  /** 1 = walkable by land units. */
+  /** 1 = walkable by land units (gates closed). */
   readonly walk: Uint8Array;
   /** Building id occupying each tile (0 = none), including walkable ones like farms. */
   readonly building: Int32Array;
   /** 1 where a building blocks movement. */
   private readonly solid: Uint8Array;
-  private comp: Int32Array;
-  private compDirty = true;
+  /** Gate tiles: owner, and whether it is locked. */
+  private readonly gates = new Map<number, { owner: number; locked: boolean }>();
+  private readonly base: Layer;
+  private readonly layers: Layer[] = [];
 
   constructor(private readonly map: GameMap) {
     this.N = map.size;
-    this.walk = new Uint8Array(this.N * this.N);
-    this.building = new Int32Array(this.N * this.N);
-    this.solid = new Uint8Array(this.N * this.N);
-    this.comp = new Int32Array(this.N * this.N);
-    for (let i = 0; i < this.N * this.N; i++) this.refresh(i);
+    const n = this.N * this.N;
+    this.walk = new Uint8Array(n);
+    this.building = new Int32Array(n);
+    this.solid = new Uint8Array(n);
+    this.base = { walk: this.walk, comp: new Int32Array(n), walkDirty: false, compDirty: true };
+    for (let i = 0; i < n; i++) this.refresh(i);
   }
 
   inside(x: number, y: number): boolean {
     return x >= 0 && y >= 0 && x < this.N && y < this.N;
   }
 
-  isWalkable(x: number, y: number): boolean {
-    return this.inside(x, y) && this.walk[y * this.N + x] === 1;
+  /** Walkability array for a player (its own unlocked gates open), or the base one for -1. */
+  walkOf(player = -1): Uint8Array {
+    return this.layer(player).walk;
+  }
+
+  isWalkable(x: number, y: number, player = -1): boolean {
+    return this.inside(x, y) && this.layer(player).walk[y * this.N + x] === 1;
   }
 
   /** Recomputes walkability of one tile from terrain, features and buildings. */
@@ -39,8 +60,13 @@ export class NavGrid {
     const now = this.map.terrain[i] !== Terrain.Deep && this.map.feature[i] === Feature.None && this.solid[i] === 0 ? 1 : 0;
     if (was !== now) {
       this.walk[i] = now;
-      this.compDirty = true;
+      this.dirty();
     }
+  }
+
+  private dirty(): void {
+    this.base.compDirty = true;
+    for (const l of this.layers) if (l) (l.walkDirty = true), (l.compDirty = true);
   }
 
   /** Marks (id > 0) or clears (id = 0) a footprint; `solid` buildings block movement. */
@@ -50,19 +76,47 @@ export class NavGrid {
         const i = ty * this.N + tx;
         this.building[i] = id;
         this.solid[i] = id && solid ? 1 : 0;
+        if (!id && this.gates.delete(i)) this.dirty();
         this.refresh(i);
       }
   }
 
-  /** Connected-region id of a tile (-1 if blocked). Regions are rebuilt lazily after changes. */
-  component(x: number, y: number): number {
-    if (!this.inside(x, y)) return -1;
-    if (this.compDirty) this.rebuildComponents();
-    return this.comp[y * this.N + x];
+  /** Registers a gate tile: open to its owner unless locked. */
+  setGate(x: number, y: number, owner: number, locked: boolean): void {
+    this.gates.set(y * this.N + x, { owner, locked });
+    this.dirty();
   }
 
-  private rebuildComponents(): void {
-    const { N, walk, comp } = this;
+  gateAt(x: number, y: number): { owner: number; locked: boolean } | undefined {
+    return this.gates.get(y * this.N + x);
+  }
+
+  private layer(player: number): Layer {
+    if (player < 0) return this.base;
+    let l = this.layers[player];
+    if (!l) {
+      const n = this.N * this.N;
+      l = this.layers[player] = { walk: new Uint8Array(n), comp: new Int32Array(n), walkDirty: true, compDirty: true };
+    }
+    if (l.walkDirty) {
+      l.walk.set(this.walk);
+      for (const [i, g] of this.gates) if (g.owner === player && !g.locked) l.walk[i] = 1;
+      l.walkDirty = false;
+    }
+    return l;
+  }
+
+  /** Connected-region id of a tile for a player (-1 if blocked). */
+  component(x: number, y: number, player = -1): number {
+    if (!this.inside(x, y)) return -1;
+    const l = this.layer(player);
+    if (l.compDirty) this.rebuildComponents(l);
+    return l.comp[y * this.N + x];
+  }
+
+  private rebuildComponents(l: Layer): void {
+    const { N } = this;
+    const { walk, comp } = l;
     comp.fill(-1);
     const stack = new Int32Array(N * N);
     let next = 0;
@@ -81,11 +135,11 @@ export class NavGrid {
       }
       next++;
     }
-    this.compDirty = false;
+    l.compDirty = false;
   }
 
-  /** Nearest walkable tile to (x, y) in the given region, searching outward in rings. */
-  nearestWalkable(x: number, y: number, region: number, maxR = 24): { x: number; y: number } | null {
+  /** Nearest walkable tile to (x, y) in the given region (for that player's layer), searching outward in rings. */
+  nearestWalkable(x: number, y: number, region: number, maxR = 24, player = -1): { x: number; y: number } | null {
     const cx = Math.floor(x), cy = Math.floor(y);
     for (let r = 0; r <= maxR; r++) {
       let best: { x: number; y: number } | null = null;
@@ -94,7 +148,7 @@ export class NavGrid {
         for (let dx = -r; dx <= r; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
           const tx = cx + dx, ty = cy + dy;
-          if (!this.isWalkable(tx, ty) || (region >= 0 && this.component(tx, ty) !== region)) continue;
+          if (!this.isWalkable(tx, ty, player) || (region >= 0 && this.component(tx, ty, player) !== region)) continue;
           const d = Math.hypot(tx + 0.5 - x, ty + 0.5 - y);
           if (d < bd) (bd = d), (best = { x: tx, y: ty });
         }

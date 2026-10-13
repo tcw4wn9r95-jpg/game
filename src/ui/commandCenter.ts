@@ -20,7 +20,7 @@ const CAP = 10;
 const TABS: Array<{ key: string; name: string; icon: string; types: BuildingType[] }> = [
   { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'farm', 'mill', 'lumber_camp', 'mining_camp', 'market'] },
   { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks', 'archery_range', 'stable', 'blacksmith', 'monastery', 'university'] },
-  { key: 'defense', name: 'Defense', icon: ICONS.meleeArmor, types: [] },
+  { key: 'defense', name: 'Defense', icon: ICONS.meleeArmor, types: ['palisade_wall', 'stone_wall', 'watch_tower', 'castle'] },
   { key: 'naval', name: 'Naval', icon: ICONS.ship, types: [] },
 ];
 
@@ -80,6 +80,12 @@ function status(w: World, u: Unit): string {
       return u.state === 'heal' ? 'Healing' : 'Going to heal';
     case 'convert':
       return u.state === 'convert' ? 'Converting' : 'Going to convert';
+    case 'garrison':
+      return 'Going inside';
+    case 'repair': {
+      const b = w.building(o.id);
+      return `${u.state === 'repair' ? 'Repairing' : 'Going to repair'} ${b ? BUILDING_DEFS[b.type].name : ''}`;
+    }
   }
 }
 
@@ -207,7 +213,7 @@ export class CommandCenter {
     if (building) return this.buildingCommands(building);
     const slots: Array<Cmd | null> = [];
     if (villagers) {
-      for (const t of TABS.slice(0, 2))
+      for (const t of TABS.slice(0, 3))
         slots.push({
           icon: t.icon,
           label: `Build ${t.name}`,
@@ -349,6 +355,23 @@ export class CommandCenter {
       actions.push(this.techCmd(b, id));
     }
     const extra: Cmd[] = [];
+    if (def.garrison)
+      extra.push({
+        icon: ICONS.ungarrison,
+        label: 'Ungarrison',
+        caption: `${b.garrison.length}/${def.garrison}`,
+        run: () => this.ctl.command({ type: 'ungarrison', id: b.id }),
+        disabled: () => !this.world.building(b.id)?.garrison.length,
+        tip: () => tipHtml('Ungarrison', 'Send everyone inside back out. Tap the building with villagers or soldiers selected to send them in; each adds an arrow.'),
+      });
+    if (def.gate)
+      extra.push({
+        icon: ICONS.lock,
+        label: 'Lock gate',
+        active: () => !!this.world.building(b.id)?.locked,
+        run: () => this.ctl.command({ type: 'lockGate', id: b.id, locked: !this.world.building(b.id)?.locked }),
+        tip: () => tipHtml('Lock gate', 'A locked gate stays shut, even to your own people.'),
+      });
     if (def.trains.length)
       extra.push({
         icon: ICONS.repeat,
@@ -550,6 +573,22 @@ export class CommandCenter {
   private renderPlacingInfo(): void {
     const p = this.ctl.placing!;
     const def = BUILDING_DEFS[p.type];
+    if (p.wall) {
+      const plan = this.ctl.wallPlan();
+      const gates = plan.filter((t) => t.gate).length;
+      const gateDef = BUILDING_DEFS[p.wall.kind === 'stone' ? 'gate' : 'palisade_gate'];
+      const total: Record<string, number> = {};
+      for (const [k, v] of Object.entries(def.cost)) total[k] = (total[k] ?? 0) + (v ?? 0) * (plan.length - gates);
+      for (const [k, v] of Object.entries(gateDef.cost)) total[k] = (total[k] ?? 0) + (v ?? 0) * gates;
+      this.info.innerHTML = `
+        <div class="pf-frame"><div class="pf">${portrait({ kind: 'building', type: p.type, owner: this.player })}</div></div>
+        <div class="ci-body">
+          <div class="ci-head"><span class="ci-name">${def.name}</span><span class="ci-owner">${plan.length ? costHtml(total) : costHtml(def.cost as Record<string, number>)}</span></div>
+          <div class="ci-status"><span class="ci-status-text">${plan.length ? `${plan.length - gates} segments, ${gates} gate${gates === 1 ? '' : 's'}` : 'Drag along the ground to draw a wall.'}</span></div>
+          <div class="ci-status"><span class="ci-status-text dim">Drag again to add lines. Tap a segment to make it a gate. Then confirm.</span></div>
+        </div>`;
+      return;
+    }
     this.info.innerHTML = `
       <div class="pf-frame"><div class="pf">${portrait({ kind: 'building', type: p.type, owner: this.player })}</div></div>
       <div class="ci-body">

@@ -2,6 +2,7 @@ import economy from '../data/economy.json';
 import mapsData from '../data/maps.json';
 import { applyCommand, type Command } from './commands';
 import { combatThink, type Projectile, projectileTick } from './combat';
+import { towerTick, ungarrison } from './fortify';
 import { constructionTick, goalFor, think, unreachable } from './economy';
 import { type ResourceKind, TICK_RATE } from './constants';
 import {
@@ -149,6 +150,11 @@ export class World {
     for (const e of this.entities.values()) if (e.kind === 'building' && (owner === undefined || e.owner === owner)) yield e;
   }
 
+  /** Units out on the map (not sheltering inside a building). */
+  *field(owner?: number): IterableIterator<Unit> {
+    for (const e of this.entities.values()) if (e.kind === 'unit' && !e.inside && (owner === undefined || e.owner === owner)) yield e;
+  }
+
   *resources(): IterableIterator<ResourceEntity> {
     for (const e of this.entities.values()) if (e.kind === 'resource') yield e;
   }
@@ -156,7 +162,10 @@ export class World {
   remove(id: number): void {
     const e = this.entities.get(id);
     if (!e) return;
-    if (e.kind === 'building') this.grid.setBuilding(e.x, e.y, e.size, 0);
+    if (e.kind === 'building') {
+      ungarrison(this, e);
+      this.grid.setBuilding(e.x, e.y, e.size, 0);
+    }
     if (e.kind === 'unit') this.updatePopulation();
     this.entities.delete(id);
   }
@@ -176,6 +185,7 @@ export class World {
       cooldown: 0,
       guard: null,
       flow: null,
+      inside: 0,
       attackedBy: 0,
       attackedAt: -1000,
       faith: 0,
@@ -228,7 +238,11 @@ export class World {
       repeat: false,
       amount: def.food ? def.food + (this.players[owner]?.mods.farmFood ?? 0) : 0,
       housed: false,
+      garrison: [],
+      cooldown: 0,
+      locked: false,
     });
+    if (def.gate) this.grid.setGate(x, y, owner, false);
     if (complete) b.hp = buildingMaxHp(this, b);
     this.grid.setBuilding(x, y, def.size, b.id, !def.walkable);
     // Anyone standing on the new footprint steps off it.
@@ -277,11 +291,11 @@ export class World {
       if (!goal) continue;
       done++;
       let sx = Math.floor(u.x), sy = Math.floor(u.y);
-      if (!this.grid.isWalkable(sx, sy)) {
-        const near = this.grid.nearestWalkable(u.x, u.y, -1, 3);
+      if (!this.grid.isWalkable(sx, sy, u.owner)) {
+        const near = this.grid.nearestWalkable(u.x, u.y, -1, 3, u.owner);
         if (near) (sx = near.x), (sy = near.y);
       }
-      const path = this.paths.find(sx, sy, goal);
+      const path = this.paths.find(sx, sy, goal, u.owner);
       if (path === null) {
         unreachable(this, u);
         continue;
@@ -298,15 +312,16 @@ export class World {
     this.pending = [];
 
     this.builders.clear();
-    this.spatial.rebuild(this.units());
-    for (const u of this.units()) {
+    this.spatial.rebuild(this.field());
+    for (const u of this.field()) {
       u.px = u.x;
       u.py = u.y;
       if (!combatThink(this, u)) think(this, u);
     }
     this.processPaths();
-    for (const u of this.units()) moveUnit(this, u);
+    for (const u of this.field()) moveUnit(this, u);
     separate(this);
+    towerTick(this);
     projectileTick(this);
     constructionTick(this);
     productionTick(this);
@@ -331,7 +346,7 @@ export class World {
 
   private updateVision(): void {
     const sources: VisionSource[][] = this.players.map(() => []);
-    for (const u of this.units()) sources[u.owner]?.push({ x: u.x, y: u.y, r: unitStats(this, u.owner, u.type).los });
+    for (const u of this.field()) sources[u.owner]?.push({ x: u.x, y: u.y, r: unitStats(this, u.owner, u.type).los });
     for (const b of this.buildings())
       sources[b.owner]?.push({ x: b.x + b.size / 2, y: b.y + b.size / 2, r: BUILDING_DEFS[b.type].los + b.size / 2 + (this.players[b.owner]?.mods.building.los ?? 0) });
     this.fog.forEach((f, i) => f.update(sources[i]));

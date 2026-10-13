@@ -39,7 +39,7 @@ export interface UnitDef {
   converter?: boolean;
 }
 
-export type UnitClass = 'villager' | 'infantry' | 'spear' | 'archer' | 'skirmisher' | 'cavalry' | 'siege' | 'monk' | 'building';
+export type UnitClass = 'villager' | 'infantry' | 'spear' | 'archer' | 'skirmisher' | 'cavalry' | 'siege' | 'monk' | 'building' | 'wall' | 'tower' | 'castle' | 'ram';
 
 /** aggressive: chase anything seen; defensive: chase a short way then return; stand: hold position; passive: never attack. */
 export type Stance = 'aggressive' | 'defensive' | 'stand' | 'passive';
@@ -70,6 +70,14 @@ export interface BuildingDef {
   requires?: BuildingType;
   /** Counts toward the buildings needed to advance an age. */
   advance?: boolean;
+  /** Wall material for segments (one tile each) that join up into lines. */
+  wall?: 'palisade' | 'stone';
+  /** A gate segment: open to its owner. */
+  gate?: boolean;
+  /** Arrows the building shoots (towers, castles, town centres). */
+  attack?: { attack: number; range: number; reload: number; arrows: number; minRange: number };
+  /** How many units fit inside. */
+  garrison?: number;
 }
 
 export const UNIT_DEFS = units as unknown as Record<UnitType, UnitDef>;
@@ -87,7 +95,11 @@ export type Order =
   | { type: 'attack'; id: number; auto?: boolean }
   /** Monks: heal a friendly unit or convert an enemy one. */
   | { type: 'heal'; id: number; auto?: boolean }
-  | { type: 'convert'; id: number };
+  | { type: 'convert'; id: number }
+  /** Shelter inside a building. */
+  | { type: 'garrison'; id: number }
+  /** Restore a damaged building, paying half its cost per HP. */
+  | { type: 'repair'; id: number };
 
 export interface Unit {
   id: number;
@@ -110,7 +122,7 @@ export interface Unit {
   /** True while waiting for the path service. */
   pathPending: boolean;
   /** What the unit is doing this tick, for animation and the HUD. */
-  state: 'idle' | 'walk' | 'gather' | 'build' | 'attack' | 'heal' | 'convert';
+  state: 'idle' | 'walk' | 'gather' | 'build' | 'attack' | 'heal' | 'convert' | 'repair';
   carry: { res: ResourceKind; amount: number } | null;
   /** Fractional gather progress not yet moved into `carry`. */
   gatherAcc: number;
@@ -125,6 +137,8 @@ export interface Unit {
   guard: { x: number; y: number } | null;
   /** Shared flow field for a group move, followed instead of an A* path. */
   flow: FlowRef | null;
+  /** The building this unit is sheltering in (0 = outside). */
+  inside: number;
   /** Last enemy that hit this unit, and when (tick), for retaliation and alerts. */
   attackedBy: number;
   attackedAt: number;
@@ -162,6 +176,12 @@ export interface Building {
   amount: number;
   /** Production is waiting for population room (for a one-off alert). */
   housed: boolean;
+  /** Units sheltering inside. */
+  garrison: number[];
+  /** Ticks until its arrows can fly again. */
+  cooldown: number;
+  /** Gates: closed to everyone, owner included. */
+  locked: boolean;
 }
 
 /** Food on the hoof or in the water, gathered where it stands. */

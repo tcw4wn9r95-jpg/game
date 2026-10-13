@@ -51,6 +51,10 @@ export interface Projectile {
   dt: number;
   /** Peak height in tiles, for the arc. */
   arc: number;
+  /** Fixed pierce damage (arrows from buildings); otherwise the shooter's stats apply. */
+  damage?: number;
+  /** Launch height in tiles (arrows from tower tops). */
+  height?: number;
 }
 
 const isCombatOrder = (o: Order | null): o is Extract<Order, { type: 'attack' | 'heal' | 'convert' }> =>
@@ -123,6 +127,7 @@ export function combatThink(w: World, u: Unit): boolean {
   const valid =
     t &&
     t.kind !== 'resource' &&
+    !(t.kind === 'unit' && t.inside) &&
     (o.type === 'heal' ? t.kind === 'unit' && t.owner === u.owner && t.hp < unitStats(w, t.owner, t.type).hp : t.owner !== u.owner) &&
     (o.type !== 'convert' || t.kind === 'unit') &&
     // Self-picked targets are dropped once out of sight; ordered ones are followed.
@@ -183,7 +188,7 @@ function chase(w: World, u: Unit, t: Unit | Building): void {
   const c = centre(t);
   const d = Math.hypot(c.x - u.x, c.y - u.y);
   // Close and in the open: run straight at it.
-  if (t.kind === 'unit' && d < 3 && clearLine(w, u.x, u.y, t.x, t.y)) {
+  if (t.kind === 'unit' && d < 3 && clearLine(w, u.x, u.y, t.x, t.y, u.owner)) {
     u.path = [{ x: t.x, y: t.y }];
     u.pathIdx = 0;
     return;
@@ -199,11 +204,11 @@ function chase(w: World, u: Unit, t: Unit | Building): void {
 }
 
 /** True if a straight walk between two points crosses only walkable tiles. */
-function clearLine(w: World, x0: number, y0: number, x1: number, y1: number): boolean {
+function clearLine(w: World, x0: number, y0: number, x1: number, y1: number, player: number): boolean {
   const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 3);
   for (let k = 1; k <= n; k++) {
     const f = k / n;
-    if (!w.grid.isWalkable(Math.floor(x0 + (x1 - x0) * f), Math.floor(y0 + (y1 - y0) * f))) return false;
+    if (!w.grid.isWalkable(Math.floor(x0 + (x1 - x0) * f), Math.floor(y0 + (y1 - y0) * f), player)) return false;
   }
   return true;
 }
@@ -319,7 +324,11 @@ export function projectileTick(w: World): void {
     const t = w.get(p.target);
     if (!t || t.kind === 'resource') continue;
     const hit = t.kind === 'building' ? distToRect(p.tx, p.ty, t.x, t.y, t.size) < 0.1 : Math.hypot(t.x - p.tx, t.y - p.ty) <= HIT_RADIUS + UNIT_DEFS[t.type].radius;
-    if (hit) applyDamage(w, t, damageOf(unitStats(w, p.owner, p.from), t, w), w.unit(p.shooter) ?? null, p.owner);
+    if (!hit) continue;
+    if (p.damage !== undefined) {
+      const armor = t.kind === 'unit' ? unitStats(w, t.owner, t.type).pierceArmor : buildingArmor(w, t).pierce;
+      applyDamage(w, t, Math.max(1, p.damage - armor), null, p.owner);
+    } else applyDamage(w, t, damageOf(unitStats(w, p.owner, p.from), t, w), w.unit(p.shooter) ?? null, p.owner);
   }
   w.projectiles = keep;
 }

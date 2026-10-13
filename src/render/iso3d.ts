@@ -593,3 +593,75 @@ export function log(g: G, a: [number, number], b: [number, number], z: number, r
   g.ellipse(bx, by, r * 0.45, r * 0.55, 0, 0, Math.PI * 2);
   g.stroke();
 }
+
+/**
+ * A vertical prism over a ground polygon (tile coords, any orientation) from
+ * z0 to z0 + h: the faces turned toward the viewer, lit by their normals, then
+ * the top. Used for wall runs at any angle.
+ */
+export function prism(g: G, base: Array<[number, number]>, z0: number, h: number, style: WallStyle, top: Material = 'stone', topColor = '#a8a294', seed = 1): void {
+  const n = base.length;
+  // Faces whose outward normal points toward the viewer (+x+y), back to front.
+  const faces: Array<{ a: [number, number]; b: [number, number]; nx: number; ny: number; d: number }> = [];
+  let cx = 0, cy = 0;
+  for (const p of base) (cx += p[0] / n), (cy += p[1] / n);
+  for (let i = 0; i < n; i++) {
+    const a = base[i], b = base[(i + 1) % n];
+    let nx = b[1] - a[1], ny = -(b[0] - a[0]);
+    const mx = (a[0] + b[0]) / 2 - cx, my = (a[1] + b[1]) / 2 - cy;
+    if (nx * mx + ny * my < 0) (nx = -nx), (ny = -ny);
+    if (nx + ny <= 0.001) continue;
+    faces.push({ a, b, nx, ny, d: (a[0] + a[1] + b[0] + b[1]) / 2 });
+  }
+  faces.sort((p, q) => p.d - q.d);
+  const m = style.mat ?? (style.stone ? 'stone' : style.planks ? 'planks' : 'plaster');
+  for (const f of faces) {
+    const pts: V3[] = [[f.a[0], f.a[1], z0], [f.b[0], f.b[1], z0], [f.b[0], f.b[1], z0 + h], [f.a[0], f.a[1], z0 + h]];
+    path3(g, pts);
+    g.save();
+    g.clip();
+    // Lay the material in the face's own plane so courses run along the wall.
+    const [ax, ay] = P(f.a[0], f.a[1], z0), [bx, by] = P(f.b[0], f.b[1], z0);
+    const len = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]) * 32 || 1;
+    g.transform((bx - ax) / len, (by - ay) / len, 0, 1, ax, ay - h);
+    g.fillStyle = mat(g, m, style.base, seed);
+    g.fillRect(-4, -2, len + 8, h + 4);
+    const foot = g.createLinearGradient(0, h, 0, h - 6);
+    foot.addColorStop(0, 'rgba(40,28,14,0.5)');
+    foot.addColorStop(1, 'rgba(40,28,14,0)');
+    g.fillStyle = foot;
+    g.fillRect(-4, h - 6, len + 8, 6);
+    g.restore();
+    path3(g, pts);
+    lightOverlay(g, lightOf([f.nx, f.ny, 0]), () => g.fill());
+    g.strokeStyle = 'rgba(25,15,5,0.4)';
+    g.lineWidth = 0.5;
+    g.stroke();
+  }
+  const topPts: V3[] = base.map(([x, y]) => [x, y, z0 + h]);
+  g.save();
+  path3(g, topPts);
+  g.clip();
+  g.translate(0, -(z0 + h));
+  onGround(g, 0, 0, () => {
+    g.fillStyle = mat(g, top, topColor, seed + 2);
+    g.fillRect(-400, -400, 800, 800);
+  });
+  g.restore();
+  path3(g, topPts);
+  lightOverlay(g, lightOf([0, 0, 1]), () => g.fill());
+  g.strokeStyle = 'rgba(25,15,5,0.45)';
+  g.lineWidth = 0.5;
+  g.stroke();
+}
+
+/** Battlements: merlons along the four top edges of a box, back to front. */
+export function crenels(g: G, x0: number, y0: number, x1: number, y1: number, h: number, style: WallStyle, size = 0.16, seed = 1): void {
+  const pts: Array<[number, number]> = [];
+  const step = size * 2;
+  for (let x = x0; x <= x1 - size + 1e-6; x += step) pts.push([x, y0], [x, y1 - size]);
+  for (let y = y0 + step; y <= y1 - size - step + 1e-6; y += step) pts.push([x0, y], [x1 - size, y]);
+  pts.sort((a, b) => a[0] + a[1] - (b[0] + b[1]));
+  for (const [x, y] of pts)
+    prism(g, [[x, y], [x + size, y], [x + size, y + size], [x, y + size]], h, size * 40, style, 'stone', style.base, seed);
+}

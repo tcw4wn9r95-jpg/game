@@ -2,7 +2,7 @@
 // level, player colour and variant. Age I style: timber, plaster, thatch and canvas.
 import type { BuildingType } from '../sim/entities';
 import { Rng } from '../sim/rng';
-import { type G, P, box, boxShadow, boxTop, doorAt, gableRoof, hipRoof, line3, log, mat, onGround, poly3, post, setScale, shadeColor, softShadow, windowAt } from './iso3d';
+import { type G, P, box, boxShadow, boxTop, crenels, doorAt, gableRoof, hipRoof, line3, log, mat, onGround, poly3, post, prism, setScale, shadeColor, softShadow, windowAt } from './iso3d';
 import { grade } from './materials';
 import { PLAYER_COLORS } from './palette';
 import type { Sprite } from './sprites';
@@ -276,6 +276,226 @@ function shelter(g: G, x0: number, y0: number, x1: number, y1: number, h: number
   // Ropes guying the corners.
   for (const [x, y, dx, dy] of [[x0, y1, -0.25, 0.25], [x1, y1, 0.3, 0.25]] as const) line3(g, [x, y, h], [x + dx, y + dy, 0], 'rgba(200,180,140,0.7)', 0.4);
   hipRoof(g, x0, y0, x1, y1, h, 14, { color: '#d8c79e', kind: 'canvas', trim: team }, 0.1);
+}
+
+
+// ---------- fortifications ----------
+
+/** Neighbour directions for wall joins; bit k of a wall sprite's variant is DIR8[k]. */
+export const DIR8: Array<[number, number]> = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
+/** Wall variant bits: 0-7 neighbours, 8-9 damage (0-2), 10 open gate, 11 locked, 12-13 tower level. */
+export const wallVariant = (mask: number, damage: number, open = false, locked = false, level = 0) => mask | (damage << 8) | (open ? 1 << 10 : 0) | (locked ? 1 << 11 : 0) | (level << 12);
+
+/** Joined directions of a wall variant, back (far from the viewer) to front. */
+function joins(variant: number): Array<[number, number]> {
+  return DIR8.filter((_, k) => variant & (1 << k)).sort((a, b) => a[0] + a[1] - (b[0] + b[1]));
+}
+
+/** A run of wall from the tile centre half-way toward a neighbour, as a ground quad. */
+function halfRun(d: [number, number], t: number): Array<[number, number]> {
+  const len = Math.hypot(d[0], d[1]);
+  const ux = d[0] / len, uy = d[1] / len;
+  const px = -uy * (t / 2), py = ux * (t / 2);
+  const ex = 0.5 + d[0] * 0.5, ey = 0.5 + d[1] * 0.5;
+  return [[0.5 + px, 0.5 + py], [ex + px, ey + py], [ex - px, ey - py], [0.5 - px, 0.5 - py]];
+}
+
+/** Hairline cracks and knocked-out chips over a damaged wall (screen space around the tile centre). */
+function cracks(g: G, level: number, height: number, rng: Rng): void {
+  if (!level) return;
+  const [cx, cy] = P(0.5, 0.5, 0);
+  g.strokeStyle = 'rgba(20,14,8,0.75)';
+  g.lineWidth = 0.7;
+  for (let n = 0; n < level * 3; n++) {
+    let x = cx + (rng.next() - 0.5) * 30, y = cy - height * (0.3 + rng.next() * 0.6);
+    g.beginPath();
+    g.moveTo(x, y);
+    for (let k = 0; k < 4; k++) {
+      x += (rng.next() - 0.5) * 5;
+      y += 2 + rng.next() * 3;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  if (level > 1)
+    for (let n = 0; n < 5; n++) {
+      const x = cx + (rng.next() - 0.5) * 26, y = cy - height * (0.2 + rng.next() * 0.7);
+      g.fillStyle = 'rgba(30,22,14,0.65)';
+      g.beginPath();
+      g.ellipse(x, y, 1.5 + rng.next() * 2, 1 + rng.next(), 0, 0, Math.PI * 2);
+      g.fill();
+    }
+}
+
+function stoneWall(g: G, variant: number, rng: Rng, height = 24): void {
+  const st = { base: ORNATE ? '#b8b1a2' : '#a19b8f', mat: 'stone' as const };
+  softShadow(g, [[0.15, 0.15, 0], [0.85, 0.15, 0], [0.85, 0.85, 0], [0.15, 0.85, 0]], 3, 0.35);
+  const runs = joins(variant & 255);
+  const back = runs.filter((d) => d[0] + d[1] < 0), side = runs.filter((d) => d[0] + d[1] === 0), front = runs.filter((d) => d[0] + d[1] > 0);
+  const run = (d: [number, number]) => {
+    prism(g, halfRun(d, 0.36), 0, height, st, 'stone', '#8e897e', 7);
+    // Merlons along the run's walk.
+    const len = Math.hypot(d[0], d[1]);
+    for (let k = 0.15; k < 0.5 * len; k += 0.22) {
+      const f = k / len;
+      const x = 0.5 + d[0] * f, y = 0.5 + d[1] * f;
+      prism(g, [[x - 0.07, y - 0.07], [x + 0.07, y - 0.07], [x + 0.07, y + 0.07], [x - 0.07, y + 0.07]], height, 5, st, 'stone', '#8e897e', 9);
+    }
+  };
+  for (const d of back) run(d);
+  for (const d of side) run(d);
+  // Pillar where runs meet.
+  prism(g, [[0.28, 0.28], [0.72, 0.28], [0.72, 0.72], [0.28, 0.72]], 0, height + 4, st, 'stone', '#8e897e', 11);
+  crenels(g, 0.28, 0.28, 0.72, 0.72, height + 4, st, 0.11, 13);
+  for (const d of front) run(d);
+  cracks(g, (variant >> 8) & 3, height, rng);
+}
+
+/** A sharpened stake (log) standing at (x, y). */
+function stake(g: G, x: number, y: number, h: number, w = 2.6): void {
+  const [bx, by] = P(x, y, 0);
+  g.fillStyle = mat(g, 'woodV', '#6b4626', 21);
+  g.fillRect(bx - w / 2, by - h, w, h);
+  const sh = g.createLinearGradient(bx - w / 2, 0, bx + w / 2, 0);
+  sh.addColorStop(0, 'rgba(255,225,180,0.3)');
+  sh.addColorStop(0.4, 'rgba(0,0,0,0)');
+  sh.addColorStop(1, 'rgba(10,6,2,0.55)');
+  g.fillStyle = sh;
+  g.fillRect(bx - w / 2, by - h, w, h);
+  g.fillStyle = '#c99a5e';
+  g.beginPath();
+  g.moveTo(bx - w / 2, by - h);
+  g.lineTo(bx, by - h - w * 1.3);
+  g.lineTo(bx + w / 2, by - h);
+  g.closePath();
+  g.fill();
+  g.strokeStyle = 'rgba(20,12,4,0.55)';
+  g.lineWidth = 0.4;
+  g.stroke();
+}
+
+function palisade(g: G, variant: number, rng: Rng): void {
+  softShadow(g, [[0.2, 0.2, 0], [0.8, 0.2, 0], [0.8, 0.8, 0], [0.2, 0.8, 0]], 2.5, 0.3);
+  // Stakes along every joined direction, drawn back to front.
+  const pts: Array<[number, number, number]> = [[0.5, 0.5, 20]];
+  for (const d of joins(variant & 255)) {
+    const len = Math.hypot(d[0], d[1]);
+    for (let k = 0.12; k <= 0.5 * len + 0.01; k += 0.12) pts.push([0.5 + (d[0] * k) / len, 0.5 + (d[1] * k) / len, 17 + rng.next() * 5]);
+  }
+  pts.sort((a, b) => a[0] + a[1] - (b[0] + b[1]));
+  for (const [x, y, h] of pts) stake(g, x, y, h);
+  // Lashing rail.
+  for (const d of joins(variant & 255)) line3(g, [0.5, 0.5, 9], [0.5 + d[0] * 0.5, 0.5 + d[1] * 0.5, 9], 'rgba(60,40,20,0.9)', 0.8);
+  cracks(g, (variant >> 8) & 3, 18, rng);
+}
+
+/** Which way a gate's passage runs: across its wall line. */
+function passageAlongY(variant: number): boolean {
+  const m = variant & 255;
+  return !!(m & 1 || m & 16) || !(m & 4 || m & 64);
+}
+
+function stoneGate(g: G, variant: number, team: string, rng: Rng): void {
+  const st = { base: ORNATE ? '#b8b1a2' : '#a19b8f', mat: 'stone' as const };
+  const open = !!(variant & (1 << 10)), locked = !!(variant & (1 << 11));
+  boxShadow(g, 0.05, 0.05, 0.95, 0.95, 40);
+  // Flanking runs to the neighbouring walls.
+  for (const d of joins(variant & 255)) prism(g, halfRun(d, 0.36), 0, 24, st, 'stone', '#8e897e', 7);
+  const alongY = passageAlongY(variant);
+  const arch = (len: number) => {
+    // The archway: dark when open, oak doors with iron studs when shut.
+    const w = len * 0.5, h2 = 18;
+    g.beginPath();
+    g.moveTo(len / 2 - w / 2, 0);
+    g.lineTo(len / 2 - w / 2, h2 - w / 2);
+    g.arc(len / 2, h2 - w / 2, w / 2, Math.PI, 0, true);
+    g.lineTo(len / 2 + w / 2, 0);
+    g.closePath();
+    g.fillStyle = open ? '#0f0904' : mat(g, 'woodV', '#5a381c', 23);
+    g.fill();
+    if (!open) {
+      g.fillStyle = '#2b2622';
+      for (const v of [4, 10, 15]) g.fillRect(len / 2 - w / 2, v, w, 0.7);
+      if (locked) {
+        g.fillStyle = '#c9a24a';
+        g.fillRect(len / 2 - 1.2, 7, 2.4, 3);
+      }
+    } else {
+      // Portcullis drawn up into the arch.
+      g.strokeStyle = 'rgba(60,60,60,0.9)';
+      g.lineWidth = 0.6;
+      for (let k = -2; k <= 2; k++) {
+        g.beginPath();
+        g.moveTo(len / 2 + k * (w / 6), h2 - 1);
+        g.lineTo(len / 2 + k * (w / 6), h2 - 4);
+        g.stroke();
+      }
+    }
+  };
+  box(g, 0.05, 0.05, 0.95, 0.95, 34, st, alongY ? { left: arch } : { right: arch }, 31);
+  boxTop(g, 0.05, 0.05, 0.95, 0.95, 34, 'stone', '#8e897e');
+  crenels(g, 0.05, 0.05, 0.95, 0.95, 34, st, 0.14, 33);
+  flagPole(g, 0.5, 0.5, 34, team, 0.7);
+  cracks(g, (variant >> 8) & 3, 30, rng);
+}
+
+function palisadeGate(g: G, variant: number, rng: Rng): void {
+  const open = !!(variant & (1 << 10));
+  palisade(g, variant & 255, rng);
+  const alongY = passageAlongY(variant);
+  // Two tall gateposts with a lintel, and plank doors (swung back when open).
+  const [a, b]: Array<[number, number]> = alongY ? [[0.15, 0.5], [0.85, 0.5]] : [[0.5, 0.15], [0.5, 0.85]];
+  for (const [x, y] of [a, b]) stake(g, x, y, 28, 3.4);
+  line3(g, [a[0], a[1], 26], [b[0], b[1], 26], '#5a3a1c', 2.4);
+  if (!open) {
+    const pts: [number, number, number][] = [[a[0], a[1], 1], [b[0], b[1], 1], [b[0], b[1], 22], [a[0], a[1], 22]];
+    poly3(g, pts, mat(g, 'woodV', '#6b4a28', 25));
+    line3(g, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 1], [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 22], 'rgba(20,10,4,0.7)', 0.8);
+    if (variant & (1 << 11)) line3(g, [a[0], a[1], 12], [b[0], b[1], 12], '#3a3a3a', 1.6);
+  }
+}
+
+/** Pole and pennant (without the age finial logic of flag()). */
+function flagPole(g: G, x: number, y: number, z: number, team: string, s: number): void {
+  flag(g, x, y, z, team, s);
+}
+
+function tower(g: G, variant: number, team: string, rng: Rng): void {
+  const level = (variant >> 12) & 3;
+  const st = { base: ORNATE ? '#b8b1a2' : '#a19b8f', mat: 'stone' as const };
+  const h = [46, 60, 76][level];
+  boxShadow(g, 0.08, 0.08, 0.92, 0.92, h + 20);
+  const win = (len: number, hh: number) => {
+    for (const v of level ? [hh * 0.45, hh * 0.75] : [hh * 0.55]) {
+      g.fillStyle = '#140c06';
+      g.fillRect(len / 2 - 1, v, 2, 6);
+    }
+  };
+  box(g, 0.1, 0.1, 0.9, 0.9, h, st, { left: (len, hh) => { doorAt(g, len / 2, 6, 10); win(len, hh); }, right: win }, 41 + level);
+  if (level === 0) {
+    // Watch tower: a timber hoarding and a pointed shingle roof.
+    box(g, 0.02, 0.02, 0.98, 0.98, 10, { base: '#6b4a2a', mat: 'planks' }, {}, 43);
+    g.save();
+    g.translate(0, -h);
+    box(g, 0.02, 0.02, 0.98, 0.98, 10, { base: '#6b4a2a', mat: 'planks' }, {}, 44);
+    g.restore();
+    hipRoof(g, -0.02, -0.02, 1.02, 1.02, h + 10, 22, SHINGLE, 0.08, 45);
+    flag(g, 0.5, 0.5, h + 32, team, 0.7);
+  } else {
+    boxTop(g, 0.1, 0.1, 0.9, 0.9, h, 'stone', '#8e897e');
+    crenels(g, 0.06, 0.06, 0.94, 0.94, h, st, 0.15, 47);
+    if (level === 2) {
+      // Keep: a turret on top.
+      box(g, 0.3, 0.3, 0.7, 0.7, 0, st, {}, 49);
+      g.save();
+      g.translate(0, -h);
+      box(g, 0.3, 0.3, 0.7, 0.7, 14, st, {}, 49);
+      g.restore();
+      hipRoof(g, 0.28, 0.28, 0.72, 0.72, h + 14, 16, SHINGLE, 0.05, 51);
+      flag(g, 0.5, 0.5, h + 30, team, 0.8);
+    } else flag(g, 0.5, 0.5, h + 6, team, 0.8);
+  }
+  cracks(g, (variant >> 8) & 3, h, rng);
 }
 
 const PAINTERS: Record<BuildingType, Painter> = {
@@ -916,6 +1136,64 @@ const PAINTERS: Record<BuildingType, Painter> = {
     g.fillStyle = '#d9b44a';
     g.fillRect(cx - 0.6, cy - 22, 1.2, 5);
     flag(g, 0.4, 0.4, 38, team, 0.8);
+  },
+  palisade_wall: (g, _n, _team, rng, v) => palisade(g, v, rng),
+  palisade_gate: (g, _n, _team, rng, v) => palisadeGate(g, v, rng),
+  stone_wall: (g, _n, _team, rng, v) => stoneWall(g, v, rng),
+  gate: (g, _n, team, rng, v) => stoneGate(g, v, team, rng),
+  watch_tower: (g, _n, team, rng, v) => tower(g, v, team, rng),
+  castle: (g, n, team) => {
+    const st = { base: ORNATE ? '#bcb5a6' : '#a49e92', mat: 'stone' as const };
+    groundPatch(g, n, '#7d7060', 0.3);
+    boxShadow(g, 0.2, 0.2, n - 0.2, n - 0.2, 100);
+    // Curtain walls with a gatehouse, a great keep in the ward, round-shouldered corner towers.
+    const T = 0.85;
+    const corner = (x: number, y: number) => {
+      box(g, x, y, x + T, y + T, 54, st, { left: (len) => { g.fillStyle = '#140c06'; g.fillRect(len / 2 - 1, 30, 2, 7); } }, 61);
+      boxTop(g, x, y, x + T, y + T, 54, 'stone', '#8e897e');
+      crenels(g, x - 0.04, y - 0.04, x + T + 0.04, y + T + 0.04, 54, st, 0.14, 63);
+    };
+    corner(0.15, 0.15);
+    box(g, 0.4, 0.3, n - 0.4, 0.75, 36, st, {}, 65);
+    boxTop(g, 0.4, 0.3, n - 0.4, 0.75, 36, 'stone', '#8e897e');
+    box(g, 0.3, 0.4, 0.75, n - 0.4, 36, st, {}, 67);
+    boxTop(g, 0.3, 0.4, 0.75, n - 0.4, 36, 'stone', '#8e897e');
+    corner(n - 0.15 - T, 0.15);
+    corner(0.15, n - 0.15 - T);
+    // The keep.
+    box(g, 1.15, 1.15, n - 1.15, n - 1.15, 76, st, {
+      left: (len) => {
+        for (const u of [len * 0.3, len * 0.7]) {
+          g.fillStyle = '#140c06';
+          g.fillRect(u - 1.2, 40, 2.4, 8);
+          g.fillRect(u - 1.2, 58, 2.4, 8);
+        }
+        banner(g, len / 2, 72, team);
+      },
+      right: (len) => {
+        for (const u of [len * 0.3, len * 0.7]) {
+          g.fillStyle = '#140c06';
+          g.fillRect(u - 1.2, 50, 2.4, 8);
+        }
+      },
+    }, 69);
+    boxTop(g, 1.15, 1.15, n - 1.15, n - 1.15, 76, 'stone', '#8e897e');
+    crenels(g, 1.1, 1.1, n - 1.1, n - 1.1, 76, st, 0.16, 71);
+    flag(g, n / 2, n / 2, 76, team, 1.4);
+    // Front curtain walls with the gatehouse, then the front corner tower.
+    box(g, n - 0.75, 0.4, n - 0.3, n - 0.4, 36, st, {}, 73);
+    boxTop(g, n - 0.75, 0.4, n - 0.3, n - 0.4, 36, 'stone', '#8e897e');
+    crenels(g, n - 0.78, 0.4, n - 0.27, n - 0.4, 36, st, 0.14, 75);
+    box(g, 0.4, n - 0.75, n - 0.4, n - 0.3, 36, st, {
+      left: (len) => {
+        doorAt(g, len / 2, 12, 20);
+        banner(g, len * 0.25, 32, team);
+        banner(g, len * 0.75, 32, team);
+      },
+    }, 77);
+    boxTop(g, 0.4, n - 0.75, n - 0.4, n - 0.3, 36, 'stone', '#8e897e');
+    crenels(g, 0.4, n - 0.78, n - 0.4, n - 0.27, 36, st, 0.14, 79);
+    corner(n - 0.15 - T, n - 0.15 - T);
   },
 };
 

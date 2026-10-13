@@ -3,6 +3,8 @@
 import { setStance } from './combat';
 import { findResource, gatherOrder, isBuilder, isGatherer, setOrder, sourceOf } from './economy';
 import { FlowField } from './flowfield';
+import { WALL_TYPES, canShelter, placeWall, setGateLock, shelterRoom, ungarrison } from './fortify';
+import { buildingMaxHp } from './techs';
 import { BUILDING_DEFS, type BuildingType, type GatherTarget, type Stance, UNIT_DEFS, type Unit, type UnitType } from './entities';
 import { cancelQueued, canAfford, enqueue, enqueueTech, pay, trade } from './production';
 import type { TechId } from './techs';
@@ -23,7 +25,11 @@ export type Command =
   | { type: 'attack'; ids: number[]; id: number }
   | { type: 'stance'; ids: number[]; stance: Stance }
   | { type: 'research'; id: number; tech: TechId }
-  | { type: 'trade'; id: number; action: 'buy' | 'sell'; res: 'food' | 'wood' | 'stone' };
+  | { type: 'trade'; id: number; action: 'buy' | 'sell'; res: 'food' | 'wood' | 'stone' }
+  | { type: 'garrison'; ids: number[]; id: number }
+  | { type: 'ungarrison'; id: number }
+  | { type: 'buildWall'; ids: number[]; kind: 'palisade' | 'stone'; tiles: Array<{ x: number; y: number; gate?: boolean }> }
+  | { type: 'lockGate'; id: number; locked: boolean };
 
 export function applyCommand(w: World, player: number, cmd: Command): void {
   const ids = 'ids' in cmd ? cmd.ids : [];
@@ -58,6 +64,44 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
     case 'research': {
       const b = w.building(cmd.id);
       if (b && b.owner === player) enqueueTech(w, b, cmd.tech);
+      return;
+    }
+    case 'garrison': {
+      const b = w.building(cmd.id);
+      if (!b) return;
+      let room = shelterRoom(b);
+      for (const u of units) {
+        if (room <= 0 || !canShelter(b, u)) continue;
+        setOrder(u, { type: 'garrison', id: b.id });
+        u.resume = null;
+        room--;
+      }
+      return;
+    }
+    case 'ungarrison': {
+      const b = w.building(cmd.id);
+      if (b && b.owner === player) ungarrison(w, b);
+      return;
+    }
+    case 'lockGate': {
+      const b = w.building(cmd.id);
+      if (b && b.owner === player) setGateLock(w, b, cmd.locked);
+      return;
+    }
+    case 'buildWall': {
+      const def = BUILDING_DEFS[WALL_TYPES[cmd.kind].wall];
+      if (def.age > w.players[player].age) return;
+      const placed = placeWall(w, player, cmd.kind, cmd.tiles);
+      // Builders start on the segment nearest each of them, then work along the line.
+      const builders = units.filter(isBuilder);
+      for (const u of builders) {
+        let best = placed[0], bd = Infinity;
+        for (const b of placed) {
+          const d = Math.hypot(b.x + 0.5 - u.x, b.y + 0.5 - u.y);
+          if (d < bd) (bd = d), (best = b);
+        }
+        if (best) setOrder(u, { type: 'build', id: best.id }), (u.resume = null);
+      }
       return;
     }
     case 'trade': {
@@ -135,8 +179,10 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
     case 'help': {
       const b = w.building(cmd.id);
       if (!b || b.owner !== player) return;
+      const damaged = b.complete && b.hp < buildingMaxHp(w, b) - 0.5;
       for (const u of units) {
         if (!b.complete && isBuilder(u)) setOrder(u, { type: 'build', id: b.id });
+        else if (damaged && isBuilder(u)) setOrder(u, { type: 'repair', id: b.id });
         else if (b.complete && u.carry && (BUILDING_DEFS[b.type].dropoff as string[]).includes(u.carry.res))
           setOrder(u, { type: 'dropoff', id: b.id });
         else moveGroup(w, [u], b.x + b.size / 2, b.y + b.size + 0.5);
@@ -161,12 +207,13 @@ function moveGroup(w: World, units: Unit[], x: number, y: number): void {
   });
   let field: FlowField | null = null;
   if (units.length >= FLOW_GROUP) {
-    const goals = slots.map((s) => ({ x: Math.floor(s.x), y: Math.floor(s.y) })).filter((g) => w.grid.isWalkable(g.x, g.y));
+    const owner = units[0].owner;
+    const goals = slots.map((s) => ({ x: Math.floor(s.x), y: Math.floor(s.y) })).filter((g) => w.grid.isWalkable(g.x, g.y, owner));
     if (goals.length) {
-      field = new FlowField(w.grid, goals, units);
+      field = new FlowField(w.grid, goals, units, owner);
       // The way round an obstacle can run outside the window: search the whole map instead.
       const lost = units.filter((u) => field!.at(Math.floor(u.x), Math.floor(u.y)) === Infinity).length;
-      if (lost > units.length / 2) field = new FlowField(w.grid, goals, units, w.map.size);
+      if (lost > units.length / 2) field = new FlowField(w.grid, goals, units, owner, w.map.size);
     }
   }
   sorted.forEach((u, k) => {

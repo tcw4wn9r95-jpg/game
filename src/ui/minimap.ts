@@ -125,7 +125,7 @@ export class Minimap {
       g.stroke();
     }
     const dot = Math.max(2, ax * 1.4);
-    for (const u of this.world.units()) {
+    for (const u of this.world.field()) {
       if (u.owner !== this.player && !this.fog.isVisible(u.x, u.y)) continue;
       const [x, y] = at(u.x, u.y);
       g.fillStyle = PLAYER_COLORS[u.owner % PLAYER_COLORS.length];

@@ -17,7 +17,7 @@ export function moveUnit(w: World, u: Unit): void {
   while (step > 0 && u.pathIdx < u.path.length) {
     const wp = u.path[u.pathIdx];
     // A building or other obstacle appeared on the route: plan again.
-    if (!w.grid.isWalkable(Math.floor(wp.x), Math.floor(wp.y))) {
+    if (!w.grid.isWalkable(Math.floor(wp.x), Math.floor(wp.y), u.owner)) {
       u.path = null;
       return;
     }
@@ -68,14 +68,14 @@ function flowMove(w: World, u: Unit): void {
       return;
     }
     const n2 = f.field.next(n1.x, n1.y);
-    const aim = n2 && w.grid.isWalkable(Math.floor((u.x + n2.x + 0.5) / 2), Math.floor((u.y + n2.y + 0.5) / 2)) ? n2 : n1;
+    const aim = n2 && w.grid.isWalkable(Math.floor((u.x + n2.x + 0.5) / 2), Math.floor((u.y + n2.y + 0.5) / 2), u.owner) ? n2 : n1;
     const ax = aim.x + 0.5, ay = aim.y + 0.5;
     const dx = ax - u.x, dy = ay - u.y;
     const d = Math.hypot(dx, dy);
     if (Math.abs(dx) > 0.05) u.face = dx > 0 ? 1 : -1;
     const move = Math.min(step, d);
     const nx = u.x + (dx / d) * move, ny = u.y + (dy / d) * move;
-    if (!w.grid.isWalkable(Math.floor(nx), Math.floor(ny))) {
+    if (!w.grid.isWalkable(Math.floor(nx), Math.floor(ny), u.owner)) {
       u.flow = null;
       u.path = null;
       return;
@@ -95,13 +95,13 @@ export function separate(w: World): void {
   const cell = 2;
   const cols = Math.ceil(w.map.size / cell);
   const buckets = new Map<number, Unit[]>();
-  for (const u of w.units()) {
+  for (const u of w.field()) {
     const k = Math.floor(u.y / cell) * cols + Math.floor(u.x / cell);
     let b = buckets.get(k);
     if (!b) buckets.set(k, (b = []));
     b.push(u);
   }
-  for (const u of w.units()) {
+  for (const u of w.field()) {
     const cx = Math.floor(u.x / cell), cy = Math.floor(u.y / cell);
     const ru = UNIT_DEFS[u.type].radius;
     const working = u.state === 'gather' || u.state === 'build';
@@ -143,7 +143,7 @@ function nudge(w: World, u: Unit, dx: number, dy: number): void {
   const tx = Math.floor(nx), ty = Math.floor(ny);
   // Never shove a unit into a separate pocket (e.g. diagonally between two trees).
   const sameTile = tx === Math.floor(u.x) && ty === Math.floor(u.y);
-  if (sameTile || (w.grid.isWalkable(tx, ty) && w.grid.component(tx, ty) === w.grid.component(Math.floor(u.x), Math.floor(u.y)))) {
+  if (sameTile || (w.grid.isWalkable(tx, ty, u.owner) && w.grid.component(tx, ty, u.owner) === w.grid.component(Math.floor(u.x), Math.floor(u.y), u.owner))) {
     u.x = nx;
     u.y = ny;
   }
