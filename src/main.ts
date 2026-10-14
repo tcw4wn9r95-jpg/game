@@ -11,6 +11,7 @@ import { randomSeed, showSetup } from './ui/setup';
 import { installTheme } from './ui/theme';
 import { type SlotId, readSave, writeSave } from './ui/saves';
 import { showSlots } from './ui/slotPanel';
+import { installErrorLog, logError, setErrorContext, showErrorLog } from './ui/errorLog';
 import { loadWorld } from './sim/save';
 import type { World } from './sim/world';
 import type { GameMap } from './sim/terrain';
@@ -62,6 +63,7 @@ function optionsFromUrl(params: URLSearchParams): MapOptions | null {
 }
 
 function boot(): void {
+  installErrorLog();
   installTheme();
   blockBrowserGestures();
   lockLandscape();
@@ -94,6 +96,8 @@ function boot(): void {
     game.hud.onNewMatch = toSetup;
     game.hud.onSave = () => showSlots(document.body, 'save', (slot) => void saveTo(slot), () => {});
     game.hud.onLoad = () => showSlots(document.body, 'load', (slot) => void loadFrom(slot), () => {});
+    game.hud.onErrors = () => showErrorLog(document.body);
+    setErrorContext(() => game?.world.time);
     // Automated browser tests drive the match through this handle.
     if (params.has('test')) (window as unknown as { __game: Game }).__game = game;
     fps = new FpsCounter(hud.querySelector('#fps')!);
@@ -123,6 +127,7 @@ function boot(): void {
       if (slot !== 'auto') g.hud.toast('Game saved');
     } catch (e) {
       console.error(e);
+      logError(e);
       if (slot !== 'auto') g.hud.toast("Couldn't save: storage is unavailable or full");
     }
   }
@@ -144,6 +149,7 @@ function boot(): void {
       }
     } catch (e) {
       console.error(e);
+      logError(e);
       (game as Game | null)?.hud.toast("Couldn't load that save");
     }
   }
@@ -191,9 +197,10 @@ function boot(): void {
       } else if (backdrop) backdrop.frame(dt);
     } catch (e) {
       console.error(e);
+      logError(e);
       if (!reported && game) {
         reported = true;
-        game.hud.toast('Something went wrong; the game recovered. Save often.');
+        game.hud.toast('Something went wrong; the game recovered. Menu → Error Log has the details.');
       }
     }
   };

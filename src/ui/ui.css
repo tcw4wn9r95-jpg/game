@@ -1096,3 +1096,32 @@
 .setup-right .load-row .btn {
   flex: 1;
 }
+
+.errlog-panel .load-row {
+  display: flex;
+  gap: 8px;
+}
+
+.errlog-panel .load-row .btn {
+  flex: 1;
+}
+
+.errlog {
+  margin: 0;
+  max-height: 52vh;
+  overflow: auto;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  font: 11px/1.35 ui-monospace, Menlo, monospace;
+  color: var(--cream);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.btn.btn-small {
+  min-height: 34px;
+  font-size: 13px;
+}

@@ -24,6 +24,7 @@ export class Hud {
   onNewMatch: () => void = () => {};
   onSave: () => void = () => {};
   onLoad: () => void = () => {};
+  onErrors: () => void = () => {};
   onIdleVillager: () => void = () => {};
   onIdleMilitary: () => void = () => {};
   onAllMilitary: () => void = () => {};
@@ -96,7 +97,9 @@ export class Hud {
         <button class="btn btn-wood" data-a="save">Save Game</button>
         <button class="btn btn-wood" data-a="load">Load Game</button>
         <button class="btn btn-wood" data-a="new">New Match</button>
+        <button class="btn btn-wood btn-small" data-a="errors">Error Log</button>
       </div>`;
+    this.pauseMenu.querySelector('[data-a=errors]')!.addEventListener('click', () => this.onErrors());
     this.pauseMenu.querySelector('[data-a=resume]')!.addEventListener('click', () => this.setPaused(false));
     this.pauseMenu.querySelector('[data-a=save]')!.addEventListener('click', () => this.onSave());
     this.pauseMenu.querySelector('[data-a=load]')!.addEventListener('click', () => this.onLoad());
