@@ -18,6 +18,8 @@ export interface ControllerHost {
   camera: Camera;
   player: number;
   addEffect(e: Omit<Effect, 'born'>): void;
+  /** Does a tap (CSS px) land on the building's drawn pixels? Without it, footprint and box tests are used. */
+  hitBuilding?(b: Building, sx: number, sy: number): boolean;
 }
 
 type Pick =
@@ -363,26 +365,34 @@ export class Controller {
       const d = Math.hypot(sx - p.x, sy - (p.y - h / 2)) / Z - (e.owner === this.host.player ? 0.2 : 0);
       if (d < bd) (bd = d), (best = e);
     }
-    // A tap well inside a building picks the building unless a unit is right under the finger.
-    if (best && bd > 0.5) {
-      const b = this.buildingAt(t.x, t.y, 0.4);
-      if (b) return { kind: 'entity', e: b };
-    }
-    if (best) return { kind: 'entity', e: best };
-    // Buildings: the footprint, or the walls and roof that rise above it on screen.
+    // The building actually drawn under the finger (its painted pixels, frontmost first),
+    // else one whose footprint holds the point (fields lie flat on it).
     let bb: Building | null = null;
-    let bbd = Infinity;
+    let bbd = -Infinity;
+    let onPixels = false;
+    const hit = this.host.hitBuilding;
     for (const b of world.buildings()) {
       if (b.owner !== this.host.player && !fog.isExplored(b.x + 1, b.y + 1)) continue;
       const inside = t.x >= b.x && t.x <= b.x + b.size && t.y >= b.y && t.y <= b.y + b.size;
-      const left = camera.tileToScreen(b.x, b.y + b.size).x, right = camera.tileToScreen(b.x + b.size, b.y).x;
-      const top = camera.tileToScreen(b.x, b.y).y, mid = camera.tileToScreen(b.x + b.size, b.y).y;
       const flat = !!BUILDING_DEFS[b.type].walkable;
-      const above = !flat && sx >= left && sx <= right && sy <= mid && sy >= top - b.size * Z * 1.4 * ZK;
-      if (!inside && !above) continue;
-      // Prefer the building nearest the viewer (larger x+y) when sprites overlap.
-      const d = -(b.x + b.y + b.size) + (inside ? 0 : 0.5);
-      if (d < bbd) (bbd = d), (bb = b);
+      let drawn: boolean;
+      if (hit) drawn = !flat && hit.call(this.host, b, sx, sy);
+      else {
+        const left = camera.tileToScreen(b.x, b.y + b.size).x, right = camera.tileToScreen(b.x + b.size, b.y).x;
+        const top = camera.tileToScreen(b.x, b.y).y, mid = camera.tileToScreen(b.x + b.size, b.y).y;
+        drawn = !flat && sx >= left && sx <= right && sy <= mid && sy >= top - b.size * Z * 1.4 * ZK;
+      }
+      if (!drawn && !inside) continue;
+      // Pixels beat bare footprints; among equals the one nearest the viewer (it is drawn on top).
+      const d = b.x + b.y + b.size + (drawn ? 1000 : 0);
+      if (d > bbd) (bbd = d), (bb = b), (onPixels = drawn);
+    }
+    if (best) {
+      // A unit wins unless the building under the finger is drawn in front of it,
+      // or the finger is well inside a building and only near the unit's edge.
+      const u = best as Unit;
+      const inFront = bb && onPixels && bb.x + bb.y + bb.size / 2 > u.x + u.y + 0.5;
+      if (!bb || (!inFront && (onPixels || bd < 0.5)) || bd < 0.25) return { kind: 'entity', e: best };
     }
     if (bb) return { kind: 'entity', e: bb };
     let rb: Entity | null = null;
@@ -402,16 +412,6 @@ export class Controller {
       if (world.map.feature[y * N + x] !== Feature.None) return { kind: 'tile', x, y };
     }
     return { kind: 'ground', x: t.x, y: t.y };
-  }
-
-  /** A visible building whose footprint contains the point, at least `inset` tiles from its edge. */
-  private buildingAt(tx: number, ty: number, inset: number): Building | null {
-    const fog = this.world.fog[this.host.player];
-    for (const b of this.world.buildings()) {
-      if (b.owner !== this.host.player && !fog.isExplored(b.x + 1, b.y + 1)) continue;
-      if (tx >= b.x + inset && tx <= b.x + b.size - inset && ty >= b.y + inset && ty <= b.y + b.size - inset) return b;
-    }
-    return null;
   }
 
   private gatherTarget(p: Pick): GatherTarget | null {

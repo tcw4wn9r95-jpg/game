@@ -83,6 +83,7 @@ export class Game {
       camera: this.camera,
       player: this.player,
       addEffect: (e) => this.addEffect(e),
+      hitBuilding: (b, x, y) => this.renderer.hitBuilding(b, x, y),
     });
     this.panel = new CommandCenter(hudRoot, this.controller, this.world, this.player);
     this.hud.onIdleVillager = () => this.controller.nextIdleVillager();

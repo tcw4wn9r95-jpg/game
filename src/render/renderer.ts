@@ -21,6 +21,37 @@ import { UNIT_K, UPGRADE_TECH, type UnitPose, UnitSprites, lookIndex, unitHeight
 import { ZK } from './iso3d';
 import { headingOf } from './shipFigures';
 
+/** Alpha channel of a sprite canvas, read once (for hit tests and occlusion). */
+const masks = new WeakMap<HTMLCanvasElement, Uint8Array>();
+function alphaMask(c: HTMLCanvasElement): Uint8Array | null {
+  let m = masks.get(c);
+  if (m) return m;
+  if (!c.width || !c.height) return null;
+  const d = c.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, c.width, c.height).data;
+  m = new Uint8Array(c.width * c.height);
+  for (let i = 0; i < m.length; i++) m[i] = d[i * 4 + 3];
+  masks.set(c, m);
+  return m;
+}
+
+/** A sprite filled flat with a colour (its shape only), cached. */
+const silhouetteCache = new WeakMap<HTMLCanvasElement, { color: string; s: Sprite }>();
+function silhouette(s: Sprite, color: string): Sprite {
+  const hit = silhouetteCache.get(s.c);
+  if (hit && hit.color === color) return hit.s;
+  const c = document.createElement('canvas');
+  c.width = s.c.width;
+  c.height = s.c.height;
+  const g = c.getContext('2d')!;
+  g.drawImage(s.c, 0, 0);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = color;
+  g.fillRect(0, 0, c.width, c.height);
+  const out = { c, ax: s.ax, ay: s.ay, k: s.k };
+  silhouetteCache.set(s.c, { color, s: out });
+  return out;
+}
+
 /** Time (ms) per frame spent building chunks after the first frame; at least one is built.
  * Chunks still missing draw from another zoom level meanwhile. */
 const CHUNK_BUILD_MS = 4;
@@ -102,6 +133,10 @@ export class Renderer {
   private readonly lastView = new Map<number, { view: 'front' | 'side' | 'back'; left: boolean }>();
   /** Ships' headings (0-7), kept while they lie still. */
   private readonly heading = new Map<number, number>();
+  /** The last frame's view, for hit-testing taps against what was drawn. */
+  private lastFrame: FrameView | null = null;
+  /** Own units drawn this frame, checked afterwards for being hidden behind buildings. */
+  private readonly ownDrawn: Array<{ u: Unit; s: Sprite; x: number; y: number }> = [];
 
   constructor(
     private readonly view: View,
@@ -176,6 +211,7 @@ export class Renderer {
     ctx.fillRect(0, 0, W, H);
 
     const v: FrameView = { art, S, k: S / art.z, ox, oy, W, H, exact, alpha, now, overlay };
+    this.lastFrame = v;
     this.drawChunks(level, v);
     this.drawObjects(v);
     this.fogLayer.refresh();
@@ -335,7 +371,33 @@ export class Renderer {
     const gh = v.overlay.ghost;
     if (gh) items.push({ d: gh.x + gh.y + BUILDING_DEFS[gh.type].size, draw: () => this.drawGhost(v, gh) });
     items.sort((a, b) => a.d - b.d);
+    this.ownDrawn.length = 0;
     for (const it of items) it.draw();
+    this.silhouettes(v);
+  }
+
+  /** Own units hidden behind a building show through it as a team-coloured silhouette, as in AoE. */
+  private silhouettes(v: FrameView): void {
+    const { grid } = this.world;
+    const N = this.world.map.size;
+    for (const { u, s, x, y } of this.ownDrawn) {
+      const tx = Math.floor(x), ty = Math.floor(y);
+      const mx = this.sx(v, x, y), my = this.sy(v, x, y) - v.S * UNIT_K * unitHeight(u.type) * 0.45;
+      let hidden = false;
+      const seen = new Set<number>();
+      for (let dy = 0; dy <= 5 && !hidden; dy++)
+        for (let dx = 0; dx <= 5 && !hidden; dx++) {
+          const bx = tx + dx, by = ty + dy;
+          if (bx >= N || by >= N) continue;
+          const id = grid.building[by * N + bx];
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          const b = this.world.building(id);
+          if (!b || BUILDING_DEFS[b.type].walkable || b.x + b.y + b.size <= x + y) continue;
+          if (this.onSprite(v, this.buildingSprite(v, b), this.sx(v, b.x, b.y), this.sy(v, b.x, b.y), mx, my)) hidden = true;
+        }
+      if (hidden) this.put(v, silhouette(s, PLAYER_COLORS[u.owner % PLAYER_COLORS.length]), x, y, 0.6);
+    }
   }
 
   private put(v: FrameView, s: Sprite, wx: number, wy: number, alpha = 1): void {
@@ -387,7 +449,11 @@ export class Renderer {
       const bob = Math.sin(t * 1.7) * 0.04;
       this.put(v, v.art.units.get(u.type, u.owner, 0, p, elite), x + bob, y + bob);
       if (u.cargo.length) this.cargoBadge(v, px, py - S * UNIT_K * (unitHeight(u.type) + 0.45), u.cargo.length);
-    } else this.put(v, v.art.units.get(u.type, u.owner, lookIndex(u.id), p, elite), x, y);
+    } else {
+      const s = v.art.units.get(u.type, u.owner, lookIndex(u.id), p, elite);
+      this.put(v, s, x, y);
+      if (u.owner === this.player) this.ownDrawn.push({ u, s, x, y });
+    }
     // Health shows on selection, and for a few seconds after any hit.
     const maxHp = unitStats(this.world, u.owner, u.type).hp;
     const hurt = u.attackedAt > this.world.tick - 50 && u.hp < maxHp;
@@ -813,9 +879,8 @@ export class Renderer {
     return 0;
   }
 
-  private drawBuilding(v: FrameView, b: Building): void {
-    const { ctx } = this.view;
-    const { S } = v;
+  /** The sprite a building is drawn with now. */
+  private buildingSprite(v: FrameView, b: Building): Sprite {
     const def = BUILDING_DEFS[b.type];
     // Farms show how much crop is left; walls how they join up and how battered they are.
     const variant =
@@ -826,7 +891,41 @@ export class Renderer {
           : def.wall || def.classes.includes('tower')
             ? this.wallVariant(b)
             : 0;
-    const sprite = v.art.buildings.get(b.type, b.size, b.owner, variant, this.world.players[b.owner]?.age ?? 0);
+    return v.art.buildings.get(b.type, b.size, b.owner, variant, this.world.players[b.owner]?.age ?? 0);
+  }
+
+  /** Is a device-px point on a painted pixel of a sprite drawn at anchor (px, py)? `r` widens the test (device px). */
+  private onSprite(v: FrameView, s: Sprite, px: number, py: number, dx: number, dy: number, r = 0): boolean {
+    const k = (v.exact ? 1 : v.k) * (s.k ?? 1);
+    const lx = (dx - px) / k + s.ax, ly = (dy - py) / k + s.ay;
+    const rr = r / k;
+    const mask = alphaMask(s.c);
+    if (!mask) return false;
+    for (const [ox, oy] of [[0, 0], [rr, 0], [-rr, 0], [0, rr], [0, -rr]]) {
+      const x = Math.round(lx + ox), y = Math.round(ly + oy);
+      if (x >= 0 && y >= 0 && x < s.c.width && y < s.c.height && mask[y * s.c.width + x] > 40) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Did a tap (CSS px) land on the building's picture as last drawn? Only its
+   * painted pixels count, with a little slack for a fingertip, so a tall Town
+   * Center no longer swallows taps meant for what stands around it.
+   */
+  hitBuilding(b: Building, cssX: number, cssY: number, slackCss = 4): boolean {
+    const v = this.lastFrame;
+    if (!v || BUILDING_DEFS[b.type].walkable) return false;
+    const dpr = this.view.dpr;
+    const s = this.buildingSprite(v, b);
+    return this.onSprite(v, s, this.sx(v, b.x, b.y), this.sy(v, b.x, b.y), cssX * dpr, cssY * dpr, slackCss * dpr);
+  }
+
+  private drawBuilding(v: FrameView, b: Building): void {
+    const { ctx } = this.view;
+    const { S } = v;
+    const def = BUILDING_DEFS[b.type];
+    const sprite = this.buildingSprite(v, b);
     const selected = v.overlay.selection.has(b.id);
     const ny = this.sy(v, b.x, b.y);
     const k = v.exact ? 1 : v.k;
