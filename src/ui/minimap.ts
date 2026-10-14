@@ -67,8 +67,9 @@ export class Minimap {
   }
 
   /** Flashes an expanding ring at a spot (an attack) for a few seconds. */
-  ping(x: number, y: number, now: number): void {
-    this.pings.push({ x, y, at: now });
+  ping(x: number, y: number, _now?: number): void {
+    // One clock for stamping and drawing (frame timestamps can trail performance.now()).
+    this.pings.push({ x, y, at: performance.now() / 1000 });
     this.dirty = true;
   }
 
@@ -133,11 +134,11 @@ export class Minimap {
     }
 
     // Alert pings: red rings pulsing outward.
-    const t = now / 1000;
+    const t = performance.now() / 1000;
     this.pings = this.pings.filter((p) => t - p.at < 4);
     for (const p of this.pings) {
       const [x, y] = at(p.x, p.y);
-      const k = ((t - p.at) % 1) / 1;
+      const k = Math.max(0, (t - p.at) % 1);
       g.strokeStyle = `rgba(255,70,50,${1 - k})`;
       g.lineWidth = Math.max(1.5, W / 120);
       g.beginPath();

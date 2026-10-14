@@ -23,6 +23,10 @@ export interface SaveData {
   fog: Array<{ explored: Packed; revealed: boolean }>;
   entities: Entity[];
   projectiles: Projectile[];
+  peaceUntil?: number;
+  winner?: number | null;
+  /** Per-slot AI difficulty (null for the human), restored by the game. */
+  ai?: Array<string | null>;
 }
 
 // ---------- typed arrays <-> base64 ----------
@@ -80,6 +84,8 @@ export function saveWorld(w: World): SaveData {
     fog: w.fog.map((f) => ({ explored: pack(f.explored), revealed: f.revealed })),
     entities,
     projectiles: w.projectiles,
+    peaceUntil: w.peaceUntil,
+    winner: w.winner,
   };
 }
 
@@ -109,6 +115,8 @@ export function loadWorld(d: SaveData): World {
   w.nextProjectileId = d.nextProjectileId;
   w.rng.state = d.rng;
   w.projectiles = d.projectiles;
+  w.peaceUntil = d.peaceUntil ?? 0;
+  w.winner = d.winner ?? null;
   d.players.forEach((p, i) => {
     const mods = baseMods();
     for (const t of p.techs) applyEffects(mods, t);

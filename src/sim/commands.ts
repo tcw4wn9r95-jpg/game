@@ -58,10 +58,15 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
     case 'attack': {
       const t = w.get(cmd.id);
       if (!t || t.kind === 'resource') return;
+      if (w.peace && w.isEnemy(player, t.owner)) {
+        const m = Math.ceil((w.peaceUntil - w.time) / 60);
+        w.events.push({ type: 'error', owner: player, message: `Peace Treaty: no attacks for ${m} more minute${m === 1 ? '' : 's'}` });
+        return;
+      }
       for (const u of units) {
         const def = UNIT_DEFS[u.type];
-        if (t.owner === player) {
-          // Monks heal friends; nobody attacks their own side.
+        if (!w.isEnemy(player, t.owner)) {
+          // Monks heal friends; nobody attacks their own side or an ally.
           if (def.healer && t.kind === 'unit') setOrder(u, { type: 'heal', id: t.id });
           continue;
         }

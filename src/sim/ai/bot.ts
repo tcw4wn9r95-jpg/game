@@ -7,7 +7,7 @@ import economy from '../../data/economy.json';
 import type { Command } from '../commands';
 import type { ResourceKind } from '../constants';
 import { type Source, findResource, gatherOrder, isGatherer } from '../economy';
-import { BUILDING_DEFS, type Building, type BuildingType, type Unit, distToRect } from '../entities';
+import { BUILDING_DEFS, type Building, type BuildingType, UNIT_DEFS, type Unit, distToRect } from '../entities';
 import { AGES, TECH_DEFS, type TechId, researchBlock } from '../techs';
 import type { World } from '../world';
 
@@ -15,6 +15,10 @@ import type { World } from '../world';
 export interface BotProfile {
   /** Villagers wanted per age. */
   villagers: [number, number, number, number];
+  /** Villager count at which the bot stops and saves to advance (per age I-III). */
+  clickUp: [number, number, number];
+  /** Earliest match time (seconds) to advance out of each age (a lazy bot waits). */
+  minAgeTime?: [number, number, number];
   /** Share of villagers on food, wood, gold, stone per age. */
   ratios: Array<Record<ResourceKind, number>>;
   /** Economy techs worth buying, in order of preference. */
@@ -27,11 +31,12 @@ export interface BotProfile {
 
 export const NORMAL: BotProfile = {
   villagers: [24, 34, 46, 55],
+  clickUp: [20, 30, 40],
   ratios: [
-    { food: 0.6, wood: 0.35, gold: 0.05, stone: 0 },
-    { food: 0.45, wood: 0.3, gold: 0.2, stone: 0.05 },
-    { food: 0.42, wood: 0.22, gold: 0.31, stone: 0.05 },
-    { food: 0.4, wood: 0.25, gold: 0.3, stone: 0.05 },
+    { food: 0.55, wood: 0.4, gold: 0.05, stone: 0 },
+    { food: 0.45, wood: 0.33, gold: 0.17, stone: 0.05 },
+    { food: 0.42, wood: 0.3, gold: 0.23, stone: 0.05 },
+    { food: 0.4, wood: 0.3, gold: 0.25, stone: 0.05 },
   ],
   techs: ['loom', 'double_bit_axe', 'horse_collar', 'wheelbarrow', 'gold_mining', 'bow_saw', 'heavy_plow', 'hand_cart'],
   ageBuildings: [['lumber_camp', 'mill', 'barracks'], ['blacksmith', 'market'], ['university', 'monastery'], []],
@@ -47,56 +52,66 @@ const SOURCES: Record<ResourceKind, Source[]> = {
 const CAMP: Partial<Record<ResourceKind, BuildingType>> = { wood: 'lumber_camp', gold: 'mining_camp', stone: 'mining_camp', food: 'mill' };
 
 export class EconomyBot {
-  private next = 0;
+  protected next = 0;
   /** Villager ids sent to build, so they aren't reassigned before they start. */
-  private builders = new Map<number, number>();
+  protected builders = new Map<number, number>();
 
   constructor(
     readonly player: number,
     readonly profile: BotProfile = NORMAL,
   ) {}
 
-  private issue(w: World, cmd: Command): void {
+  protected issue(w: World, cmd: Command): void {
     w.issue(this.player, cmd);
   }
 
   tick(w: World): void {
     if (w.time < this.next) return;
     this.next = w.time + this.profile.think;
-    const p = w.players[this.player];
     const tc = this.townCenter(w);
     if (!tc) return;
-    const villagers = [...w.units(this.player)].filter(isGatherer);
-    for (const [id, until] of this.builders) if (until < w.time || !w.unit(id)) this.builders.delete(id);
-
-    this.ageUp(w, tc);
-    this.train(w, tc, villagers.length);
-    if (this.houses(w, tc, villagers)) return;
-    if (this.buildings(w, tc, villagers)) return;
-    this.researchEconomy(w);
-    this.assign(w, tc, villagers);
-    void p;
+    this.economy(w, tc, this.villagers(w));
   }
 
-  private townCenter(w: World): Building | null {
+  /** Land villagers (fishing ships are handled separately). */
+  protected villagers(w: World): Unit[] {
+    return [...w.units(this.player)].filter((u) => isGatherer(u) && !UNIT_DEFS[u.type].naval);
+  }
+
+  /** One round of economic decisions. Returns true if it started a building. */
+  protected economy(w: World, tc: Building, villagers: Unit[], saving = false): boolean {
+    for (const [id, until] of this.builders) if (until < w.time || !w.unit(id)) this.builders.delete(id);
+    this.ageUp(w, tc);
+    this.train(w, tc, villagers.length);
+    if (this.houses(w, tc, villagers)) return true;
+    if (!saving && this.buildings(w, tc, villagers)) return true;
+    if (!saving) this.researchEconomy(w);
+    this.assign(w, tc, villagers);
+    return false;
+  }
+
+  protected townCenter(w: World): Building | null {
     for (const b of w.buildings(this.player)) if (b.type === 'town_center' && b.complete) return b;
     return null;
   }
 
   // ---------- production ----------
 
-  private train(w: World, tc: Building, count: number): void {
+  protected train(w: World, tc: Building, count: number): void {
     const p = w.players[this.player];
     const want = this.profile.villagers[p.age];
     const queued = tc.queue.filter((q) => q.unit === 'villager').length;
     if (tc.queue.some((q) => q.tech)) return; // advancing: the Town Center is busy
+    // Enough hands to advance: stop and save the food for it.
+    if (p.age < 3 && count + queued >= this.profile.clickUp[p.age]) return;
     if (count + queued < want && queued < 2 && p.resources.food >= 50) this.issue(w, { type: 'train', id: tc.id, unit: 'villager' });
   }
 
-  private ageUp(w: World, tc: Building): void {
+  protected ageUp(w: World, tc: Building): void {
     const p = w.players[this.player];
     if (p.age >= 3) return;
     const id = (['age2', 'age3', 'age4'] as TechId[])[p.age];
+    if (w.time < (this.profile.minAgeTime?.[p.age] ?? 0)) return;
     if (researchBlock(w, this.player, id)) return;
     const cost = TECH_DEFS[id].cost;
     if (Object.entries(cost).every(([k, v]) => p.resources[k as ResourceKind] >= (v ?? 0))) {
@@ -105,7 +120,7 @@ export class EconomyBot {
     }
   }
 
-  private researchEconomy(w: World): void {
+  protected researchEconomy(w: World): void {
     const p = w.players[this.player];
     // Save for the next age first once it is within reach.
     const nextAge = AGES[p.age + 1];
@@ -124,7 +139,7 @@ export class EconomyBot {
 
   // ---------- construction ----------
 
-  private houses(w: World, tc: Building, villagers: Unit[]): boolean {
+  protected houses(w: World, tc: Building, villagers: Unit[]): boolean {
     const p = w.players[this.player];
     const building = [...w.buildings(this.player)].some((b) => b.type === 'house' && !b.complete);
     if (p.popCap - p.pop > 4 || building || p.resources.wood < 30 || p.popCap >= 200) return false;
@@ -132,7 +147,7 @@ export class EconomyBot {
   }
 
   /** Camps beside the resources being worked, then the buildings the next age needs. */
-  private buildings(w: World, tc: Building, villagers: Unit[]): boolean {
+  protected buildings(w: World, tc: Building, villagers: Unit[]): boolean {
     const p = w.players[this.player];
     const have = (t: BuildingType) => [...w.buildings(this.player)].filter((b) => b.type === t);
     for (const res of ['wood', 'gold', 'stone', 'food'] as ResourceKind[]) {
@@ -140,11 +155,14 @@ export class EconomyBot {
       const workers = villagers.filter((u) => u.order?.type === 'gather' && u.order.res === res && u.order.source !== 'farm');
       if (workers.length < (res === 'food' ? 4 : 3)) continue;
       // A camp is useful when the workers are far from any drop-off.
-      const far = workers.filter((u) => this.dropDistance(w, u, res) > 6).length;
-      if (far < 3 || have(camp).some((b) => !b.complete) || BUILDING_DEFS[camp].age > p.age) continue;
-      const t = workers[0].order?.type === 'gather' ? workers[0].order.target : null;
-      const pos = t?.kind === 'tile' ? { x: t.x, y: t.y } : { x: workers[0].x, y: workers[0].y };
-      if (this.build(w, camp, pos.x, pos.y, workers, 2, 3)) return true;
+      const farWorkers = workers.filter((u) => this.dropDistance(w, u, res) > 6);
+      if (farWorkers.length < 3 || have(camp).some((b) => !b.complete) || have(camp).length >= 8 || BUILDING_DEFS[camp].age > p.age) continue;
+      const t = farWorkers[0].order?.type === 'gather' ? farWorkers[0].order.target : null;
+      const pos = t?.kind === 'tile' ? { x: t.x, y: t.y } : { x: farWorkers[0].x, y: farWorkers[0].y };
+      // Only worth it right beside the work; a camp put up far off helps nobody (and invites another).
+      const spot = this.findSpot(w, camp, pos.x, pos.y, 3);
+      if (!spot || Math.hypot(spot.x + 1 - pos.x, spot.y + 1 - pos.y) > 5) continue;
+      if (this.build(w, camp, pos.x, pos.y, farWorkers, 2, 3)) return true;
     }
     // Farms when the wild food is gone.
     const food = villagers.filter((u) => u.order?.type === 'gather' && u.order.res === 'food').length;
@@ -180,7 +198,7 @@ export class EconomyBot {
   }
 
   /** Places a building near (x, y) with up to `crew` villagers (nearest first). */
-  private build(w: World, type: BuildingType, x: number, y: number, villagers: Unit[], crew: number, minR: number): boolean {
+  protected build(w: World, type: BuildingType, x: number, y: number, villagers: Unit[], crew: number, minR: number): boolean {
     const def = BUILDING_DEFS[type];
     const p = w.players[this.player];
     if (Object.entries(def.cost).some(([k, v]) => p.resources[k as ResourceKind] < (v ?? 0))) return false;
@@ -197,7 +215,7 @@ export class EconomyBot {
   }
 
   /** A legal spot near (x, y) that leaves a walkable margin around it. */
-  private findSpot(w: World, type: BuildingType, x: number, y: number, minR: number): { x: number; y: number } | null {
+  protected findSpot(w: World, type: BuildingType, x: number, y: number, minR: number): { x: number; y: number } | null {
     const size = BUILDING_DEFS[type].size;
     const cx = Math.round(x - size / 2), cy = Math.round(y - size / 2);
     for (let r = minR > 6 ? 3 : 1; r < 26; r++)
@@ -224,7 +242,7 @@ export class EconomyBot {
   // ---------- workers ----------
 
   /** Sends idle villagers to the resource furthest below its target share. */
-  private assign(w: World, tc: Building, villagers: Unit[]): void {
+  protected assign(w: World, tc: Building, villagers: Unit[]): void {
     const p = w.players[this.player];
     const ratio = this.profile.ratios[p.age];
     const count: Record<ResourceKind, number> = { food: 0, wood: 0, gold: 0, stone: 0 };

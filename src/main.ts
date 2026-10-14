@@ -1,5 +1,6 @@
 import './style.css';
-import { Game } from './game';
+import { Game, type MatchSetup } from './game';
+import type { Difficulty } from './sim/ai/opponent';
 import { attachGestures } from './input/gestures';
 import { createView } from './render/canvas';
 import type { MapOptions } from './sim/mapgen';
@@ -70,7 +71,7 @@ function boot(): void {
   registerServiceWorker();
 
   const params = new URLSearchParams(location.search);
-  const debug = { reveal: params.has('reveal'), bench: params.has('bench'), fps: params.has('fps') };
+  const debug = { reveal: params.has('reveal'), bench: params.has('bench'), fps: params.has('fps'), aiVsAi: params.has('aivsai') };
   const view = createView(document.getElementById('game') as HTMLCanvasElement);
   const hud = document.getElementById('hud')!;
   let game: Game | null = null;
@@ -90,9 +91,9 @@ function boot(): void {
     backdrop?.dispose();
     backdrop = null;
   };
-  const start = (source: GameMap | World) => {
+  const start = (source: GameMap | World, setup?: Partial<MatchSetup>) => {
     clearBackdrop();
-    game = new Game(source, view, hud, debug);
+    game = new Game(source, view, hud, debug, setup);
     game.hud.onNewMatch = toSetup;
     game.hud.onSave = () => showSlots(document.body, 'save', (slot) => void saveTo(slot), () => {});
     game.hud.onLoad = () => showSlots(document.body, 'load', (slot) => void loadFrom(slot), () => {});
@@ -112,7 +113,7 @@ function boot(): void {
         clearBackdrop();
         backdrop = new MenuBackdrop(view, map);
       },
-      onStart: (_opts, map) => start(map),
+      onStart: (_opts, map, s) => start(map, { treaty: s.treaty, ai: map.starts.map((_, i) => (i === 0 ? null : s.difficulty)) }),
       onLoad: (slot) => void loadFrom(slot),
     });
   }
@@ -141,7 +142,7 @@ function boot(): void {
       document.querySelector('.setup')?.remove();
       game?.destroy();
       game = null;
-      start(world);
+      start(world, { ai: (rec.data.ai as Array<Difficulty | null> | undefined) ?? world.players.map((_, i) => (i === 0 ? null : 'normal')) });
       const g = game as Game | null;
       if (g) {
         if (rec.meta.camera) g.restoreCamera(rec.meta.camera);
@@ -179,7 +180,9 @@ function boot(): void {
     return;
   }
   const fromUrl = optionsFromUrl(params);
-  if (fromUrl) start(generateMap(fromUrl));
+  // ?noai: opponents stand idle (automated UI tests); ?ai=hard picks the difficulty.
+  const urlAi = (params.get('ai') as Difficulty | null) ?? 'normal';
+  if (fromUrl) start(generateMap(fromUrl), { ai: Array.from({ length: fromUrl.players }, (_, i) => (params.has('noai') || (i === 0 && !debug.aiVsAi) ? null : urlAi)) });
   else toSetup();
 
   let last = performance.now();

@@ -126,7 +126,7 @@ export function towerTick(w: World): void {
     const heated = !!w.players[b.owner]?.mods.defense.heatedShot;
     const targets: Array<{ u: Unit; d: number }> = [];
     w.spatial.query(cx, cy, reachR + 1, (o) => {
-      if (o.owner === b.owner || o.inside || (fog && !fog.isVisible(o.x, o.y))) return;
+      if (!w.canFight(b.owner, o.owner) || o.inside || (fog && !fog.isVisible(o.x, o.y))) return;
       const d = distToRect(o.x, o.y, b.x, b.y, b.size);
       if (d > a.range || d < a.minRange) return;
       targets.push({ u: o, d });

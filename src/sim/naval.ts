@@ -10,7 +10,7 @@ import { unload } from './siege';
 import type { World } from './world';
 
 /** How far out from a point to look for a landing or boarding place (tiles). */
-const SHORE_SEARCH = 40;
+const SHORE_SEARCH = 80;
 
 /** Land region at or nearest a point, for a player's layer (-1 if none nearby). */
 export function landRegion(w: World, x: number, y: number, owner: number): number {

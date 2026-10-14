@@ -10,6 +10,9 @@ import { Hud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { CommandCenter } from './ui/commandCenter';
 import { type SaveData, saveWorld } from './sim/save';
+import { type Difficulty, type Opponent, makeOpponent } from './sim/ai/opponent';
+
+const PLAYER_NAMES = ['Blue', 'Red', 'Gold', 'Green'];
 import type { SaveMeta } from './ui/saves';
 
 const MAP_NAMES = { heartland: 'Heartland', coastal: 'Coastal', lakes: 'Lakes', islands: 'Islands' } as const;
@@ -22,6 +25,15 @@ export interface DebugFlags {
   reveal: boolean;
   bench: boolean;
   fps: boolean;
+  /** Player 0 is an AI too (watch two AIs play). */
+  aiVsAi?: boolean;
+}
+
+/** Who plays each slot: an AI difficulty, or null for the human. */
+export interface MatchSetup {
+  ai: Array<Difficulty | null>;
+  /** Peace Treaty, minutes (new matches only). */
+  treaty: number;
 }
 
 /** One match: owns the world, camera, renderer, input controller and HUD. */
@@ -39,9 +51,18 @@ export class Game {
   readonly player = 0;
 
   /** Starts a new match on a map, or resumes a loaded world. */
-  constructor(source: GameMap | World, private readonly view: View, hudRoot: HTMLElement, debug: DebugFlags) {
+  readonly setup: MatchSetup;
+  private readonly bots: Opponent[] = [];
+
+  constructor(source: GameMap | World, private readonly view: View, hudRoot: HTMLElement, debug: DebugFlags, setup?: Partial<MatchSetup>) {
+    const fresh = !(source instanceof World);
     this.world = source instanceof World ? source : new World(source);
     const map = this.world.map;
+    this.setup = { ai: setup?.ai ?? map.starts.map((_, i) => (i === 0 && !debug.aiVsAi ? null : 'normal')), treaty: setup?.treaty ?? 0 };
+    if (fresh && this.setup.treaty) this.world.peaceUntil = this.setup.treaty * 60;
+    this.setup.ai.forEach((d, i) => {
+      if (d) this.bots.push(makeOpponent(this.world, i, d));
+    });
     const fog = this.world.fog[this.player];
     if (debug.reveal || debug.bench) fog.revealAll();
 
@@ -90,16 +111,19 @@ export class Game {
     this.renderer.effects.push({ ...e, born: performance.now() / 1000 });
   }
 
-  frame(now: number, dtMs: number): void {
+  frame(_frameTime: number, dtMs: number): void {
+    // Everything in a frame (effects, corpses, pings, animation) runs off one clock.
+    const now = performance.now();
     const dtClamped = Math.min(dtMs, MAX_FRAME_MS);
     if (!this.hud.paused) {
       this.acc += dtClamped;
       while (this.acc >= TICK_MS) {
+        for (const b of this.bots) b.tick(this.world);
         this.world.step();
         this.acc -= TICK_MS;
       }
     }
-    const nowS = performance.now() / 1000;
+    const nowS = now / 1000;
     for (const ev of this.world.drainEvents()) {
       // Battle aftermath is drawn for every side.
       if (ev.type === 'blast') {
@@ -109,6 +133,16 @@ export class Game {
       if (ev.type === 'death') this.renderer.addDeath(ev, this.deaths++, nowS);
       else if (ev.type === 'destroyed') this.renderer.addRuin(ev, nowS);
       if (ev.type === 'converted' && ev.from === this.player) this.alert('A unit was converted by an enemy monk!', ev.x, ev.y, nowS, true);
+      if (ev.type === 'victory') {
+        const won = ev.team === this.world.players[this.player].team;
+        this.hud.endScreen(won, this.world.time);
+        continue;
+      }
+      if (ev.type === 'defeated' && ev.owner !== this.player) {
+        const ally = !this.world.isEnemy(this.player, ev.owner);
+        this.hud.toast(`${ally ? 'Your ally' : 'An enemy'} (${PLAYER_NAMES[ev.owner] ?? 'player'}) has been defeated`);
+        continue;
+      }
       if (ev.owner !== this.player) continue;
       if (ev.type === 'hit' && ev.by !== this.player && ev.by >= 0) {
         this.alert(ev.building ? 'Your town is under attack!' : 'Your units are under attack!', ev.x, ev.y, nowS);
@@ -155,8 +189,16 @@ export class Game {
         savedAt: Date.now(),
         camera: { x: this.camera.x, y: this.camera.y, level: this.camera.level },
       },
-      data: saveWorld(this.world),
+      data: { ...saveWorld(this.world), ai: this.setup.ai },
     };
+  }
+
+  /** Runs the simulation (and the AIs) ahead without drawing: tests and spectating. */
+  advance(ticks: number): void {
+    for (let k = 0; k < ticks && this.world.winner === null; k++) {
+      for (const b of this.bots) b.tick(this.world);
+      this.world.step();
+    }
   }
 
   /** Puts the camera back where it was when the match was saved. */

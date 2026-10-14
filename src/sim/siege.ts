@@ -113,7 +113,7 @@ export function boltVictims(w: World, sx: number, sy: number, tx: number, ty: nu
   const ex = sx + ux * (range + 0.5), ey = sy + uy * (range + 0.5);
   const out: Unit[] = [];
   w.spatial.query((sx + ex) / 2, (sy + ey) / 2, (range + 1) / 2 + 1, (u) => {
-    if (u.owner === owner || u.inside) return;
+    if (!w.isEnemy(owner, u.owner) || u.inside) return;
     const along = (u.x - sx) * ux + (u.y - sy) * uy;
     if (along < 0.3 || along > range + 0.5) return;
     const off = Math.abs((u.x - sx) * uy - (u.y - sy) * ux);
@@ -240,7 +240,7 @@ function enemyWallBeside(w: World, u: Unit): Building | null {
     for (let tx = Math.floor(u.x) - 2; tx <= Math.floor(u.x) + 2; tx++) {
       if (tx < 0 || ty < 0 || tx >= N || ty >= N) continue;
       const b = w.building(w.grid.building[ty * N + tx]);
-      if (!b || b.owner === u.owner || !BUILDING_DEFS[b.type].wall) continue;
+      if (!b || !w.isEnemy(u.owner, b.owner) || !BUILDING_DEFS[b.type].wall) continue;
       const d = distToRect(u.x, u.y, b.x, b.y, 1);
       if (d < bd) (bd = d), (best = b);
     }

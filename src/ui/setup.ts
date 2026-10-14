@@ -4,6 +4,7 @@ import { type GameMap, MAP_SIZES, MAP_TYPES, type MapSize, type MapType } from '
 import { ICONS, MAP_ICONS } from './icons';
 import { mapImage } from './mapImage';
 import { type SlotId, listSaves } from './saves';
+import { DIFFICULTIES, type Difficulty } from '../sim/ai/opponent';
 import { showSlots } from './slotPanel';
 
 const STORAGE_KEY = 'hc.setup';
@@ -15,9 +16,17 @@ const MAP_INFO: Record<MapType, { name: string; desc: string }> = {
   islands: { name: 'Islands', desc: 'Every realm on its own isle. Only ships carry armies to war.' },
 };
 const SIZE_LABELS: Record<MapSize, string> = { skirmish: 'Skirmish', standard: 'Standard', epic: 'Epic' };
+const AI_LABELS: Record<Difficulty, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
+const TREATY_LABELS: Record<number, string> = { 0: 'No treaty', 10: '10 min', 20: '20 min', 30: '30 min' };
+
+/** Opponent strength and Peace Treaty length (minutes, 0 for none). */
+export interface MatchSettings {
+  difficulty: Difficulty;
+  treaty: number;
+}
 const PLAYER_LABELS: Record<number, string> = { 2: '1 vs 1', 3: '1 vs 2', 4: '2 vs 2' };
 
-function loadPrefs(): Partial<MapOptions> {
+function loadPrefs(): Partial<MapOptions & MatchSettings> {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
   } catch {
@@ -25,9 +34,9 @@ function loadPrefs(): Partial<MapOptions> {
   }
 }
 
-function savePrefs(o: MapOptions): void {
+function savePrefs(o: MapOptions, m: MatchSettings): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ type: o.type, size: o.size, players: o.players }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ type: o.type, size: o.size, players: o.players, difficulty: m.difficulty, treaty: m.treaty }));
   } catch {
     /* storage unavailable: preferences just don't persist */
   }
@@ -37,7 +46,7 @@ export const randomSeed = () => Math.floor(Math.random() * 1e6);
 
 export interface SetupHooks {
   onPreview(map: GameMap): void;
-  onStart(opts: MapOptions, map: GameMap): void;
+  onStart(opts: MapOptions, map: GameMap, settings: MatchSettings): void;
   /** Resume a saved match (the setup screen has already gone). */
   onLoad(slot: SlotId): void;
 }
@@ -51,6 +60,10 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
     players: [2, 3, 4].includes(prefs.players as number) ? (prefs.players as number) : 2,
     seed: randomSeed(),
   };
+  const settings: MatchSettings = {
+    difficulty: DIFFICULTIES.includes(prefs.difficulty as Difficulty) ? (prefs.difficulty as Difficulty) : 'normal',
+    treaty: [0, 10, 20, 30].includes(prefs.treaty as number) ? (prefs.treaty as number) : 0,
+  };
 
   const el = document.createElement('div');
   el.className = 'setup';
@@ -62,8 +75,13 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
         <div class="cards" data-row="type"></div>
         <div class="setup-label">Size</div>
         <div class="seg" data-row="size"></div>
-        <div class="setup-label">Players</div>
-        <div class="seg" data-row="players"></div>
+        <div class="setup-pair">
+          <div><div class="setup-label">Players</div><div class="seg" data-row="players"></div></div>
+          <div><div class="setup-label">Opponent</div><div class="seg" data-row="difficulty"></div></div>
+        </div>
+        <div class="setup-label">Peace Treaty</div>
+        <div class="seg" data-row="treaty"></div>
+        <div class="setup-note" data-v="note"></div>
       </section>
       <section class="setup-right frame">
         <div class="preview-wrap"><canvas class="preview"></canvas></div>
@@ -96,7 +114,7 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
     });
   };
 
-  const group = <T extends string | number>(row: string, values: T[], render: (v: T) => string, get: () => T, set: (v: T) => void) => {
+  const group = <T extends string | number>(row: string, values: T[], render: (v: T) => string, get: () => T, set: (v: T) => void, regenerate = true) => {
     const container = el.querySelector(`[data-row=${row}]`)!;
     for (const v of values) {
       const b = document.createElement('button');
@@ -107,7 +125,7 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
         if (get() === v) return;
         set(v);
         container.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-        refresh();
+        if (regenerate) refresh();
       });
       container.appendChild(b);
     }
@@ -116,6 +134,13 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
   group('type', MAP_TYPES, (t) => `<span class="card-art">${MAP_ICONS[t]}</span><span class="card-name">${MAP_INFO[t].name}</span>`, () => opts.type, (v) => (opts.type = v));
   group('size', MAP_SIZES, (s) => SIZE_LABELS[s], () => opts.size, (v) => (opts.size = v));
   group('players', [2, 3, 4], (p) => PLAYER_LABELS[p], () => opts.players, (v) => (opts.players = v));
+  const note = () => {
+    el.querySelector('[data-v=note]')!.textContent =
+      settings.difficulty === 'hard' ? 'Hard AI gathers 10% faster.' : settings.difficulty === 'easy' ? 'Easy AI never attacks before minute 15.' : '';
+  };
+  group('difficulty', DIFFICULTIES, (d) => AI_LABELS[d], () => settings.difficulty, (v) => ((settings.difficulty = v), note()), false);
+  group('treaty', [0, 10, 20, 30], (t) => TREATY_LABELS[t], () => settings.treaty, (v) => (settings.treaty = v), false);
+  note();
 
   el.querySelector('.icon-btn')!.addEventListener('click', () => {
     opts.seed = randomSeed();
@@ -123,10 +148,10 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
   });
   el.querySelector('.start')!.addEventListener('click', () => {
     if (!map) return;
-    savePrefs(opts);
+    savePrefs(opts, settings);
     cancelAnimationFrame(pending);
     el.remove();
-    hooks.onStart(opts, map);
+    hooks.onStart(opts, map, settings);
   });
 
   // Saved games: Continue picks up the autosave; Load lists every slot.

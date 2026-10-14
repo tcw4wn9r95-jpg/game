@@ -1125,3 +1125,40 @@
   min-height: 34px;
   font-size: 13px;
 }
+
+/* ---------- Setup: opponent and treaty ---------- */
+
+.setup-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.setup-note {
+  min-height: 14px;
+  font-size: 12px;
+  color: rgba(246, 234, 208, 0.75);
+}
+
+/* ---------- End of match ---------- */
+
+.end-panel {
+  align-items: stretch;
+  min-width: 300px;
+}
+
+.end-panel.won .panel-title {
+  font-size: 30px;
+  color: #ffe27a;
+}
+
+.end-panel.lost .panel-title {
+  font-size: 30px;
+  color: #e9a08a;
+}
+
+.end-detail {
+  text-align: center;
+  color: var(--cream);
+  margin-bottom: 4px;
+}

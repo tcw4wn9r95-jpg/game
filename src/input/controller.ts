@@ -129,7 +129,7 @@ export class Controller {
     const units = this.ownUnits();
     const me = this.host.player;
 
-    if (pick.kind === 'entity' && pick.e.kind !== 'resource' && pick.e.owner !== me && units.length) {
+    if (pick.kind === 'entity' && pick.e.kind !== 'resource' && this.world.isEnemy(me, pick.e.owner) && units.length) {
       // Tapping an enemy with units selected: attack it (monks convert).
       this.issue({ type: 'attack', ids: units.map((u) => u.id), id: pick.e.id });
       const p = pick.e.kind === 'building' ? { x: pick.e.x + pick.e.size / 2, y: pick.e.y + pick.e.size / 2 } : pick.e;

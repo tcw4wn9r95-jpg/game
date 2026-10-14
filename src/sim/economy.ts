@@ -351,7 +351,8 @@ function gather(w: World, u: Unit, o: Extract<Order, { type: 'gather' }>): void 
   u.state = 'gather';
   u.repaths = 0;
   if (t.x + t.size / 2 !== u.x) u.face = t.x + t.size / 2 > u.x ? 1 : -1;
-  u.gatherAcc += economy.gatherRates[RATE_KEY[o.source as Source]] * (w.players[u.owner]?.mods.gather[o.source] ?? 1) * DT;
+  const p = w.players[u.owner];
+  u.gatherAcc += economy.gatherRates[RATE_KEY[o.source as Source]] * (p?.mods.gather[o.source] ?? 1) * (p?.gatherBonus ?? 1) * DT;
   while (u.gatherAcc >= 1) {
     u.gatherAcc -= 1;
     if (!takeOne(w, o.target)) break;

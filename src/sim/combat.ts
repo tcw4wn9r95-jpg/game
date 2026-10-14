@@ -107,7 +107,7 @@ function centre(t: Unit | Building): { x: number; y: number } {
   return t.kind === 'building' ? { x: t.x + t.size / 2, y: t.y + t.size / 2 } : { x: t.x, y: t.y };
 }
 
-const hostile = (a: { owner: number }, b: Entity): b is Unit | Building => b.kind !== 'resource' && b.owner !== a.owner;
+const hostile = (w: World, a: { owner: number }, b: Entity): b is Unit | Building => b.kind !== 'resource' && w.canFight(a.owner, b.owner);
 
 /** Reach for this unit's attack (tiles, edge to edge). */
 function reach(w: World, u: Unit, o: Extract<Order, { type: 'attack' | 'heal' | 'convert' }>): number {
@@ -141,7 +141,7 @@ export function combatThink(w: World, u: Unit): boolean {
     t.kind !== 'resource' &&
     !(UNIT_DEFS[u.type].buildingsOnly && t.kind === 'unit') &&
     !(t.kind === 'unit' && t.inside) &&
-    (o.type === 'heal' ? t.kind === 'unit' && t.owner === u.owner && t.hp < unitStats(w, t.owner, t.type).hp : t.owner !== u.owner) &&
+    (o.type === 'heal' ? t.kind === 'unit' && t.owner === u.owner && t.hp < unitStats(w, t.owner, t.type).hp : w.canFight(u.owner, t.owner)) &&
     (o.type !== 'convert' || t.kind === 'unit') &&
     // Self-picked targets are dropped once out of sight; ordered ones are followed.
     (!(o.type === 'attack' && o.auto) || t.kind === 'building' || w.fog[u.owner]?.isVisible(t.x, t.y) !== false);
@@ -336,7 +336,7 @@ function acquire(w: World, u: Unit): void {
     let bb: Building | null = null;
     let bd = def.packs ? def.range : def.los + 2;
     for (const b of w.buildings()) {
-      if (b.owner === u.owner || !w.fog[u.owner]?.isExplored(b.x + b.size / 2, b.y + b.size / 2)) continue;
+      if (!w.canFight(u.owner, b.owner) || !w.fog[u.owner]?.isExplored(b.x + b.size / 2, b.y + b.size / 2)) continue;
       const d = distToRect(u.x, u.y, b.x, b.y, b.size);
       if (d < bd && canEngage(w, u, b, def.range)) (bd = d), (bb = b);
     }
@@ -347,7 +347,7 @@ function acquire(w: World, u: Unit): void {
   const radius = u.stance === 'stand' ? (def.range > 0 ? def.range + 0.5 : 1) : u.stance === 'defensive' ? Math.min(def.los, 6) : def.los;
   if (u.attackedAt >= w.tick - TICK_RATE * 2) {
     const a = w.get(u.attackedBy);
-    if (a && hostile(u, a) && a.kind === 'unit' && Math.hypot(a.x - u.x, a.y - u.y) <= radius + 2) {
+    if (a && hostile(w, u, a) && a.kind === 'unit' && Math.hypot(a.x - u.x, a.y - u.y) <= radius + 2) {
       setOrder(u, { type: 'attack', id: a.id, auto: true });
       return;
     }
@@ -357,7 +357,7 @@ function acquire(w: World, u: Unit): void {
   let bs = Infinity;
   const ship = isShip(u);
   w.spatial.query(u.x, u.y, radius, (o, d) => {
-    if (o.owner === u.owner || (fog && !fog.isVisible(o.x, o.y))) return;
+    if (!w.canFight(u.owner, o.owner) || (fog && !fog.isVisible(o.x, o.y))) return;
     if (def.minRange && d < def.minRange + 0.5) return;
     // Across the water's edge only if something can actually be done about it.
     if (isShip(o) !== ship && !canEngage(w, u, o, def.range)) return;
@@ -376,7 +376,7 @@ function acquire(w: World, u: Unit): void {
     let bb: Building | null = null;
     let bd = def.range + 0.5;
     for (const b of w.buildings()) {
-      if (b.owner === u.owner || !b.complete || !fog?.isVisible(b.x + b.size / 2, b.y + b.size / 2)) continue;
+      if (!w.canFight(u.owner, b.owner) || !b.complete || !fog?.isVisible(b.x + b.size / 2, b.y + b.size / 2)) continue;
       const d = distToRect(u.x, u.y, b.x, b.y, b.size);
       if (d < bd && (!def.minRange || d >= def.minRange)) (bd = d), (bb = b);
     }

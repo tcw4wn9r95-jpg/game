@@ -169,7 +169,26 @@ export class Hud {
     this.set('ageName', advancing ? `Advancing ${Math.floor(advancing.progress * 100)}%` : `${ages[ps.age].name} Age`);
     this.ageBar.hidden = !advancing;
     if (advancing) (this.ageBar.firstElementChild as HTMLElement).style.width = `${advancing.progress * 100}%`;
-    this.set('clock', formatClock(world.time));
+    // During the Peace Treaty the clock counts down to the end of it.
+    this.set('clock', world.peace ? `Peace ${formatClock(world.peaceUntil - world.time)}` : formatClock(world.time));
+  }
+
+  /** End of the match: Victory or Defeat, with the option to keep watching. */
+  endScreen(won: boolean, time: number): void {
+    const bg = el('div', 'panel-backdrop');
+    bg.innerHTML = `
+      <div class="panel frame end-panel ${won ? 'won' : 'lost'}">
+        <h2 class="panel-title">${won ? 'Victory' : 'Defeat'}</h2>
+        <div class="end-detail">${won ? 'Every enemy has fallen.' : 'Your realm has fallen.'} Match time ${formatClock(time)}.</div>
+        <button class="btn btn-gold" data-a="new">New Match</button>
+        <button class="btn btn-wood" data-a="watch">${won ? 'Look Around' : 'Keep Watching'}</button>
+      </div>`;
+    bg.querySelector('[data-a=watch]')!.addEventListener('click', () => bg.remove());
+    bg.querySelector('[data-a=new]')!.addEventListener('click', () => {
+      bg.remove();
+      this.onNewMatch();
+    });
+    this.root.appendChild(bg);
   }
 
   private ageBar!: HTMLElement;

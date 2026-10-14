@@ -29,6 +29,14 @@ import { type GameMap, Terrain } from './terrain';
 
 export { DT, RESOURCE_KINDS, TICK_MS, TICK_RATE, type ResourceKind } from './constants';
 
+/** Losing all of these (and every soldier) loses the match. */
+const CONQUEST_BUILDINGS = new Set<BuildingType>(['town_center', 'castle', 'dock']);
+
+/** 1v1: two teams; 1v2: the human alone against two; 2v2: slots 0-1 against 2-3. */
+export function defaultTeams(players: number): number[] {
+  return players === 2 ? [0, 1] : players === 3 ? [0, 1, 1] : [0, 0, 1, 1];
+}
+
 /** Path searches run per tick; the rest wait for the next tick (keeps ticks bounded). */
 const PATHS_PER_TICK = 32;
 
@@ -48,6 +56,12 @@ export interface PlayerState {
   mods: PlayerMods;
   /** Market prices (gold per 100) for buying each commodity. */
   market: { food: number; wood: number; stone: number };
+  /** Team (allies share vision and never fight). */
+  team: number;
+  /** Gather-rate multiplier (the Hard AI's disclosed bonus). */
+  gatherBonus: number;
+  /** Out of the match: lost every Town Center, Castle, Dock and soldier. */
+  defeated: boolean;
 }
 
 export type SimEvent =
@@ -62,7 +76,10 @@ export type SimEvent =
   | { type: 'converted'; owner: number; from: number; id: number; x: number; y: number }
   | { type: 'researched'; owner: number; tech: TechId }
   /** Stone, boulder or powder blast landing (dust and debris). */
-  | { type: 'blast'; x: number; y: number; size: number; owner?: number };
+  | { type: 'blast'; x: number; y: number; size: number; owner?: number }
+  | { type: 'defeated'; owner: number }
+  /** The match is over: this team won. */
+  | { type: 'victory'; owner: number; team: number };
 
 /** Game state, advanced only by step(); input and AI both act through issue(). */
 export class World {
@@ -82,6 +99,10 @@ export class World {
   readonly spatial: SpatialHash;
   /** Arrows and javelins in flight. */
   projectiles: Projectile[] = [];
+  /** Peace Treaty: until this match time (seconds) nobody can attack. */
+  peaceUntil = 0;
+  /** Winning team once the match is decided. */
+  winner: number | null = null;
   nextProjectileId = 1;
   private nextId = 1;
   private pending: Array<{ player: number; cmd: Command }> = [];
@@ -90,14 +111,14 @@ export class World {
 
   constructor(
     readonly map: GameMap,
-    opts: { spawnStarts?: boolean } = {},
+    opts: { spawnStarts?: boolean; teams?: number[] } = {},
   ) {
     this.rng = new Rng(map.seed ^ 0x9e3779b9);
     this.grid = new NavGrid(map);
     this.paths = new Pathfinder(this.grid);
     this.spatial = new SpatialHash(map.size);
     this.popLimit = mapsData.sizes[map.sizeName].popCap;
-    this.players = map.starts.map(() => ({
+    this.players = map.starts.map((_, i) => ({
       resources: { ...economy.startResources },
       gathered: { food: 0, wood: 0, gold: 0, stone: 0 },
       pop: 0,
@@ -107,6 +128,9 @@ export class World {
       techs: [],
       mods: baseMods(),
       market: { food: 100, wood: 100, stone: 130 },
+      team: opts.teams?.[i] ?? defaultTeams(map.starts.length)[i],
+      gatherBonus: 1,
+      defeated: false,
     }));
     this.fog = map.starts.map((s) => {
       const fog = new Fog(map.size);
@@ -117,6 +141,20 @@ export class World {
     if (opts.spawnStarts !== false) map.starts.forEach((s, p) => this.spawnStart(p, s.x, s.y));
     this.updatePopulation();
     this.updateVision();
+  }
+
+  /** Players on opposing teams. */
+  isEnemy(a: number, b: number): boolean {
+    return a !== b && a >= 0 && b >= 0 && this.players[a]?.team !== this.players[b]?.team;
+  }
+
+  /** Enemies who may fight now (not during the Peace Treaty). */
+  canFight(a: number, b: number): boolean {
+    return this.isEnemy(a, b) && this.time >= this.peaceUntil;
+  }
+
+  get peace(): boolean {
+    return this.time < this.peaceUntil;
   }
 
   /** Match time in seconds. */
@@ -327,7 +365,11 @@ export class World {
       if (!u || !u.pathPending) continue;
       u.pathPending = false;
       const goal = goalFor(this, u);
-      if (!goal) continue;
+      if (!goal) {
+        // Nowhere to go (an unreachable spot, a vanished target): give the order up rather than walk on the spot.
+        if (u.order?.type === 'move') unreachable(this, u);
+        continue;
+      }
       done++;
       let sx = Math.floor(u.x), sy = Math.floor(u.y);
       const nav = navOf(u);
@@ -368,7 +410,38 @@ export class World {
     productionTick(this);
     this.updatePopulation();
     if (this.tick % 2 === 0) this.updateVision();
+    if (this.tick % TICK_RATE === 0) this.checkConquest();
     this.tick++;
+  }
+
+  /** A player concedes: out of the match at once (the AI does when beaten; so can the human). */
+  resign(player: number): void {
+    const p = this.players[player];
+    if (!p || p.defeated) return;
+    p.defeated = true;
+    this.events.push({ type: 'defeated', owner: player });
+    this.checkConquest();
+  }
+
+  /**
+   * Conquest: a side with no Town Center, Castle or Dock and no soldiers or
+   * warships left is out; when only one team remains, it has won.
+   */
+  private checkConquest(): void {
+    if (this.winner !== null) return;
+    const alive = this.players.map(() => false);
+    for (const b of this.buildings()) if (CONQUEST_BUILDINGS.has(b.type) && b.complete) alive[b.owner] = true;
+    for (const u of this.units()) if (!UNIT_DEFS[u.type].gatherer) alive[u.owner] = true;
+    this.players.forEach((p, i) => {
+      if (p.defeated || alive[i]) return;
+      p.defeated = true;
+      this.events.push({ type: 'defeated', owner: i });
+    });
+    const teams = new Set(this.players.filter((p) => !p.defeated).map((p) => p.team));
+    if (teams.size <= 1) {
+      this.winner = [...teams][0] ?? -1;
+      this.events.push({ type: 'victory', owner: this.players.findIndex((p) => p.team === this.winner), team: this.winner });
+    }
   }
 
   drainEvents(): SimEvent[] {
@@ -390,6 +463,7 @@ export class World {
     for (const u of this.field()) sources[u.owner]?.push({ x: u.x, y: u.y, r: unitStats(this, u.owner, u.type).los });
     for (const b of this.buildings())
       sources[b.owner]?.push({ x: b.x + b.size / 2, y: b.y + b.size / 2, r: BUILDING_DEFS[b.type].los + b.size / 2 + (this.players[b.owner]?.mods.building.los ?? 0) });
-    this.fog.forEach((f, i) => f.update(sources[i]));
+    // Allies see what each other sees.
+    this.fog.forEach((f, i) => f.update(this.players.flatMap((p, j) => (p.team === this.players[i].team ? sources[j] : []))));
   }
 }
