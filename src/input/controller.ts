@@ -1,7 +1,8 @@
 // Turns gestures into selection changes and player commands.
 import type { Camera } from '../render/camera';
 import type { Effect } from '../render/renderer';
-import { isGatherer, sourceOf } from '../sim/economy';
+import { canBuild, isGatherer, sourceOf } from '../sim/economy';
+import { WATER } from '../sim/grid';
 import { BUILDING_DEFS, type Building, type BuildingType, type Entity, type GatherTarget, UNIT_DEFS, type Unit } from '../sim/entities';
 import { UNIT_K, unitHeight } from '../render/unitSprites';
 import { ZK } from '../render/iso3d';
@@ -135,6 +136,16 @@ export class Controller {
       this.ring(p.x, p.y, '#ff6a50');
       return;
     }
+    // A loaded transport and a tap on land: sail there and put them ashore.
+    const transports = units.filter((u) => UNIT_DEFS[u.type].naval && UNIT_DEFS[u.type].cargo);
+    if (transports.length && transports.length === units.length && transports.some((u) => u.cargo.length) && !(pick.kind === 'entity' && pick.e.kind === 'unit')) {
+      const tx = Math.floor(t.x), ty = Math.floor(t.y);
+      if (this.world.grid.isWalkable(tx, ty, me) || (pick.kind === 'entity' && pick.e.kind === 'building' && !BUILDING_DEFS[pick.e.type].naval)) {
+        this.issue({ type: 'unload', ids: transports.map((u) => u.id), x: t.x, y: t.y });
+        this.ring(t.x, t.y, '#9cc8ff');
+        return;
+      }
+    }
     if (pick.kind === 'entity' && pick.e.kind === 'unit' && pick.e.owner === me) {
       const t = pick.e;
       // Infantry tapping one of your rams or siege towers climb aboard.
@@ -154,8 +165,9 @@ export class Controller {
     }
     if (pick.kind === 'entity' && pick.e.kind === 'building' && pick.e.owner === me) {
       const b = pick.e;
-      const farmers = units.filter(isGatherer);
-      if (b.type === 'farm' && b.complete && farmers.length) {
+      // Villagers farm fields; fishing ships work fish traps.
+      const farmers = units.filter((u) => isGatherer(u) && !!UNIT_DEFS[u.type].naval === !!BUILDING_DEFS[b.type].naval);
+      if ((b.type === 'farm' || b.type === 'fish_trap') && b.complete && farmers.length) {
         this.issue({ type: 'gather', ids: farmers.map((u) => u.id), target: { kind: 'entity', id: b.id } });
         this.ring(b.x + b.size / 2, b.y + b.size / 2, '#ffe28a');
         return;
@@ -163,7 +175,7 @@ export class Controller {
       // Villagers act on it only if there is work there: build or repair it, or unload what they carry.
       const accepts = (BUILDING_DEFS[b.type].dropoff as string[]);
       const damaged = b.complete && b.hp < buildingMaxHp(this.world, b) - 0.5;
-      const helpers = units.filter((u) => (isGatherer(u) && (!b.complete || damaged)) || (b.complete && u.carry && accepts.includes(u.carry.res)));
+      const helpers = units.filter((u) => (canBuild(u, b.type) && (!b.complete || damaged)) || (b.complete && u.carry && accepts.includes(u.carry.res)));
       if (helpers.length) {
         this.issue({ type: 'help', ids: helpers.map((u) => u.id), id: b.id });
         this.ring(b.x + b.size / 2, b.y + b.size / 2, '#ffe28a');
@@ -172,7 +184,8 @@ export class Controller {
       // With units selected, a tap on the ground beside (or visually behind) a building moves them there;
       // only a tap on the building's own footprint picks the building.
       const onFootprint = t.x >= b.x && t.x <= b.x + b.size && t.y >= b.y && t.y <= b.y + b.size;
-      if (units.length && !onFootprint && this.world.grid.isWalkable(Math.floor(t.x), Math.floor(t.y), me)) {
+      const nav = units.every((u) => UNIT_DEFS[u.type].naval) ? WATER : me;
+      if (units.length && !onFootprint && this.world.grid.isWalkable(Math.floor(t.x), Math.floor(t.y), nav)) {
         this.issue({ type: 'move', ids: units.map((u) => u.id), x: t.x, y: t.y });
         this.ring(t.x, t.y, '#9cf59a');
         return;
@@ -343,7 +356,9 @@ export class Controller {
       if (e.owner !== this.host.player && !fog.isVisible(e.x, e.y)) continue;
       const p = camera.tileToScreen(e.x, e.y);
       const h = Math.max(unitHeight(e.type) * UNIT_K * Z, 26);
-      if (Math.abs(sx - p.x) > tolX || sy < p.y - h - 8 || sy > p.y + 12) continue;
+      // Ships are long: a wider target.
+      const tx = UNIT_DEFS[e.type].naval ? Math.max(tolX, (e.type === 'demolition_raft' ? 0.8 : 1.2) * Z) : tolX;
+      if (Math.abs(sx - p.x) > tx || sy < p.y - h - 8 || sy > p.y + 12) continue;
       // Own units win ties so a crowd can always be tapped into.
       const d = Math.hypot(sx - p.x, sy - (p.y - h / 2)) / Z - (e.owner === this.host.player ? 0.2 : 0);
       if (d < bd) (bd = d), (best = e);
@@ -362,7 +377,7 @@ export class Controller {
       const inside = t.x >= b.x && t.x <= b.x + b.size && t.y >= b.y && t.y <= b.y + b.size;
       const left = camera.tileToScreen(b.x, b.y + b.size).x, right = camera.tileToScreen(b.x + b.size, b.y).x;
       const top = camera.tileToScreen(b.x, b.y).y, mid = camera.tileToScreen(b.x + b.size, b.y).y;
-      const flat = b.type === 'farm';
+      const flat = !!BUILDING_DEFS[b.type].walkable;
       const above = !flat && sx >= left && sx <= right && sy <= mid && sy >= top - b.size * Z * 1.4 * ZK;
       if (!inside && !above) continue;
       // Prefer the building nearest the viewer (larger x+y) when sprites overlap.
@@ -402,7 +417,7 @@ export class Controller {
   private gatherTarget(p: Pick): GatherTarget | null {
     let t: GatherTarget | null = null;
     if (p.kind === 'tile') t = { kind: 'tile', x: p.x, y: p.y };
-    else if (p.kind === 'entity' && (p.e.kind === 'resource' || (p.e.kind === 'building' && p.e.type === 'farm' && p.e.owner === this.host.player)))
+    else if (p.kind === 'entity' && (p.e.kind === 'resource' || (p.e.kind === 'building' && (p.e.type === 'farm' || p.e.type === 'fish_trap') && p.e.owner === this.host.player)))
       t = { kind: 'entity', id: p.e.id };
     return t && sourceOf(this.world, t) ? t : null;
   }

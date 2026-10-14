@@ -22,11 +22,12 @@ import {
 } from './figures';
 import { drawMangonel, drawRam, drawScorpion, drawSiegeTower, drawTrebuchet } from './siegeFigures';
 import { grade } from './materials';
+import { SHIP_TYPES, type ShipType, shipPortrait, shipSprite } from './shipFigures';
 import { PLAYER_COLORS } from './palette';
 import type { Sprite } from './sprites';
 
 /** Per-type size (tiles per 100 figure units) and drawing bounds in figure units. */
-const DEFS: Record<UnitType, { tilesPer100: number; x0: number; x1: number; y0: number; y1: number; draw: (g: CanvasRenderingContext2D, f: FigureSpec) => void }> = {
+const DEFS: Record<Exclude<UnitType, ShipType>, { tilesPer100: number; x0: number; x1: number; y0: number; y1: number; draw: (g: CanvasRenderingContext2D, f: FigureSpec) => void }> = {
   villager: { tilesPer100: 0.82, x0: -45, x1: 45, y0: -150, y1: 12, draw: drawVillager },
   scout: { tilesPer100: 1.2, x0: -60, x1: 70, y0: -150, y1: 12, draw: drawScout },
   militia: { tilesPer100: 0.86, x0: -50, x1: 50, y0: -160, y1: 12, draw: drawMilitia },
@@ -51,7 +52,13 @@ export const UNIT_K = 1.05;
 
 /** Height of a unit's figure in tiles (before UNIT_K), for hit-testing taps. */
 export const unitHeight = (type: UnitType) =>
-  type === 'siege_tower' ? 2 : type === 'trebuchet' ? 1.6 : type === 'scout' || type === 'knight' ? 1.3 : type === 'ram' || type === 'mangonel' ? 0.95 : type === 'scorpion' ? 0.7 : type === 'villager' ? 0.85 : 0.9;
+  isShipType(type)
+    ? type === 'demolition_raft'
+      ? 0.6
+      : type === 'fishing_ship'
+        ? 1.4
+        : 1.9
+    : type === 'siege_tower' ? 2 : type === 'trebuchet' ? 1.6 : type === 'scout' || type === 'knight' ? 1.3 : type === 'ram' || type === 'mangonel' ? 0.95 : type === 'scorpion' ? 0.7 : type === 'villager' ? 0.85 : 0.9;
 
 /** Eight preset looks so crowds vary; picked by unit id. */
 const LOOKS: Look[] = Array.from({ length: 8 }, (_, i) => ({
@@ -63,9 +70,26 @@ const LOOKS: Look[] = Array.from({ length: 8 }, (_, i) => ({
 export const lookIndex = (id: number) => (id * 2654435761) >>> 29;
 
 /** The tech that upgrades each unit line (and changes its kit). */
-export const UPGRADE_TECH: Partial<Record<UnitType, string>> = { militia: 'swordsman', spearman: 'pikeman', archer: 'crossbowman', scout: 'light_cavalry', ram: 'capped_ram', mangonel: 'onager' };
+export const UPGRADE_TECH: Partial<Record<UnitType, string>> = {
+  militia: 'swordsman',
+  spearman: 'pikeman',
+  archer: 'crossbowman',
+  scout: 'light_cavalry',
+  ram: 'capped_ram',
+  mangonel: 'onager',
+  galley: 'war_galley',
+};
+
+/** Ships are drawn larger than their footprint in the simulation, as in AoE, so they read at sea. */
+const SHIP_K = 1.5;
+
+const isShipType = (t: UnitType): t is ShipType => (SHIP_TYPES as string[]).includes(t);
 
 export interface UnitPose {
+  /** Ships: heading 0-7. */
+  dir?: number;
+  /** Ships: firing. */
+  attack?: boolean;
   view: View;
   /** Side view facing left. */
   left: boolean;
@@ -83,10 +107,20 @@ export class UnitSprites {
   constructor(readonly s: number) {}
 
   get(type: UnitType, player: number, look: number, p: UnitPose, elite = false): Sprite {
+    if (isShipType(type)) {
+      const work = p.anim === 'work' && !p.attack;
+      const key = `${type}|${player}|${p.dir ?? 1}|${p.frame % 4}|${work ? 1 : 0}|${p.attack ? 1 : 0}|${elite ? 1 : 0}`;
+      let sp = this.cache.get(key);
+      if (!sp) {
+        sp = shipSprite(type, (this.s / UNIT_K) * SHIP_K, PLAYER_COLORS[player % PLAYER_COLORS.length], { dir: p.dir ?? 1, frame: p.frame % 4, work, attack: !!p.attack, elite });
+        this.cache.set(key, sp);
+      }
+      return sp;
+    }
     const key = `${type}|${player}|${look}|${p.view}|${p.left ? 1 : 0}|${p.anim}|${p.frame}|${p.tool}|${p.carry ?? ''}|${elite ? 1 : 0}|${p.packed === false ? 0 : 1}`;
     let sp = this.cache.get(key);
     if (!sp) {
-      sp = this.render(type, player, look, p, elite);
+      sp = this.render(type as Exclude<UnitType, ShipType>, player, look, p, elite);
       this.cache.set(key, sp);
     }
     return sp;
@@ -94,6 +128,7 @@ export class UnitSprites {
 
   /** A large head-and-shoulders render for the HUD portrait. */
   portrait(type: UnitType, player: number, look: number, px: number): HTMLCanvasElement {
+    if (isShipType(type)) return shipPortrait(type, px, PLAYER_COLORS[player % PLAYER_COLORS.length]);
     const d = DEFS[type];
     const c = document.createElement('canvas');
     c.width = c.height = px;
@@ -120,7 +155,7 @@ export class UnitSprites {
     return { view: p.view, anim: p.anim, frame: p.frame, tool: p.tool, carry: p.carry, team: PLAYER_COLORS[player % PLAYER_COLORS.length], look: LOOKS[look % LOOKS.length], elite, packed: p.packed };
   }
 
-  private render(type: UnitType, player: number, look: number, p: UnitPose, elite: boolean): Sprite {
+  private render(type: Exclude<UnitType, ShipType>, player: number, look: number, p: UnitPose, elite: boolean): Sprite {
     const d = DEFS[type];
     const k = (this.s * d.tilesPer100) / 100; // device px per figure unit
     const c = document.createElement('canvas');

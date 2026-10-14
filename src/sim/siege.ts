@@ -4,12 +4,15 @@
 // including unloading over an enemy wall.
 import { TICK_RATE } from './constants';
 import { setOrder } from './economy';
-import { BUILDING_DEFS, type Building, UNIT_DEFS, type Unit, distToRect } from './entities';
+import { BUILDING_DEFS, type Building, UNIT_DEFS, type Unit, distToRect, isShip, navOf } from './entities';
+import { landRegion } from './naval';
 import { unitStats } from './techs';
 import type { World } from './world';
 
 /** Seconds to pack or unpack a trebuchet. */
 export const PACK_S = 5;
+/** Land units step aboard a transport from this far away (centre to centre, tiles). */
+const BOARD_REACH = 2.4;
 /** Each rider makes a ram this much faster. */
 const RIDER_SPEED = 0.1;
 
@@ -59,7 +62,8 @@ export function backOff(w: World, u: Unit, x: number, y: number, minRange: numbe
   const d = Math.hypot(u.x - x, u.y - y) || 1;
   const want = minRange + 1;
   const tx = x + ((u.x - x) / d) * want, ty = y + ((u.y - y) / d) * want;
-  const spot = w.grid.nearestWalkable(tx, ty, w.grid.component(Math.floor(u.x), Math.floor(u.y), u.owner), 4, u.owner);
+  const nav = navOf(u);
+  const spot = w.grid.nearestWalkable(tx, ty, w.grid.component(Math.floor(u.x), Math.floor(u.y), nav), 4, nav);
   if (!spot) return;
   u.path = [{ x: spot.x + 0.5, y: spot.y + 0.5 }];
   u.pathIdx = 0;
@@ -123,6 +127,8 @@ export function boltVictims(w: World, sx: number, sy: number, tx: number, ty: nu
 export function canBoard(carrier: Unit, u: Unit): boolean {
   const cap = UNIT_DEFS[carrier.type].cargo ?? 0;
   if (!cap || carrier.owner !== u.owner || carrier.id === u.id || carrier.cargo.length >= cap) return false;
+  // Transports take anyone who walks.
+  if (isShip(carrier)) return !isShip(u);
   const cls = UNIT_DEFS[u.type].classes;
   if (cls.includes('siege') || cls.includes('cavalry') || UNIT_DEFS[u.type].gatherer) return false;
   // Rams take infantry; siege towers infantry and archers.
@@ -140,14 +146,27 @@ export function carryRiders(w: World): void {
   }
 }
 
-export function boardThink(u: Unit, carrier: Unit, walk: () => void): void {
+export function boardThink(w: World, u: Unit, carrier: Unit, walk: () => void): void {
   if (!canBoard(carrier, u)) {
     setOrder(u, null);
     u.state = 'idle';
     return;
   }
   const d = Math.hypot(carrier.x - u.x, carrier.y - u.y);
-  if (d > UNIT_DEFS[carrier.type].radius + 0.9) {
+  if (isShip(carrier)) {
+    // Step aboard over the gunwale from the shore.
+    if (d > BOARD_REACH) {
+      // On the shore where it comes in, and the boat isn't there yet: wait for it.
+      const at = carrier.ferry?.pickup ?? carrier;
+      const spot = w.grid.nearestWalkable(at.x, at.y, w.grid.component(Math.floor(u.x), Math.floor(u.y), u.owner), 5, u.owner);
+      if (spot && !u.path && Math.hypot(spot.x + 0.5 - u.x, spot.y + 0.5 - u.y) < 1.6) {
+        u.state = 'idle';
+        u.repaths = 0;
+        return;
+      }
+      return walk();
+    }
+  } else if (d > UNIT_DEFS[carrier.type].radius + 0.9) {
     // Close by: climb straight in rather than path to a neighbouring tile.
     if (d < 3) {
       u.state = 'walk';
@@ -169,9 +188,11 @@ export function boardThink(u: Unit, carrier: Unit, walk: () => void): void {
  * Lets the riders out. A siege tower beside an enemy wall puts them down on
  * the far side of it; otherwise they step out around the vehicle.
  */
-export function unload(w: World, carrier: Unit): void {
+export function unload(w: World, carrier: Unit, shore?: { x: number; y: number }): void {
   if (!carrier.cargo.length) return;
   let land: { x: number; y: number } | null = null;
+  // Ships put their riders ashore on the side they were headed for.
+  const region = shore && isShip(carrier) ? landRegion(w, shore.x, shore.y, carrier.owner) : -1;
   if (carrier.type === 'siege_tower') {
     const wall = enemyWallBeside(w, carrier);
     if (wall) {
@@ -191,7 +212,7 @@ export function unload(w: World, carrier: Unit): void {
     const from = land ?? { x: carrier.x, y: carrier.y };
     const spot = land
       ? w.grid.nearestWalkable(from.x + 0.5, from.y + 0.5, w.grid.component(from.x, from.y), 3)
-      : w.grid.nearestWalkable(from.x, from.y, -1, 4, r.owner);
+      : (region >= 0 ? w.grid.nearestWalkable(from.x, from.y, region, 6, r.owner) : null) ?? w.grid.nearestWalkable(from.x, from.y, -1, isShip(carrier) ? 6 : 4, r.owner);
     if (spot) {
       r.x = r.px = spot.x + 0.5 + (w.rng.next() - 0.5) * 0.5;
       r.y = r.py = spot.y + 0.5 + (w.rng.next() - 0.5) * 0.5;

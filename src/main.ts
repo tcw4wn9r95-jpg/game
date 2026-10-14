@@ -102,6 +102,10 @@ function boot(): void {
     });
   }
 
+  if (params.has('ships')) {
+    void import('./ui/spriteSheet').then((m) => m.drawShipSheet(view, Number(params.get('ships')) || 1.6));
+    return;
+  }
   if (params.has('buildings')) {
     void import('./ui/spriteSheet').then((m) => m.drawBuildingSheet(view, Number(params.get('buildings')) || 48));
     return;

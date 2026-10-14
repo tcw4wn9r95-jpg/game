@@ -1,6 +1,7 @@
 import buildings from '../data/buildings.json';
 import units from '../data/units.json';
 import type { ResourceKind } from './constants';
+import { WATER } from './grid';
 
 export type UnitType = keyof typeof units;
 export type BuildingType = keyof typeof buildings;
@@ -56,9 +57,32 @@ export interface UnitDef {
   /** Extra flat damage against buildings (Sappers), and a multiplier on it (Siege Engineers). */
   buildingAttack?: number;
   buildingMult?: number;
+  /** Sails on deep water (ships). */
+  naval?: boolean;
+  /** Load carried before returning to a drop-off (fishing ships), instead of the villager amount. */
+  carry?: number;
 }
 
-export type UnitClass = 'villager' | 'infantry' | 'spear' | 'archer' | 'skirmisher' | 'cavalry' | 'siege' | 'monk' | 'building' | 'wall' | 'tower' | 'castle' | 'ram';
+export type UnitClass =
+  | 'villager'
+  | 'infantry'
+  | 'spear'
+  | 'archer'
+  | 'skirmisher'
+  | 'cavalry'
+  | 'siege'
+  | 'monk'
+  | 'building'
+  | 'wall'
+  | 'tower'
+  | 'castle'
+  | 'ram'
+  | 'ship'
+  | 'galley'
+  | 'fireship'
+  | 'raft'
+  | 'barge'
+  | 'transport';
 
 /** aggressive: chase anything seen; defensive: chase a short way then return; stand: hold position; passive: never attack. */
 export type Stance = 'aggressive' | 'defensive' | 'stand' | 'passive';
@@ -97,6 +121,10 @@ export interface BuildingDef {
   attack?: { attack: number; range: number; reload: number; arrows: number; minRange: number };
   /** How many units fit inside. */
   garrison?: number;
+  /** Stands on deep water and is built by ships (fish traps). */
+  naval?: boolean;
+  /** Stands on the shore with water beside it (docks). */
+  shore?: boolean;
 }
 
 export const UNIT_DEFS = units as unknown as Record<UnitType, UnitDef>;
@@ -120,7 +148,9 @@ export type Order =
   /** Bombard a spot on the ground. */
   | { type: 'attackGround'; x: number; y: number }
   /** Restore a damaged building, paying half its cost per HP. */
-  | { type: 'repair'; id: number };
+  | { type: 'repair'; id: number }
+  /** Transports: sail to the shore by this point and let everyone off. */
+  | { type: 'unload'; x: number; y: number; at?: { x: number; y: number } };
 
 export interface Unit {
   id: number;
@@ -171,7 +201,21 @@ export interface Unit {
   attackedAt: number;
   /** Monk conversion progress, 0..1. */
   faith: number;
+  /** Transports ferrying a group: who is coming aboard, where they board, and where they are going. */
+  ferry: Ferry | null;
 }
+
+export interface Ferry {
+  riders: number[];
+  /** Water tile by the shore where the riders board. */
+  pickup: { x: number; y: number };
+  /** Where the riders were ordered to go (null: just take them aboard). */
+  dest: { x: number; y: number } | null;
+}
+
+/** Navigation layer a unit moves on: ships the water, everyone else their own side's land. */
+export const navOf = (u: Unit): number => (UNIT_DEFS[u.type].naval ? WATER : u.owner);
+export const isShip = (u: { type: UnitType }): boolean => !!UNIT_DEFS[u.type].naval;
 
 /** A unit's handle on a group flow field and its own destination slot. */
 export interface FlowRef {
@@ -228,6 +272,8 @@ export interface QueueItem {
   unit?: UnitType;
   tech?: import('./techs').TechId;
   progress: number;
+  /** What was paid (refunded on cancel). */
+  cost?: Partial<Record<ResourceKind, number>>;
 }
 
 /** Distance from a point to a building footprint (0 inside). */

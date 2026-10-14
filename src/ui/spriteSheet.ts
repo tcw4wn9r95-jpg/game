@@ -4,6 +4,7 @@ import type { Tool } from '../render/figures';
 import type { UnitType } from '../sim/entities';
 import { BuildingSprites } from '../render/buildingSprites';
 import { UnitSprites } from '../render/unitSprites';
+import { shipSprite } from '../render/shipFigures';
 
 export function drawSpriteSheet(view: View, zoom = 4): void {
   const { ctx } = view;
@@ -95,4 +96,21 @@ export function drawBuildingSheet(view: View, z = 48): void {
     x += sp.c.width;
     rowH = Math.max(rowH, sp.c.height);
   }
+}
+
+/** Debug view (?ships): every ship at all eight headings on a water background. */
+export function drawShipSheet(view: View, zoom = 1.6): void {
+  const { ctx } = view;
+  const s = Math.round(32 * zoom * view.dpr);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#2b6aa3';
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  const types = ['fishing_ship', 'transport_ship', 'galley', 'fire_ship', 'demolition_raft', 'siege_barge'] as const;
+  const cw = s * 2.2, ch = s * 2.6;
+  types.forEach((t, row) =>
+    [0, 1, 2, 3, 4, 5, 6, 7].forEach((dir, col) => {
+      const sp = shipSprite(t, s, '#2f6fe0', { dir, frame: col % 4, work: t === 'fishing_ship' && col === 7, attack: col === 6, elite: false });
+      ctx.drawImage(sp.c, (col + 0.6) * cw - sp.ax, (row + 0.75) * ch * 0.62 + s * 0.8 - sp.ay);
+    }),
+  );
 }

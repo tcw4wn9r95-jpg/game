@@ -21,7 +21,9 @@ const TABS: Array<{ key: string; name: string; icon: string; types: BuildingType
   { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'farm', 'mill', 'lumber_camp', 'mining_camp', 'market'] },
   { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks', 'archery_range', 'stable', 'blacksmith', 'monastery', 'university', 'siege_workshop'] },
   { key: 'defense', name: 'Defense', icon: ICONS.meleeArmor, types: ['palisade_wall', 'palisade_gate', 'stone_wall', 'gate', 'watch_tower', 'castle'] },
-  { key: 'naval', name: 'Naval', icon: ICONS.ship, types: [] },
+  { key: 'naval', name: 'Naval', icon: ICONS.ship, types: ['dock'] },
+  // Fishing ships' own short list.
+  { key: 'water', name: 'Water', icon: ICONS.fish_trap, types: ['fish_trap'] },
 ];
 
 interface Cmd {
@@ -90,6 +92,8 @@ function status(w: World, u: Unit): string {
       const b = w.building(o.id);
       return `${u.state === 'repair' ? 'Repairing' : 'Going to repair'} ${b ? BUILDING_DEFS[b.type].name : ''}`;
     }
+    case 'unload':
+      return 'Sailing to land troops';
   }
 }
 
@@ -186,8 +190,11 @@ export class CommandCenter {
     }
     const own = ctl.ownUnits();
     const villagers = own.some(isGatherer);
+    // Villagers raise buildings on land; fishing ships only fish traps.
+    const fishers = own.some((u) => isGatherer(u) && UNIT_DEFS[u.type].naval);
+    const landBuilders = own.some((u) => isGatherer(u) && !UNIT_DEFS[u.type].naval);
     const res = this.world.players[this.player].resources;
-    if (this.tab && villagers) {
+    if (this.tab && (landBuilders || fishers)) {
       const tab = TABS.find((t) => t.key === this.tab)!;
       const age = this.world.players[this.player].age;
       const actions: Cmd[] = tab.types.map((type) => {
@@ -216,8 +223,17 @@ export class CommandCenter {
     const building = this.ownBuilding();
     if (building) return this.buildingCommands(building);
     const slots: Array<Cmd | null> = [];
-    if (villagers) {
-      for (const t of TABS.slice(0, 3))
+    if (fishers && !landBuilders) {
+      const t = TABS.find((x) => x.key === 'water')!;
+      slots.push({
+        icon: ICON.fish_trap,
+        label: 'Build Fish Trap',
+        run: () => ((this.tab = t.key), (this.page = 0)),
+        tip: () => tipHtml('Build', 'Fish Traps: renewable food in deep water, worked by a fishing ship.'),
+      });
+    }
+    if (landBuilders) {
+      for (const t of TABS.slice(0, 4))
         slots.push({
           icon: t.icon,
           label: `Build ${t.name}`,
@@ -227,6 +243,8 @@ export class CommandCenter {
         });
     }
     if (own.length) slots.push({ icon: ICONS.stop, label: 'Stop', run: () => ctl.stop(), tip: () => tipHtml('Stop', 'Abandon the current task.') });
+    // Four build tabs leave no room for Delete: Stop and Deselect matter more for villagers.
+    if (landBuilders) return [...slots.slice(0, 5), { icon: ICONS.close, label: 'Deselect', run: () => ctl.deselect() }];
     const soldiers = own.filter((u) => !isGatherer(u));
     if (soldiers.length && !villagers) {
       // One button cycles the stance; its icon shows the current one.
@@ -267,6 +285,7 @@ export class CommandCenter {
         tip: () => tipHtml(trebs[0].packed ? 'Unpack' : 'Pack', 'Trebuchets must unpack to fire and pack to move (5 seconds each). They do it themselves when ordered to attack or move.'),
       });
     const carriers = soldiers.filter((u) => u.cargo.length);
+    const ships = carriers.some((u) => UNIT_DEFS[u.type].naval);
     if (carriers.length && slots.length < 4)
       slots.push({
         icon: ICONS.ungarrison,
@@ -274,7 +293,10 @@ export class CommandCenter {
         run: () => {
           for (const c of carriers) ctl.command({ type: 'ungarrison', id: c.id });
         },
-        tip: () => tipHtml('Unload', 'Let the riders out. A siege tower next to an enemy wall puts them down on the far side.'),
+        tip: () =>
+          ships
+            ? tipHtml('Unload', 'Land everyone on the nearest shore. Or tap a point on land to sail there and land them by it.')
+            : tipHtml('Unload', 'Let the riders out. A siege tower next to an enemy wall puts them down on the far side.'),
       });
     while (slots.length < 4) slots.push(null);
     slots.push(own.length ? this.deleteCmd() : null);

@@ -10,16 +10,19 @@ import {
   UNIT_DEFS,
   type Unit,
   distToRect,
+  isShip,
+  navOf,
 } from './entities';
 import { garrisonThink, repairThink } from './fortify';
 import { unitStats } from './techs';
 import { boardThink, readyToMove } from './siege';
+import { ferryThink, landingGoal, unloadThink } from './naval';
 import type { Goal } from './pathfinding';
 import { Feature } from './terrain';
 import type { World } from './world';
 
-/** Carry capacity for a player's villagers (Wheelbarrow and Hand Cart add to it). */
-const capacity = (w: World, owner: number) => economy.carryCapacity + (w.players[owner]?.mods.carry ?? 0);
+/** Carry capacity: villagers' grows with Wheelbarrow and Hand Cart; fishing ships hold their own amount. */
+const capacity = (w: World, u: Unit) => UNIT_DEFS[u.type].carry ?? economy.carryCapacity + (w.players[u.owner]?.mods.carry ?? 0);
 /** How close (tiles, centre to target edge) a unit must be to work a tile or building. */
 const REACH = 1.05;
 /** Reach for point targets such as animals and fish. */
@@ -28,7 +31,7 @@ const REACH_POINT = 1.5;
 const MAX_REPATHS = 4;
 
 /** Gather source names: tile features and resource entities. */
-export type Source = 'tree' | 'gold' | 'stone' | 'berries' | 'sheep' | 'deer' | 'fish' | 'farm';
+export type Source = 'tree' | 'gold' | 'stone' | 'berries' | 'sheep' | 'deer' | 'fish' | 'farm' | 'fish_trap';
 
 const FEATURE_SOURCE: Record<number, Source | undefined> = {
   [Feature.Tree]: 'tree',
@@ -47,6 +50,7 @@ export const SOURCE_RESOURCE: Record<Source, ResourceKind> = {
   deer: 'food',
   fish: 'food',
   farm: 'food',
+  fish_trap: 'food',
 };
 
 const RATE_KEY: Record<Source, keyof typeof economy.gatherRates> = {
@@ -58,6 +62,7 @@ const RATE_KEY: Record<Source, keyof typeof economy.gatherRates> = {
   deer: 'deer',
   fish: 'fish',
   farm: 'farm',
+  fish_trap: 'fishTrap',
 };
 
 /** What a drop-off building's completion sends its builders to gather. */
@@ -66,6 +71,7 @@ const CAMP_SOURCES: Partial<Record<string, Source[]>> = {
   mining_camp: ['gold', 'stone'],
   mill: ['berries'],
   farm: ['farm'],
+  dock: ['fish'],
 };
 
 interface ResolvedTarget {
@@ -78,7 +84,9 @@ interface ResolvedTarget {
   inside?: boolean;
 }
 
-const isFarm = (e: { kind: string; type?: string } | undefined): e is Building => e?.kind === 'building' && e.type === 'farm';
+/** Farms and fish traps: worked from inside, replanted or restocked when they run out. */
+const isFarm = (e: { kind: string; type?: string } | undefined): e is Building => e?.kind === 'building' && (e.type === 'farm' || e.type === 'fish_trap');
+const fieldSource = (b: Building): Source => (b.type === 'fish_trap' ? 'fish_trap' : 'farm');
 
 /** Source of a gather target, or null if it is gone or empty. */
 export function sourceOf(w: World, t: GatherTarget): Source | null {
@@ -87,7 +95,7 @@ export function sourceOf(w: World, t: GatherTarget): Source | null {
     return w.map.amount[i] > 0 ? (FEATURE_SOURCE[w.map.feature[i]] ?? null) : null;
   }
   const e = w.get(t.id);
-  if (isFarm(e)) return e.complete && e.amount > 0 ? 'farm' : null;
+  if (isFarm(e)) return e.complete && e.amount > 0 ? fieldSource(e) : null;
   return e?.kind === 'resource' && e.amount > 0 ? e.type : null;
 }
 
@@ -144,13 +152,14 @@ function takeOne(w: World, t: GatherTarget): boolean {
 /** A harvested-out farm is replanted for its wood cost if auto-reseed is on, otherwise it goes fallow and disappears. */
 function reseed(w: World, farm: Building): void {
   const p = w.players[farm.owner];
-  const def = BUILDING_DEFS.farm;
+  const def = BUILDING_DEFS[farm.type];
   const wood = def.cost.wood ?? 0;
   if (p.autoReseed && p.resources.wood >= wood) {
     p.resources.wood -= wood;
     farm.amount = (def.food ?? 0) + (w.players[farm.owner]?.mods.farmFood ?? 0);
   } else {
-    if (p.autoReseed) w.events.push({ type: 'error', owner: farm.owner, message: 'A farm ran out: not enough wood to replant' });
+    if (p.autoReseed)
+      w.events.push({ type: 'error', owner: farm.owner, message: farm.type === 'farm' ? 'A farm ran out: not enough wood to replant' : 'A fish trap ran out: not enough wood to restock' });
     w.remove(farm.id);
   }
 }
@@ -170,11 +179,12 @@ function farmTaken(w: World, farmId: number, except: Unit): boolean {
 
 /** True if some walkable tile next to (x, y) lies in the unit's region. */
 function accessible(w: World, u: Unit, x: number, y: number): boolean {
-  const region = w.grid.component(Math.floor(u.x), Math.floor(u.y), u.owner);
+  const nav = navOf(u);
+  const region = w.grid.component(Math.floor(u.x), Math.floor(u.y), nav);
   for (let dy = -1; dy <= 1; dy++)
     for (let dx = -1; dx <= 1; dx++) {
       const tx = Math.floor(x) + dx, ty = Math.floor(y) + dy;
-      if (w.grid.isWalkable(tx, ty, u.owner) && (region < 0 || w.grid.component(tx, ty, u.owner) === region)) return true;
+      if (w.grid.isWalkable(tx, ty, nav) && (region < 0 || w.grid.component(tx, ty, nav) === region)) return true;
     }
   return false;
 }
@@ -207,9 +217,9 @@ export function findResource(
         best = { kind: 'tile', x, y };
       }
   }
-  if (sources.includes('farm'))
+  if (sources.includes('farm') || sources.includes('fish_trap'))
     for (const b of w.buildings(u.owner)) {
-      if (!isFarm(b) || !b.complete || b.amount <= 0 || farmTaken(w, b.id, u)) continue;
+      if (!isFarm(b) || !sources.includes(fieldSource(b)) || !b.complete || b.amount <= 0 || farmTaken(w, b.id, u)) continue;
       if (skip?.kind === 'entity' && skip.id === b.id) continue;
       const d = Math.hypot(b.x + b.size / 2 - cx, b.y + b.size / 2 - cy);
       if (d > radius || d >= bd) continue;
@@ -227,12 +237,14 @@ export function findResource(
   return best;
 }
 
-/** Nearest complete drop-off of the unit's owner that accepts this resource. */
+/** Nearest complete drop-off of the unit's owner that accepts this resource (ships unload only at docks). */
 export function findDropoff(w: World, u: Unit, res: ResourceKind): Building | null {
   let best: Building | null = null;
   let bd = Infinity;
+  const ship = isShip(u);
   for (const b of w.buildings(u.owner)) {
     if (!b.complete || !(BUILDING_DEFS[b.type].dropoff as string[]).includes(res)) continue;
+    if (ship && !BUILDING_DEFS[b.type].shore) continue;
     const d = distToRect(u.x, u.y, b.x, b.y, b.size);
     if (d < bd) (bd = d), (best = b);
   }
@@ -265,6 +277,7 @@ function walkTo(w: World, u: Unit): void {
 // ---------- per-tick behaviour ----------
 
 export function think(w: World, u: Unit): void {
+  if (u.ferry) ferryThink(w, u);
   const o = u.order;
   if (!o) {
     u.state = 'idle';
@@ -289,13 +302,15 @@ export function think(w: World, u: Unit): void {
       return; // handled by combat
     case 'garrison': {
       const carrier = w.unit(o.id);
-      if (carrier) return boardThink(u, carrier, () => walkTo(w, u));
+      if (carrier) return boardThink(w, u, carrier, () => walkTo(w, u));
       return garrisonThink(w, u, o, inReach, () => walkTo(w, u));
     }
     case 'attackGround':
       return; // handled by combat
     case 'repair':
       return repairThink(w, u, o, inReach, () => walkTo(w, u));
+    case 'unload':
+      return unloadThink(w, u, o, () => walkTo(w, u));
     case 'gather':
       return gather(w, u, o);
     case 'dropoff':
@@ -307,7 +322,7 @@ export function think(w: World, u: Unit): void {
 
 function gather(w: World, u: Unit, o: Extract<Order, { type: 'gather' }>): void {
   if (u.carry && u.carry.res !== o.res) u.carry = null; // switching jobs drops the load
-  const cap = capacity(w, u.owner);
+  const cap = capacity(w, u);
   if (u.carry && u.carry.amount >= cap) return goDropoff(w, u, o);
 
   let t = resolve(w, o.target);
@@ -411,7 +426,7 @@ function afterBuild(w: World, u: Unit, b: Building): void {
   let next: Building | null = null;
   let bd = 10;
   for (const f of w.buildings(u.owner)) {
-    if (f.complete) continue;
+    if (f.complete || !canBuild(u, f.type)) continue;
     const d = distToRect(cx, cy, f.x, f.y, f.size);
     if (d < bd) (bd = d), (next = f);
   }
@@ -434,9 +449,10 @@ export function goalFor(w: World, u: Unit): Goal | null {
   switch (o.type) {
     case 'move': {
       let tx = Math.floor(o.x), ty = Math.floor(o.y);
-      const region = w.grid.component(Math.floor(u.x), Math.floor(u.y), u.owner);
-      if (!w.grid.isWalkable(tx, ty, u.owner) || w.grid.component(tx, ty, u.owner) !== region) {
-        const near = w.grid.nearestWalkable(o.x, o.y, region, 24, u.owner);
+      const nav = navOf(u);
+      const region = w.grid.component(Math.floor(u.x), Math.floor(u.y), nav);
+      if (!w.grid.isWalkable(tx, ty, nav) || w.grid.component(tx, ty, nav) !== region) {
+        const near = w.grid.nearestWalkable(o.x, o.y, region, 24, nav);
         if (!near) return null;
         tx = near.x;
         ty = near.y;
@@ -458,8 +474,16 @@ export function goalFor(w: World, u: Unit): Goal | null {
       if (!spot) return null;
       return { x0: spot.x, y0: spot.y, x1: spot.x, y1: spot.y, reach: 0 };
     }
+    case 'unload':
+      return landingGoal(w, u, o.x, o.y);
     case 'garrison': {
       const c = w.unit(o.id);
+      if (c && isShip(c)) {
+        // Wait on the shore where the transport comes in.
+        const at = c.ferry?.pickup ?? c;
+        const spot = w.grid.nearestWalkable(at.x, at.y, w.grid.component(Math.floor(u.x), Math.floor(u.y), u.owner), 5, u.owner);
+        return spot ? { x0: spot.x, y0: spot.y, x1: spot.x, y1: spot.y, reach: 0 } : null;
+      }
       if (c) {
         const tx = Math.floor(c.x), ty = Math.floor(c.y);
         return { x0: tx, y0: ty, x1: tx, y1: ty, reach: 1 };
@@ -539,6 +563,8 @@ export function constructionTick(w: World): void {
 
 export const isGatherer = (u: Unit) => !!UNIT_DEFS[u.type].gatherer;
 export const isBuilder = (u: Unit) => !!UNIT_DEFS[u.type].builder;
+/** Villagers raise buildings on land; fishing ships the ones on water. */
+export const canBuild = (u: Unit, type: keyof typeof BUILDING_DEFS) => isBuilder(u) && !!UNIT_DEFS[u.type].naval === !!BUILDING_DEFS[type].naval;
 
 /**
  * A tile the unit can reach from which a point is within its range: on the
@@ -550,6 +576,7 @@ function firingSpot(w: World, u: Unit, x: number, y: number, pad = 0): { x: numb
   const d = Math.hypot(u.x - x, u.y - y) || 1;
   const want = Math.max((def.minRange ?? 0) + 0.8, Math.min(d, def.range + pad - 0.7));
   const sx = x + ((u.x - x) / d) * want, sy = y + ((u.y - y) / d) * want;
-  const region = w.grid.component(Math.floor(u.x), Math.floor(u.y), u.owner);
-  return w.grid.nearestWalkable(sx, sy, region, 6, u.owner);
+  const nav = navOf(u);
+  const region = w.grid.component(Math.floor(u.x), Math.floor(u.y), nav);
+  return w.grid.nearestWalkable(sx, sy, region, 6, nav);
 }

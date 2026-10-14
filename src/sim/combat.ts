@@ -15,9 +15,12 @@ import {
   type UnitDef,
   type UnitType,
   distToRect,
+  isShip,
+  navOf,
 } from './entities';
 import { backOff, boltVictims, packTick, setPacked, splash } from './siege';
 import { buildingArmor, unitStats } from './techs';
+import { canEngage } from './naval';
 import type { World } from './world';
 
 /** Contact distance (edge to edge, tiles) for a melee blow. */
@@ -154,6 +157,8 @@ export function combatThink(w: World, u: Unit): boolean {
   const g = gap(u, target);
   const stats = unitStats(w, u.owner, u.type);
   if (g > reach(w, u, o)) {
+    // Out of reach across the water's edge: give up rather than pace the shore.
+    if (u.repaths > 3 && o.type === 'attack' && !canEngage(w, u, target, stats.range)) return endCombat(w, u);
     // Trebuchets pack up before they can move.
     if (stats.packs && !u.packed) {
       setPacked(u, true);
@@ -249,7 +254,7 @@ function chase(w: World, u: Unit, t: Unit | Building): void {
   const c = centre(t);
   const d = Math.hypot(c.x - u.x, c.y - u.y);
   // Close and in the open: run straight at it.
-  if (t.kind === 'unit' && d < 3 && clearLine(w, u.x, u.y, t.x, t.y, u.owner)) {
+  if (t.kind === 'unit' && d < 3 && clearLine(w, u.x, u.y, t.x, t.y, navOf(u))) {
     u.path = [{ x: t.x, y: t.y }];
     u.pathIdx = 0;
     return;
@@ -333,7 +338,7 @@ function acquire(w: World, u: Unit): void {
     for (const b of w.buildings()) {
       if (b.owner === u.owner || !w.fog[u.owner]?.isExplored(b.x + b.size / 2, b.y + b.size / 2)) continue;
       const d = distToRect(u.x, u.y, b.x, b.y, b.size);
-      if (d < bd) (bd = d), (bb = b);
+      if (d < bd && canEngage(w, u, b, def.range)) (bd = d), (bb = b);
     }
     if (bb) setOrder(u, { type: 'attack', id: (bb as Building).id, auto: true });
     return;
@@ -350,16 +355,33 @@ function acquire(w: World, u: Unit): void {
   const fog = w.fog[u.owner];
   let best: Unit | null = null;
   let bs = Infinity;
+  const ship = isShip(u);
   w.spatial.query(u.x, u.y, radius, (o, d) => {
     if (o.owner === u.owner || (fog && !fog.isVisible(o.x, o.y))) return;
     if (def.minRange && d < def.minRange + 0.5) return;
+    // Across the water's edge only if something can actually be done about it.
+    if (isShip(o) !== ship && !canEngage(w, u, o, def.range)) return;
     // Prefer armed enemies and those we counter; villagers last.
     const threat = UNIT_DEFS[o.type].gatherer ? 3 : 0;
     const counter = (def.bonus[UNIT_DEFS[o.type].classes[0]] ?? 1) > 1 ? -1.5 : 0;
     const score = d + threat + counter;
     if (score < bs) (bs = score), (best = o);
   });
-  if (best) setOrder(u, { type: 'attack', id: (best as Unit).id, auto: true });
+  if (best) {
+    setOrder(u, { type: 'attack', id: (best as Unit).id, auto: true });
+    return;
+  }
+  // Warships with nothing to fight bombard buildings along the shore within range.
+  if (ship && def.range >= 2) {
+    let bb: Building | null = null;
+    let bd = def.range + 0.5;
+    for (const b of w.buildings()) {
+      if (b.owner === u.owner || !b.complete || !fog?.isVisible(b.x + b.size / 2, b.y + b.size / 2)) continue;
+      const d = distToRect(u.x, u.y, b.x, b.y, b.size);
+      if (d < bd && (!def.minRange || d >= def.minRange)) (bd = d), (bb = b);
+    }
+    if (bb) setOrder(u, { type: 'attack', id: (bb as Building).id, auto: true });
+  }
 }
 
 // ---------- damage ----------

@@ -38,7 +38,9 @@ export type TechEffect =
       wallHpMult?: number;
       castleHpMult?: number;
       murderHoles?: boolean;
-    };
+      heatedShot?: boolean;
+    }
+  | { type: 'naval'; trainMult?: number; woodMult?: number };
 
 export interface TechDef {
   name: string;
@@ -78,7 +80,19 @@ export interface PlayerMods {
   /** Projectiles lead moving targets. */
   ballistics: boolean;
   /** Towers, walls and castles. */
-  defense: { towerHp: number; towerAttack: number; towerRange: number; towerName: string | null; wallHpMult: number; castleHpMult: number; murderHoles: boolean };
+  defense: {
+    towerHp: number;
+    towerAttack: number;
+    towerRange: number;
+    towerName: string | null;
+    wallHpMult: number;
+    castleHpMult: number;
+    murderHoles: boolean;
+    /** Arrows from buildings do double damage to ships. */
+    heatedShot: boolean;
+  };
+  /** Docks: training-time and ship wood-cost multipliers. */
+  naval: { trainMult: number; woodMult: number };
 }
 
 export function baseMods(): PlayerMods {
@@ -92,7 +106,8 @@ export function baseMods(): PlayerMods {
     buildSpeed: 1,
     ballistics: false,
     building: { los: 0, hpMult: 1, meleeArmor: 0, pierceArmor: 0 },
-    defense: { towerHp: 0, towerAttack: 0, towerRange: 0, towerName: null, wallHpMult: 1, castleHpMult: 1, murderHoles: false },
+    defense: { towerHp: 0, towerAttack: 0, towerRange: 0, towerName: null, wallHpMult: 1, castleHpMult: 1, murderHoles: false, heatedShot: false },
+    naval: { trainMult: 1, woodMult: 1 },
   };
 }
 
@@ -147,8 +162,13 @@ export function applyEffects(m: PlayerMods, id: TechId): void {
         d.wallHpMult *= e.wallHpMult ?? 1;
         d.castleHpMult *= e.castleHpMult ?? 1;
         if (e.murderHoles) d.murderHoles = true;
+        if (e.heatedShot) d.heatedShot = true;
         break;
       }
+      case 'naval':
+        m.naval.trainMult *= e.trainMult ?? 1;
+        m.naval.woodMult *= e.woodMult ?? 1;
+        break;
       case 'ballistics':
         m.ballistics = true;
         break;
@@ -163,6 +183,20 @@ export function applyEffects(m: PlayerMods, id: TechId): void {
 /** A unit type's stats for its owner, after research. */
 export function unitStats(w: World, owner: number, type: UnitType): UnitDef {
   return w.players[owner]?.mods.units[type] ?? UNIT_DEFS[type];
+}
+
+/** What a unit costs its owner (Shipwright makes ships cheaper). */
+export function unitCost(w: World, owner: number, type: UnitType): Partial<Record<ResourceKind, number>> {
+  const cost = UNIT_DEFS[type].cost;
+  const m = w.players[owner]?.mods.naval;
+  if (!UNIT_DEFS[type].naval || !m || m.woodMult === 1 || !cost.wood) return cost;
+  return { ...cost, wood: Math.round(cost.wood * m.woodMult) };
+}
+
+/** Seconds to train a unit (Dry Dock speeds up ships). */
+export function trainTime(w: World, owner: number, type: UnitType): number {
+  const t = UNIT_DEFS[type].trainTime;
+  return UNIT_DEFS[type].naval ? t * (w.players[owner]?.mods.naval.trainMult ?? 1) : t;
 }
 
 /** Max HP of a building for its owner (masonry, fortified walls, tower upgrades, hoardings). */

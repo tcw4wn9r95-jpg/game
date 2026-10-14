@@ -19,6 +19,7 @@ import { tileHash } from './tiles';
 import { buildingMaxHp, unitStats } from '../sim/techs';
 import { UNIT_K, UPGRADE_TECH, type UnitPose, UnitSprites, lookIndex, unitHeight } from './unitSprites';
 import { ZK } from './iso3d';
+import { headingOf } from './shipFigures';
 
 /** Time (ms) per frame spent building chunks after the first frame; at least one is built.
  * Chunks still missing draw from another zoom level meanwhile. */
@@ -99,6 +100,8 @@ export class Renderer {
   /** Last drawn position and facing per unit, to pick a view from movement. */
   private readonly lastPos = new Map<number, { x: number; y: number }>();
   private readonly lastView = new Map<number, { view: 'front' | 'side' | 'back'; left: boolean }>();
+  /** Ships' headings (0-7), kept while they lie still. */
+  private readonly heading = new Map<number, number>();
 
   constructor(
     private readonly view: View,
@@ -356,7 +359,8 @@ export class Renderer {
     if (selected) {
       ctx.strokeStyle = u.owner === this.player ? 'rgba(255,255,255,0.95)' : 'rgba(255,90,80,0.95)';
       ctx.lineWidth = Math.max(1.5, S / 16);
-      const r = S * (u.type === 'scout' || u.type === 'knight' || UNIT_DEFS[u.type].classes.includes('siege') ? 0.55 : 0.36);
+      const ship = UNIT_DEFS[u.type].naval;
+      const r = S * (ship ? (u.type === 'demolition_raft' || u.type === 'fishing_ship' ? 1.0 : 1.5) : u.type === 'scout' || u.type === 'knight' || UNIT_DEFS[u.type].classes.includes('siege') ? 0.55 : 0.36);
       ctx.beginPath();
       ctx.ellipse(px, py, r, r / 2, 0, 0, Math.PI * 2);
       ctx.stroke();
@@ -366,17 +370,42 @@ export class Renderer {
     const p = this.poseFor(u, x, y, t);
     const up = UPGRADE_TECH[u.type];
     const elite = !!up && (this.world.players[u.owner]?.techs as string[] | undefined)?.includes(up) === true;
-    this.put(v, v.art.units.get(u.type, u.owner, lookIndex(u.id), p, elite), x, y);
+    if (UNIT_DEFS[u.type].naval) {
+      this.wake(v, u, x, y);
+      // Riding the swell.
+      const bob = Math.sin(t * 1.7) * 0.04;
+      this.put(v, v.art.units.get(u.type, u.owner, 0, p, elite), x + bob, y + bob);
+      if (u.cargo.length) this.cargoBadge(v, px, py - S * UNIT_K * (unitHeight(u.type) + 0.45), u.cargo.length);
+    } else this.put(v, v.art.units.get(u.type, u.owner, lookIndex(u.id), p, elite), x, y);
     // Health shows on selection, and for a few seconds after any hit.
     const maxHp = unitStats(this.world, u.owner, u.type).hp;
     const hurt = u.attackedAt > this.world.tick - 50 && u.hp < maxHp;
     if (selected || hurt) this.hpBar(v, px, py - S * UNIT_K * (unitHeight(u.type) + 0.15), S * 0.7, u.hp / maxHp, u.owner);
   }
 
+  /** How many are aboard a transport. */
+  private cargoBadge(v: FrameView, x: number, y: number, n: number): void {
+    const { ctx } = this.view;
+    const r = Math.max(7, v.S * 0.2);
+    ctx.fillStyle = 'rgba(20,16,10,0.75)';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#e8d6a0';
+    ctx.lineWidth = Math.max(1, r * 0.12);
+    ctx.stroke();
+    ctx.fillStyle = '#f4ead0';
+    ctx.font = `bold ${Math.round(r * 1.1)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(n), x, y + r * 0.05);
+  }
+
   /** A fallen soldier lying on its side, fading out. */
   private drawCorpse(v: FrameView, c: Renderer['corpses'][number]): void {
     const { ctx } = this.view;
     const age = v.now - c.born;
+    if (UNIT_DEFS[c.type].naval) return this.drawWreck(v, c, age);
     const sp = v.art.units.get(c.type, c.owner, c.look, { view: 'side', left: c.left, anim: 'idle', frame: 0, tool: 'none', carry: null });
     const px = this.sx(v, c.x, c.y), py = this.sy(v, c.x, c.y);
     const k = v.exact ? 1 : v.k;
@@ -395,6 +424,49 @@ export class Renderer {
     }
     ctx.drawImage(sp.c, -sp.ax, -sp.ay);
     ctx.restore();
+  }
+
+  /** A ship going down: it lists, settles and slips under, leaving flotsam and foam. */
+  private drawWreck(v: FrameView, c: Renderer['corpses'][number], age: number): void {
+    const { ctx } = this.view;
+    const { S } = v;
+    const px = this.sx(v, c.x, c.y), py = this.sy(v, c.x, c.y);
+    const sink = Math.min(1, age / 6);
+    if (sink < 1) {
+      const sp = v.art.units.get(c.type, c.owner, 0, { view: 'side', left: false, anim: 'idle', frame: 0, tool: 'none', carry: null, dir: c.look % 8 });
+      const k = v.exact ? 1 : v.k;
+      ctx.save();
+      // Clip at the waterline as it sinks.
+      ctx.beginPath();
+      ctx.rect(px - sp.c.width * k, py - sp.c.height * k * 2, sp.c.width * k * 2, sp.c.height * k * 2 + S * 0.15);
+      ctx.clip();
+      ctx.globalAlpha = 1 - sink * 0.6;
+      ctx.translate(px, py + sink * S * 0.9);
+      ctx.rotate((c.left ? 1 : -1) * sink * 0.35);
+      ctx.scale(k, k);
+      ctx.drawImage(sp.c, -sp.ax, -sp.ay);
+      ctx.restore();
+    }
+    // Foam and floating planks.
+    const fade = Math.max(0, 1 - age / CORPSE_S);
+    ctx.strokeStyle = `rgba(235,245,250,${0.6 * fade})`;
+    ctx.lineWidth = Math.max(1, S * 0.03);
+    for (let k = 0; k < 3; k++) {
+      const r = S * (0.3 + ((age * 0.25 + k / 3) % 1) * 0.6);
+      ctx.beginPath();
+      ctx.ellipse(px, py, r, r / 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = `rgba(110,74,42,${fade})`;
+    for (let k = 0; k < 5; k++) {
+      const a = k * 1.3 + c.look;
+      const d = S * (0.2 + 0.1 * k + Math.min(age, 10) * 0.02);
+      ctx.save();
+      ctx.translate(px + Math.cos(a) * d, py + Math.sin(a) * d * 0.5);
+      ctx.rotate(a);
+      ctx.fillRect(-S * 0.12, -S * 0.025, S * 0.24, S * 0.05);
+      ctx.restore();
+    }
   }
 
   /** Scorched footprint with heaped rubble and charred beams, fading over time. */
@@ -498,9 +570,22 @@ export class Renderer {
     const l = Math.hypot(dx, dy) || 1;
     dx /= l;
     dy /= l;
+    if (p.from === 'fire_ship') {
+      // A gout of burning pitch.
+      const sy = a.Y - a.Z, r = S * 0.16;
+      const fire = ctx.createRadialGradient(a.X, sy, 0, a.X, sy, r * 1.6);
+      fire.addColorStop(0, 'rgba(255,250,210,0.95)');
+      fire.addColorStop(0.35, 'rgba(255,160,40,0.85)');
+      fire.addColorStop(1, 'rgba(180,40,10,0)');
+      ctx.fillStyle = fire;
+      ctx.beginPath();
+      ctx.arc(a.X, sy, r * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
     if (p.splash) {
       // A stone or boulder tumbling on its arc, with its shadow racing along the ground.
-      const r = S * (p.from === 'trebuchet' ? 0.2 : 0.13);
+      const r = S * (p.from === 'trebuchet' ? 0.2 : p.from === 'siege_barge' ? 0.15 : 0.13);
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.beginPath();
       ctx.ellipse(a.X, a.Y, r * 1.1, r * 0.45, 0, 0, Math.PI * 2);
@@ -571,6 +656,7 @@ export class Renderer {
 
   /** Chooses view, animation frame, tool and load for a unit this frame. */
   private poseFor(u: Unit, x: number, y: number, t: number): UnitPose {
+    if (UNIT_DEFS[u.type].naval) return this.shipPose(u, x, y, t);
     const prev = this.lastPos.get(u.id);
     // Side-on reads best for a unit that hasn't moved yet.
     let view = this.lastView.get(u.id) ?? { view: 'side' as const, left: u.face < 0 };
@@ -617,13 +703,110 @@ export class Renderer {
     };
   }
 
+  /** Ships turn to face where they're going (or what they're shooting at) and ride the swell. */
+  private shipPose(u: Unit, x: number, y: number, t: number): UnitPose {
+    const prev = this.lastPos.get(u.id);
+    let dir = this.heading.get(u.id) ?? 1;
+    const moving = u.state === 'walk' && (u.x !== u.px || u.y !== u.py);
+    if (prev && moving && Math.hypot(x - prev.x, y - prev.y) > 1e-4) dir = headingOf(x - prev.x, y - prev.y);
+    const fighting = u.state === 'attack';
+    if (fighting || u.state === 'gather' || u.state === 'build') {
+      const j = this.jobPoint(u);
+      // Broadside on to the target: warships and fishing boats work over the side.
+      if (j) dir = headingOf(j.x - x, j.y - y);
+      if (j && u.type !== 'fire_ship' && u.type !== 'demolition_raft' && u.type !== 'siege_barge') dir = (dir + 2) % 8;
+    }
+    this.heading.set(u.id, dir);
+    this.lastPos.set(u.id, { x, y });
+    const firing = fighting && u.cooldown > UNIT_DEFS[u.type].reload * 10 * 0.6;
+    return {
+      view: 'side',
+      left: false,
+      dir,
+      anim: u.state === 'gather' || u.state === 'build' ? 'work' : moving ? 'walk' : 'idle',
+      frame: Math.floor(t * (moving ? 2.4 : 1.2)) % 4,
+      tool: 'none',
+      carry: null,
+      attack: firing || (u.type === 'fire_ship' && fighting),
+    };
+  }
+
+  /** Foam curling off the bow and a widening wake astern. */
+  private wake(v: FrameView, u: Unit, x: number, y: number): void {
+    const { ctx } = this.view;
+    const { S } = v;
+    const dir = this.heading.get(u.id) ?? 1;
+    const a = (dir * Math.PI) / 4;
+    const fx = Math.cos(a), fy = Math.sin(a);
+    const len = u.type === 'demolition_raft' ? 0.75 : u.type === 'fishing_ship' ? 0.95 : 1.4;
+    const moving = u.state === 'walk' && (u.x !== u.px || u.y !== u.py);
+    const pt = (du: number, dv: number) => [this.sx(v, x + du * fx - dv * fy, y + du * fy + dv * fx), this.sy(v, x + du * fx - dv * fy, y + du * fy + dv * fx)] as const;
+    if (!moving) {
+      // Lapping ripples around a ship at rest.
+      const r = S * len * (1 + 0.08 * Math.sin(v.now * 2 + u.id));
+      const [cx, cy] = pt(0, 0);
+      ctx.strokeStyle = 'rgba(230,242,248,0.25)';
+      ctx.lineWidth = Math.max(1, S * 0.025);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r, r / 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 4; k++) {
+      const ph = (v.now * 1.4 + k / 4 + u.id * 0.17) % 1;
+      const back = -len - ph * 1.6, spread = 0.25 + ph * 0.7;
+      const alpha = 0.55 * (1 - ph);
+      ctx.strokeStyle = `rgba(240,248,252,${alpha})`;
+      ctx.lineWidth = Math.max(1, S * 0.05 * (1 - ph * 0.5));
+      for (const side of [-1, 1]) {
+        const [x0, y0] = pt(back + 0.25, side * spread * 0.6), [x1, y1] = pt(back, side * spread);
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+      }
+    }
+    // Bow wave.
+    const [bx, by] = pt(len * 0.95, 0);
+    const g = ctx.createRadialGradient(bx, by, 0, bx, by, S * 0.3);
+    g.addColorStop(0, 'rgba(250,252,255,0.55)');
+    g.addColorStop(1, 'rgba(250,252,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(bx, by, S * 0.3, S * 0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /** Which side of a dock's footprint the water is on (0 +x, 1 +y, 2 -x, 3 -y). */
+  private waterSide(b: Building): number {
+    const N = this.world.map.size;
+    const deep = (x: number, y: number) => x >= 0 && y >= 0 && x < N && y < N && this.world.map.terrain[y * N + x] === Terrain.Deep;
+    const count = [0, 0, 0, 0];
+    for (let k = 0; k < b.size; k++) {
+      if (deep(b.x + b.size, b.y + k)) count[0]++;
+      if (deep(b.x + k, b.y + b.size)) count[1]++;
+      if (deep(b.x - 1, b.y + k)) count[2]++;
+      if (deep(b.x + k, b.y - 1)) count[3]++;
+    }
+    let best = 0;
+    for (let k = 1; k < 4; k++) if (count[k] > count[best]) best = k;
+    return best;
+  }
+
   private drawBuilding(v: FrameView, b: Building): void {
     const { ctx } = this.view;
     const { S } = v;
     const def = BUILDING_DEFS[b.type];
     // Farms show how much crop is left; walls how they join up and how battered they are.
     const variant =
-      b.type === 'farm' && b.complete ? Math.max(1, Math.ceil((b.amount / (def.food ?? 1)) * 3)) : def.wall || def.classes.includes('tower') ? this.wallVariant(b) : 0;
+      (b.type === 'farm' || b.type === 'fish_trap') && b.complete
+        ? Math.max(1, Math.ceil((b.amount / (def.food ?? 1)) * 3))
+        : def.shore
+          ? this.waterSide(b)
+          : def.wall || def.classes.includes('tower')
+            ? this.wallVariant(b)
+            : 0;
     const sprite = v.art.buildings.get(b.type, b.size, b.owner, variant, this.world.players[b.owner]?.age ?? 0);
     const selected = v.overlay.selection.has(b.id);
     const ny = this.sy(v, b.x, b.y);

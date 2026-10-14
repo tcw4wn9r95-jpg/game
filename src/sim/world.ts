@@ -15,6 +15,7 @@ import {
   UNIT_DEFS,
   type Unit,
   type UnitType,
+  navOf,
 } from './entities';
 import { Fog, type VisionSource } from './fog';
 import { NavGrid } from './grid';
@@ -198,6 +199,7 @@ export class World {
       attackedBy: 0,
       attackedAt: -1000,
       faith: 0,
+      ferry: null,
       order: null,
       path: null,
       pathIdx: 0,
@@ -224,11 +226,26 @@ export class World {
         if (!grid.inside(tx, ty)) return false;
         const i = ty * map.size + tx;
         const t = map.terrain[i];
-        if (t === Terrain.Deep || t === Terrain.Shallow) return false;
+        // Fish traps go on deep water; everything else on dry land.
+        if (def.naval ? t !== Terrain.Deep : t === Terrain.Deep || t === Terrain.Shallow) return false;
         if (map.feature[i] !== 0 || grid.building[i] !== 0) return false;
         if (fog && !fog.explored[i]) return false;
       }
-    return true;
+    return !def.shore || this.besideWater(x, y, size);
+  }
+
+  /** Deep water touches the footprint's edge (docks need somewhere to launch ships). */
+  besideWater(x: number, y: number, size: number): boolean {
+    const N = this.map.size;
+    for (let k = 0; k < size; k++)
+      for (const [tx, ty] of [
+        [x + k, y - 1],
+        [x + k, y + size],
+        [x - 1, y + k],
+        [x + size, y + k],
+      ])
+        if (this.grid.inside(tx, ty) && this.map.terrain[ty * N + tx] === Terrain.Deep) return true;
+    return false;
   }
 
   /** A gate may be set into one of its owner's own wall segments of the same material, replacing it. */
@@ -270,7 +287,7 @@ export class World {
     // Anyone standing on the new footprint steps off it.
     for (const u of this.units()) {
       if (def.walkable || this.grid.building[Math.floor(u.y) * this.map.size + Math.floor(u.x)] !== b.id) continue;
-      const out = this.grid.nearestWalkable(u.x, u.y, -1, def.size + 4);
+      const out = this.grid.nearestWalkable(u.x, u.y, -1, def.size + 4, navOf(u));
       if (out) {
         u.x = u.px = out.x + 0.5;
         u.y = u.py = out.y + 0.5;
@@ -313,11 +330,12 @@ export class World {
       if (!goal) continue;
       done++;
       let sx = Math.floor(u.x), sy = Math.floor(u.y);
-      if (!this.grid.isWalkable(sx, sy, u.owner)) {
-        const near = this.grid.nearestWalkable(u.x, u.y, -1, 3, u.owner);
+      const nav = navOf(u);
+      if (!this.grid.isWalkable(sx, sy, nav)) {
+        const near = this.grid.nearestWalkable(u.x, u.y, -1, 3, nav);
         if (near) (sx = near.x), (sy = near.y);
       }
-      const path = this.paths.find(sx, sy, goal, u.owner);
+      const path = this.paths.find(sx, sy, goal, nav);
       if (path === null) {
         unreachable(this, u);
         continue;

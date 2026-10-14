@@ -443,5 +443,207 @@
     "description": "A sapper with a keg of black powder. Blows open one wall segment or gate.",
     "strong": "Walls and gates",
     "weak": "Everything, once it goes off"
+  },
+  "fishing_ship": {
+    "pop": 1,
+    "reload": 2.0,
+    "attackType": "pierce",
+    "meleeArmor": 0,
+    "pierceArmor": 4,
+    "range": 0,
+    "bonus": {},
+    "stance": "passive",
+    "naval": true,
+    "name": "Fishing Ship",
+    "hp": 60,
+    "speed": 1.3,
+    "los": 5,
+    "radius": 0.6,
+    "cost": {
+      "wood": 75
+    },
+    "trainTime": 40,
+    "attack": 0,
+    "age": 0,
+    "classes": [
+      "ship"
+    ],
+    "gatherer": true,
+    "builder": true,
+    "carry": 15,
+    "description": "Nets fish in deep water and builds Fish Traps. Brings its catch to a Dock.",
+    "strong": "",
+    "weak": "Every warship"
+  },
+  "transport_ship": {
+    "pop": 1,
+    "reload": 2.0,
+    "attackType": "pierce",
+    "meleeArmor": 4,
+    "pierceArmor": 8,
+    "range": 0,
+    "bonus": {},
+    "stance": "passive",
+    "naval": true,
+    "name": "Transport Ship",
+    "hp": 110,
+    "speed": 1.6,
+    "los": 5,
+    "radius": 0.85,
+    "cost": {
+      "wood": 125
+    },
+    "trainTime": 40,
+    "attack": 0,
+    "age": 1,
+    "classes": [
+      "ship",
+      "transport"
+    ],
+    "cargo": 10,
+    "description": "Carries 10 land units. Tap the ship, then a shore point, to land them.",
+    "strong": "",
+    "weak": "Every warship"
+  },
+  "galley": {
+    "pop": 1,
+    "reload": 3.0,
+    "attackType": "pierce",
+    "meleeArmor": 0,
+    "pierceArmor": 6,
+    "range": 6,
+    "bonus": {
+      "raft": 3,
+      "fireship": 1.5
+    },
+    "stance": "aggressive",
+    "naval": true,
+    "name": "Galley",
+    "hp": 120,
+    "speed": 1.4,
+    "los": 7,
+    "radius": 0.8,
+    "cost": {
+      "wood": 90,
+      "gold": 30
+    },
+    "trainTime": 50,
+    "attack": 6,
+    "projectileSpeed": 8,
+    "age": 1,
+    "classes": [
+      "ship",
+      "galley"
+    ],
+    "description": "Oared warship with archers on deck. Holds the sea lanes and harries the shore.",
+    "strong": "Demolition Rafts, Fire Ships at range, units on the shore",
+    "weak": "Siege Barges, Fire Ships up close"
+  },
+  "fire_ship": {
+    "pop": 1,
+    "reload": 0.25,
+    "attackType": "melee",
+    "meleeArmor": 0,
+    "pierceArmor": 6,
+    "range": 2.5,
+    "bonus": {
+      "galley": 2,
+      "transport": 2,
+      "ship": 1.25
+    },
+    "stance": "aggressive",
+    "naval": true,
+    "name": "Fire Ship",
+    "hp": 110,
+    "speed": 1.55,
+    "los": 6,
+    "radius": 0.75,
+    "cost": {
+      "wood": 75,
+      "gold": 45
+    },
+    "trainTime": 45,
+    "attack": 2,
+    "projectileSpeed": 10,
+    "age": 1,
+    "classes": [
+      "ship",
+      "fireship"
+    ],
+    "description": "Sprays burning pitch at close range. Sets galleys alight.",
+    "strong": "Galleys (2x), transports",
+    "weak": "Siege Barges, Demolition Rafts"
+  },
+  "demolition_raft": {
+    "pop": 1,
+    "reload": 1.0,
+    "attackType": "melee",
+    "meleeArmor": 0,
+    "pierceArmor": 2,
+    "range": 0,
+    "bonus": {
+      "building": 1.5,
+      "ship": 1.2
+    },
+    "stance": "aggressive",
+    "naval": true,
+    "name": "Demolition Raft",
+    "hp": 45,
+    "speed": 1.8,
+    "los": 5,
+    "radius": 0.6,
+    "cost": {
+      "wood": 70,
+      "gold": 50
+    },
+    "trainTime": 35,
+    "attack": 55,
+    "splash": 1.6,
+    "age": 2,
+    "classes": [
+      "ship",
+      "raft"
+    ],
+    "selfDestruct": true,
+    "description": "A raft packed with powder that rams a ship and blows up, wrecking everything around it.",
+    "strong": "Ships in a group, docks",
+    "weak": "Galleys"
+  },
+  "siege_barge": {
+    "pop": 1,
+    "reload": 6.0,
+    "attackType": "melee",
+    "meleeArmor": 0,
+    "pierceArmor": 8,
+    "range": 9,
+    "bonus": {
+      "building": 3,
+      "fireship": 2
+    },
+    "stance": "aggressive",
+    "naval": true,
+    "name": "Siege Barge",
+    "hp": 160,
+    "speed": 0.9,
+    "los": 8,
+    "radius": 0.9,
+    "cost": {
+      "wood": 200,
+      "gold": 150
+    },
+    "trainTime": 60,
+    "attack": 35,
+    "minRange": 3,
+    "splash": 0.8,
+    "projectileSpeed": 6,
+    "age": 3,
+    "classes": [
+      "ship",
+      "barge"
+    ],
+    "groundAttack": true,
+    "description": "A floating catapult. Batters coastal walls and buildings from long range.",
+    "strong": "Coastal buildings and walls (3x), Fire Ships",
+    "weak": "Galleys, anything inside its minimum range"
   }
 }

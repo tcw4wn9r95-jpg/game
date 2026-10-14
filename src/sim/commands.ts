@@ -2,11 +2,12 @@
 // them at the start of the next tick, so the simulation stays deterministic.
 import { setStance } from './combat';
 import { canBoard, setPacked, unload } from './siege';
-import { findResource, gatherOrder, isBuilder, isGatherer, setOrder, sourceOf } from './economy';
+import { canBuild, findResource, gatherOrder, isBuilder, isGatherer, setOrder, sourceOf } from './economy';
 import { FlowField } from './flowfield';
 import { WALL_TYPES, canShelter, placeWall, setGateLock, shelterRoom, ungarrison } from './fortify';
-import { buildingMaxHp } from './techs';
-import { BUILDING_DEFS, type BuildingType, type GatherTarget, type Stance, UNIT_DEFS, type Unit, type UnitType } from './entities';
+import { buildingMaxHp, unitStats } from './techs';
+import { canEngage, landRegion, startFerry, transportsNear } from './naval';
+import { BUILDING_DEFS, type BuildingType, type GatherTarget, type Stance, UNIT_DEFS, type Unit, type UnitType, isShip, navOf } from './entities';
 import { cancelQueued, canAfford, enqueue, enqueueTech, pay, trade } from './production';
 import type { TechId } from './techs';
 import type { World } from './world';
@@ -32,14 +33,28 @@ export type Command =
   | { type: 'buildWall'; ids: number[]; kind: 'palisade' | 'stone'; tiles: Array<{ x: number; y: number; gate?: boolean }> }
   | { type: 'lockGate'; id: number; locked: boolean }
   | { type: 'attackGround'; ids: number[]; x: number; y: number }
-  | { type: 'pack'; ids: number[]; packed: boolean };
+  | { type: 'pack'; ids: number[]; packed: boolean }
+  /** Transports: sail to the shore by this point and land everyone aboard. */
+  | { type: 'unload'; ids: number[]; x: number; y: number };
 
 export function applyCommand(w: World, player: number, cmd: Command): void {
   const ids = 'ids' in cmd ? cmd.ids : [];
   const units = ids.map((id) => w.unit(id)).filter((u): u is Unit => !!u && u.owner === player);
   switch (cmd.type) {
-    case 'move':
-      return moveGroup(w, units, cmd.x, cmd.y);
+    case 'move': {
+      // Ships and soldiers go their separate ways; soldiers bound across water take a boat.
+      const ships = units.filter(isShip), land = units.filter((u) => !isShip(u));
+      if (ships.length) moveGroup(w, ships, cmd.x, cmd.y);
+      if (land.length) moveLand(w, player, land, cmd.x, cmd.y);
+      return;
+    }
+    case 'unload':
+      for (const u of units) {
+        if (!isShip(u) || !UNIT_DEFS[u.type].cargo) continue;
+        u.ferry = null;
+        setOrder(u, { type: 'unload', x: cmd.x, y: cmd.y });
+      }
+      return;
     case 'attack': {
       const t = w.get(cmd.id);
       if (!t || t.kind === 'resource') return;
@@ -55,6 +70,8 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
           continue;
         }
         if (def.attack <= 0) continue;
+        // Swordsmen can't wade out to a ship.
+        if (!canEngage(w, u, t, unitStats(w, u.owner, u.type).range)) continue;
         setOrder(u, { type: 'attack', id: t.id });
         u.resume = null;
         u.guard = null;
@@ -71,6 +88,11 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
     }
     case 'garrison': {
       const carrier = w.unit(cmd.id);
+      if (carrier && isShip(carrier)) {
+        // The transport comes in to the shore by them.
+        if (carrier.owner === player) startFerry(w, carrier, units.filter((u) => canBoard(carrier, u)), null);
+        return;
+      }
       if (carrier) {
         // Board a ram or siege tower.
         let room = (UNIT_DEFS[carrier.type].cargo ?? 0) - carrier.cargo.length;
@@ -96,7 +118,11 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
       const b = w.building(cmd.id);
       if (b && b.owner === player) ungarrison(w, b);
       const c = w.unit(cmd.id);
-      if (c && c.owner === player) unload(w, c);
+      if (c && c.owner === player && isShip(c)) {
+        // Put in at the nearest shore and land them there.
+        c.ferry = null;
+        setOrder(c, { type: 'unload', x: c.x, y: c.y });
+      } else if (c && c.owner === player) unload(w, c);
       return;
     }
     case 'attackGround':
@@ -153,7 +179,7 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
         w.events.push({ type: 'error', owner: player, message: 'Not available in this age' });
         return;
       }
-      if (!def.buildable || !w.canPlace(cmd.building, player, cmd.x, cmd.y)) {
+      if (!def.buildable || !w.canPlace(cmd.building, player, cmd.x, cmd.y) || (units.length && !units.some((u) => canBuild(u, cmd.building)))) {
         w.events.push({ type: 'error', owner: player, message: "Can't build there" });
         return;
       }
@@ -164,7 +190,7 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
       }
       pay(w, player, def.cost);
       const b = w.placeBuilding(cmd.building, player, cmd.x, cmd.y);
-      for (const u of units) if (isBuilder(u)) setOrder(u, { type: 'build', id: b.id }), (u.resume = null);
+      for (const u of units) if (canBuild(u, b.type)) setOrder(u, { type: 'build', id: b.id }), (u.resume = null);
       return;
     }
     case 'train': {
@@ -210,8 +236,8 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
       if (!b || b.owner !== player) return;
       const damaged = b.complete && b.hp < buildingMaxHp(w, b) - 0.5;
       for (const u of units) {
-        if (!b.complete && isBuilder(u)) setOrder(u, { type: 'build', id: b.id });
-        else if (damaged && isBuilder(u)) setOrder(u, { type: 'repair', id: b.id });
+        if (!b.complete && canBuild(u, b.type)) setOrder(u, { type: 'build', id: b.id });
+        else if (damaged && canBuild(u, b.type)) setOrder(u, { type: 'repair', id: b.id });
         else if (b.complete && u.carry && (BUILDING_DEFS[b.type].dropoff as string[]).includes(u.carry.res))
           setOrder(u, { type: 'dropoff', id: b.id });
         else moveGroup(w, [u], b.x + b.size / 2, b.y + b.size + 0.5);
@@ -228,7 +254,7 @@ const FLOW_GROUP = 5;
  * Spreads a group around the target point so they don't all stand on one tile.
  * Big groups share a flow field toward their slots; each unit keeps its slot.
  */
-function moveGroup(w: World, units: Unit[], x: number, y: number): void {
+export function moveGroup(w: World, units: Unit[], x: number, y: number): void {
   const sorted = [...units].sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y));
   const slots = sorted.map((_, k) => {
     const [ox, oy] = spiral(k);
@@ -236,7 +262,7 @@ function moveGroup(w: World, units: Unit[], x: number, y: number): void {
   });
   let field: FlowField | null = null;
   if (units.length >= FLOW_GROUP) {
-    const owner = units[0].owner;
+    const owner = navOf(units[0]);
     const goals = slots.map((s) => ({ x: Math.floor(s.x), y: Math.floor(s.y) })).filter((g) => w.grid.isWalkable(g.x, g.y, owner));
     if (goals.length) {
       field = new FlowField(w.grid, goals, units, owner);
@@ -251,6 +277,27 @@ function moveGroup(w: World, units: Unit[], x: number, y: number): void {
     u.guard = null;
     if (field && field.at(Math.floor(u.x), Math.floor(u.y)) < Infinity) u.flow = { field, x: slots[k].x, y: slots[k].y };
   });
+}
+
+/**
+ * Land units sent somewhere they can't walk to (another island, the far side of
+ * a sea) board the nearest own transport, which lands them there; with no
+ * transport they go as far as they can and the player is told.
+ */
+function moveLand(w: World, player: number, units: Unit[], x: number, y: number): void {
+  const dest = landRegion(w, x, y, player);
+  const home = w.grid.component(Math.floor(units[0].x), Math.floor(units[0].y), player);
+  if (dest < 0 || home < 0 || dest === home) return moveGroup(w, units, x, y);
+  const waiting = units.filter((u) => w.grid.component(Math.floor(u.x), Math.floor(u.y), player) === home);
+  let left = waiting;
+  for (const ship of transportsNear(w, player, units[0].x, units[0].y)) {
+    if (!left.length) break;
+    const taken = startFerry(w, ship, left, { x, y });
+    left = left.filter((u) => !taken.includes(u));
+  }
+  const rest = units.filter((u) => left.includes(u) || !waiting.includes(u));
+  if (left.length) w.events.push({ type: 'error', owner: player, message: transportsNear(w, player, x, y).length || waiting.length < units.length ? 'No path' : 'No path: build a Transport Ship' });
+  if (rest.length) moveGroup(w, rest, x, y);
 }
 
 /** k-th offset of a square spiral around the origin. */
@@ -268,15 +315,18 @@ function spiral(k: number): [number, number] {
 function gatherGroup(w: World, units: Unit[], target: GatherTarget): void {
   const source = sourceOf(w, target);
   if (!source) return;
-  const gatherers = units.filter(isGatherer);
-  const others = units.filter((u) => !isGatherer(u));
+  // Fishing ships take only fish; villagers anything they can walk to.
+  const wet = source === 'fish' || source === 'fish_trap';
+  const fits = (u: Unit) => isGatherer(u) && (!isShip(u) || wet) && !(source === 'fish_trap' && !isShip(u));
+  const gatherers = units.filter(fits);
+  const others = units.filter((u) => !fits(u));
   if (others.length) {
     const tx = target.kind === 'tile' ? target.x + 0.5 : (w.get(target.id) as { x: number }).x;
     const ty = target.kind === 'tile' ? target.y + 0.5 : (w.get(target.id) as { y: number }).y;
     moveGroup(w, others, tx, ty);
   }
   let spots: GatherTarget[] = [target];
-  if (source === 'farm' && gatherers.length > 1) {
+  if ((source === 'farm' || source === 'fish_trap') && gatherers.length > 1) {
     // One farmer per field: hand out the tapped farm, then the nearest free ones.
     const [first, ...rest] = gatherers;
     const order = gatherOrder(w, target);
@@ -284,7 +334,7 @@ function gatherGroup(w: World, units: Unit[], target: GatherTarget): void {
     const f = w.get((target as { id: number }).id) as { x: number; y: number };
     for (const u of rest) {
       // Farms already given out count as worked, so each search finds a different free one.
-      const t = findResource(w, u, ['farm'], f.x + 1.5, f.y + 1.5, 12);
+      const t = findResource(w, u, [source], f.x + 1.5, f.y + 1.5, 12);
       const o = t && gatherOrder(w, t);
       if (o) {
         setOrder(u, o);

@@ -143,6 +143,14 @@ export const ICONS = {
     <path d="M2 15h20l-3 5H5z" fill="#7a5230" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
     <path d="M12 2v13" stroke="${INK}" stroke-width="1.6"/><path d="M12 3l7 9h-7z" fill="#efe6cc" stroke="${INK}" stroke-width="1"/>
     <path d="M12 5l-6 7h6z" fill="#d8ccae" stroke="${INK}" stroke-width="1"/><path d="M1 21c3 1.5 6-1.5 11 0s8-1.5 11 0" stroke="#4a8ac0" stroke-width="1.4" fill="none"/>`),
+  dock: svg(`<path d="M1 18h22v2H1z" fill="#8a6038" stroke="${INK}" stroke-width="1"/><path d="M3 20v3M8 20v3M16 20v3M21 20v3" stroke="#4e331b" stroke-width="1.4"/><path d="M3 18V10h10v8z" fill="#d3c39f" stroke="${INK}" stroke-width="1.1"/><path d="M2 10.5L8 5l6 5.5z" fill="#bf9f55" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M6 18v-4h4v4z" fill="#2a1a0c"/><path d="M18 18V4M18 5h5M22.5 5v6" stroke="#6b4626" stroke-width="1.6" stroke-linecap="round"/><rect x="21" y="11" width="3" height="2.4" fill="#8a6a42" stroke="${INK}" stroke-width=".6"/>`),
+  fish_trap: svg(`<ellipse cx="12" cy="15" rx="10" ry="5.5" fill="#2f6f9f" stroke="${INK}" stroke-width="1"/><path d="M3 15v-5M6 19v-5M12 20.5v-5M18 19v-5M21 15v-5M7 10.5v-5M12 9.5v-5M17 10.5v-5" stroke="#6b4626" stroke-width="1.6" stroke-linecap="round"/><path d="M3 12c3 2 15 2 18 0M6 16c3 2 9 2 12 0" stroke="#e6dcc0" stroke-width=".8" fill="none"/><path d="M9 14.5c1.5-1.4 3.5-1.4 5 0-1.5 1.4-3.5 1.4-5 0zm5 0l2-1.3v2.6z" fill="#cfd8dc" stroke="${INK}" stroke-width=".6"/>`),
+  fishing_ship: svg(`<path d="M3 16h18l-3 4H6z" fill="#86603a" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M11 16V3" stroke="${INK}" stroke-width="1.4"/><path d="M11 4l-7 10h7z" fill="#e8dcc0" stroke="${INK}" stroke-width="1"/><path d="M16 9l5 9" stroke="#4a3020" stroke-width="1.2"/><path d="M19 15l3 4-4 1z" fill="none" stroke="#e6dcc0" stroke-width=".9"/><path d="M1 21.5c3 1.5 6-1.5 11 0s8-1.5 11 0" stroke="#4a8ac0" stroke-width="1.4" fill="none"/>`),
+  transport_ship: svg(`<path d="M1 14h22l-4 6H5z" fill="#7a5434" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M12 14V2" stroke="${INK}" stroke-width="1.5"/><path d="M5 3.5h14v8H5z" fill="#efe6cc" stroke="${INK}" stroke-width="1"/><path d="M5 6.5h14v2.4H5z" fill="#3f6fb0"/><rect x="15" y="10.5" width="4" height="3.5" fill="#9a7040" stroke="${INK}" stroke-width=".7"/><rect x="4" y="11" width="3.5" height="3" fill="#9a7040" stroke="${INK}" stroke-width=".7"/><path d="M1 21.5c3 1.5 6-1.5 11 0s8-1.5 11 0" stroke="#4a8ac0" stroke-width="1.4" fill="none"/>`),
+  galley: svg(`<path d="M1 14h20l2-2-3 6H5z" fill="#6e4a2c" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M12 14V2" stroke="${INK}" stroke-width="1.5"/><path d="M6 3.5h12v8H6z" fill="#efe6cc" stroke="${INK}" stroke-width="1"/><path d="M6 6.5h12v2.4H6z" fill="#c0283c"/><path d="M5 15l-3 5M9 15l-3 5M13 15l-3 5M17 15l-3 5" stroke="#4e331b" stroke-width="1.1" stroke-linecap="round"/><path d="M21 15h3" stroke="#c9a04a" stroke-width="1.8" stroke-linecap="round"/>`),
+  fire_ship: svg(`<path d="M2 15h20l-3 5H5z" fill="#4c3424" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M9 15V4" stroke="${INK}" stroke-width="1.4"/><path d="M4 5h10v7H4z" fill="#d8cdb0" stroke="${INK}" stroke-width="1"/><path d="M18 14c-3-2-2-5 0-8 0 3 3 3 3 6 0 1.5-1.2 2-3 2z" fill="#f08a24" stroke="${INK}" stroke-width=".9"/><path d="M18.5 13c-1-1-.6-2.5.3-3.6.3 1.4 1.4 1.6 1.2 2.7-.1.6-.7.9-1.5.9z" fill="#ffe08a"/><path d="M1 21.5c3 1.5 6-1.5 11 0s8-1.5 11 0" stroke="#4a8ac0" stroke-width="1.4" fill="none"/>`),
+  demolition_raft: svg(`<path d="M2 16h20v3H2z" fill="#7c6440" stroke="${INK}" stroke-width="1.1"/><path d="M6 16v3M10 16v3M14 16v3M18 16v3" stroke="#4e331b" stroke-width=".8"/><ellipse cx="9" cy="12.5" rx="3" ry="3.5" fill="#5a3a20" stroke="${INK}" stroke-width="1"/><ellipse cx="15" cy="12.5" rx="3" ry="3.5" fill="#5a3a20" stroke="${INK}" stroke-width="1"/><path d="M8 11h2M14 11h2" stroke="#2d2925" stroke-width="1"/><path d="M12 9c1-3 3-4 5-5" stroke="#3a3020" stroke-width=".9" fill="none"/><circle cx="17.5" cy="3.8" r="1.6" fill="#ffb030"/><path d="M1 21.5c3 1.5 6-1.5 11 0s8-1.5 11 0" stroke="#4a8ac0" stroke-width="1.4" fill="none"/>`),
+  siege_barge: svg(`<path d="M1 15h22l-2 5H3z" fill="#6a4a2e" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M5 15l4-8 4 8M5 11h8" stroke="#5a3c22" stroke-width="1.6" stroke-linejoin="round" fill="none"/><path d="M9 13L20 4" stroke="#6e4a2a" stroke-width="1.8" stroke-linecap="round"/><circle cx="20.5" cy="3.5" r="2" fill="#8a8680" stroke="${INK}" stroke-width=".8"/><path d="M1 21.5c3 1.5 6-1.5 11 0s8-1.5 11 0" stroke="#4a8ac0" stroke-width="1.4" fill="none"/>`),
   back: svg(`<path d="M14 5l-7 7 7 7" fill="none" stroke="${INK}" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 5l-7 7 7 7" fill="none" stroke="#f1d48a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`),
   militia: svg(`
     <circle cx="11" cy="7" r="3.4" fill="#e0b48c" stroke="${INK}" stroke-width="1.1"/>
@@ -345,6 +353,11 @@ export const MAP_ICONS = {
 
 /** One glyph per technology family. */
 const TECH_GLYPH: Record<string, string> = {
+  net: `<path d="M3 4c6 3 12 3 18 0v10c-6 4-12 4-18 0z" fill="none" stroke="#6b4626" stroke-width="1.4"/><path d="M3 7c6 3 12 3 18 0M3 10.5c6 3 12 3 18 0M7 5v13M12 6v13M17 5v13" stroke="#d8ccae" stroke-width=".9" fill="none"/><path d="M8 16c2-1.6 5-1.6 7 0-2 1.6-5 1.6-7 0zm7 0l3-1.8v3.6z" fill="#cfd8dc" stroke="${INK}" stroke-width=".7"/>`,
+  hull: `<path d="M2 9h20l-3 9H5z" fill="#7a5230" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/><path d="M3 12h18M4 15h16" stroke="#4e331b" stroke-width=".9"/><path d="M14 3l6 6-2 2-6-6z" fill="#9aa3a8" stroke="${INK}" stroke-width=".9"/>`,
+  drydock: `<path d="M2 21V9M22 21V9" stroke="#6b4626" stroke-width="2"/><path d="M2 12h20" stroke="#4e331b" stroke-width="1.2"/><path d="M4 15h16l-3 5H7z" fill="#7a5230" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M12 15V5M12 6l6 7h-6z" stroke="${INK}" stroke-width="1" fill="#efe6cc"/>`,
+  adze: `<path d="M4 20l12-12" stroke="#7a5430" stroke-width="2.4" stroke-linecap="round"/><path d="M13 4c3-1 6 0 7 3l-3 1-3-3z" fill="#c9d1d6" stroke="${INK}" stroke-width="1.1"/><path d="M2 21h10" stroke="#8a6038" stroke-width="2.6" stroke-linecap="round"/>`,
+  hotshot: `<path d="M3 21L17 7" stroke="#7a5430" stroke-width="2" stroke-linecap="round"/><path d="M17 7l4-4-1 5z" fill="#c9d1d6" stroke="${INK}" stroke-width=".9"/><path d="M14 12c-3-1-3-5 0-8 0 3 4 3 3 6-.3 1.3-1.6 2.3-3 2z" fill="#f08a24" stroke="${INK}" stroke-width=".8"/>`,
   axe: `<path d="M6 21L16 7" stroke="#7a5430" stroke-width="2.2" stroke-linecap="round"/><path d="M13 4c3 0 6 2 7 5l-4 2-4-5z" fill="#c9d1d6" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>`,
   saw: `<path d="M3 15l14-8 3 5-14 8z" fill="#c9d1d6" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/><path d="M5 18l1-2 1.5 1 1-2 1.5 1 1-2 1.5 1 1-2 1.5 1" fill="none" stroke="${INK}" stroke-width=".8"/><path d="M17 7l3-3 2 3-2 5" fill="#7a5430" stroke="${INK}" stroke-width="1"/>`,
   pick: `<path d="M12 21V8" stroke="#7a5430" stroke-width="2.2" stroke-linecap="round"/><path d="M3 9c4-4 14-4 18 0-5-2-13-2-18 0z" fill="#9aa3a8" stroke="${INK}" stroke-width="1.1"/>`,
@@ -366,6 +379,11 @@ const TECH_GLYPH: Record<string, string> = {
 };
 
 const TECH_GLYPH_OF: Record<string, string> = {
+  gillnets: 'net',
+  careening: 'hull',
+  dry_dock: 'drydock',
+  shipwright: 'adze',
+  heated_shot: 'hotshot',
   siege_engineers: 'crane',
   ballistics: 'arrow',
   sappers: 'pick',
@@ -400,7 +418,7 @@ const TECH_GLYPH_OF: Record<string, string> = {
 };
 /** Second-level techs show two pips. */
 const LEVEL2 = new Set(['iron_casting', 'bodkin_arrow', 'chain_mail', 'chain_barding', 'leather_archer', 'bow_saw', 'gold_shaft', 'heavy_plow', 'hand_cart']);
-const UPGRADE_OF: Record<string, string> = { capped_ram: 'ram', onager: 'mangonel', guard_tower: 'watch_tower', keep: 'watch_tower', swordsman: 'militia', pikeman: 'spearman', crossbowman: 'archer', light_cavalry: 'scout' };
+const UPGRADE_OF: Record<string, string> = { capped_ram: 'ram', onager: 'mangonel', guard_tower: 'watch_tower', keep: 'watch_tower', swordsman: 'militia', pikeman: 'spearman', crossbowman: 'archer', light_cavalry: 'scout', war_galley: 'galley' };
 const NUMERAL: Record<string, string> = { age2: 'II', age3: 'III', age4: 'IV' };
 
 const cacheTech = new Map<string, string>();

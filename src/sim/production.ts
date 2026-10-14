@@ -4,7 +4,8 @@ import economy from '../data/economy.json';
 import { DT, type ResourceKind } from './constants';
 import { gatherOrder, isGatherer, setOrder } from './economy';
 import { BUILDING_DEFS, type Building, UNIT_DEFS, type UnitType } from './entities';
-import { AGES, TECH_DEFS, type TechId, completeTech, researchBlock, unitStats } from './techs';
+import { AGES, TECH_DEFS, type TechId, completeTech, researchBlock, trainTime, unitCost, unitStats } from './techs';
+import { WATER } from './grid';
 import type { World } from './world';
 
 type Cost = Partial<Record<ResourceKind, number>>;
@@ -28,7 +29,8 @@ export function enqueue(w: World, b: Building, unit: UnitType): boolean {
     w.events.push({ type: 'error', owner: b.owner, message: `Requires the ${AGES[UNIT_DEFS[unit].age].name} Age` });
     return false;
   }
-  return queueItem(w, b, UNIT_DEFS[unit].cost, { unit, progress: 0 });
+  const cost = unitCost(w, b.owner, unit);
+  return queueItem(w, b, cost, { unit, progress: 0, cost });
 }
 
 /** Queues research of a technology at a building, paying now. */
@@ -65,7 +67,7 @@ export function cancelQueued(w: World, b: Building, index: number): void {
   const item = b.queue[index];
   if (!item) return;
   b.queue.splice(index, 1);
-  pay(w, b.owner, itemCost(item), -1);
+  pay(w, b.owner, item.cost ?? itemCost(item), -1);
   if (index === 0) b.housed = false;
 }
 
@@ -89,15 +91,16 @@ export function productionTick(w: World): void {
       continue;
     }
     b.housed = false;
-    head.progress += DT / udef.trainTime;
+    head.progress += DT / trainTime(w, b.owner, unit);
     if (head.progress < 1) continue;
     b.queue.shift();
     const u = spawnFrom(w, b, unit);
     p.pop += udef.pop;
     w.events.push({ type: 'trained', owner: b.owner, id: u.id });
-    if (b.repeat && b.queue.length === 0 && canAfford(w, b.owner, udef.cost)) {
-      pay(w, b.owner, udef.cost);
-      b.queue.push({ unit, progress: 0 });
+    const again = unitCost(w, b.owner, unit);
+    if (b.repeat && b.queue.length === 0 && canAfford(w, b.owner, again)) {
+      pay(w, b.owner, again);
+      b.queue.push({ unit, progress: 0, cost: again });
     }
   }
 }
@@ -108,7 +111,9 @@ function spawnFrom(w: World, b: Building, type: UnitType) {
   const toward = b.rally ?? { x: cx, y: b.y + b.size + 1 };
   const d = Math.hypot(toward.x - cx, toward.y - cy) || 1;
   const ex = cx + ((toward.x - cx) / d) * (b.size / 2 + 0.8), ey = cy + ((toward.y - cy) / d) * (b.size / 2 + 0.8);
-  const spot = w.grid.nearestWalkable(ex, ey, -1, b.size + 4) ?? { x: Math.floor(cx), y: b.y + b.size };
+  // Ships slip into the water beside a dock.
+  const nav = UNIT_DEFS[type].naval ? WATER : -1;
+  const spot = w.grid.nearestWalkable(ex, ey, -1, b.size + 4, nav) ?? { x: Math.floor(cx), y: b.y + b.size };
   const u = w.spawnUnit(type, b.owner, spot.x + 0.5, spot.y + 0.5);
   u.hp = unitStats(w, b.owner, type).hp;
   if (b.rally) {

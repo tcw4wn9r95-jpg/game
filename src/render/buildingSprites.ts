@@ -499,7 +499,165 @@ function tower(g: G, variant: number, team: string, rng: Rng): void {
   cracks(g, (variant >> 8) & 3, h, rng);
 }
 
+// ---------- naval ----------
+
+/** Planked walkway on piles from (x0, y0) to (x1, y1), deck at height h. */
+function jetty(g: G, x0: number, y0: number, x1: number, y1: number, h: number): void {
+  // Piles first (the far ones are hidden by the deck).
+  for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1], [(x0 + x1) / 2, y1], [x1, (y0 + y1) / 2]] as const) post(g, x, y, h + 3, 2.4, '#5a3c22');
+  box(g, x0, y0, x1, y1, h, { base: '#6e4c2c', mat: 'planks' }, {}, 71);
+  boxTop(g, x0, y0, x1, y1, h, 'planks', '#a8814f');
+}
+
+/** Nets drying on a frame of poles. */
+function netRack(g: G, x: number, y0: number, y1: number): void {
+  post(g, x, y0, 14, 1.6);
+  post(g, x, y1, 14, 1.6);
+  line3(g, [x, y0, 14], [x, y1, 14], '#4a3020', 0.9);
+  g.strokeStyle = 'rgba(214,204,170,0.75)';
+  g.lineWidth = 0.4;
+  for (let k = 0; k <= 8; k++) {
+    const y = y0 + ((y1 - y0) * k) / 8;
+    const [ax, ay] = P(x, y, 14), [bx, by] = P(x + 0.05, y, 4 + (k % 2) * 2);
+    g.beginPath();
+    g.moveTo(ax, ay);
+    g.lineTo(bx, by);
+    g.stroke();
+  }
+  for (const z of [7, 10]) {
+    const [ax, ay] = P(x + 0.03, y0, z), [bx, by] = P(x + 0.03, y1, z);
+    g.beginPath();
+    g.moveTo(ax, ay);
+    g.quadraticCurveTo((ax + bx) / 2, (ay + by) / 2 + 3, bx, by);
+    g.stroke();
+  }
+}
+
+/**
+ * Dock: a wharf on the shore with a boathouse, a crane and a jetty out over the
+ * water. `side` (0 +x, 1 +y, 2 -x, 3 -y) is where the water is.
+ */
+function dock(g: G, n: number, team: string, side: number): void {
+  groundPatch(g, n, '#9c8a62', 0.2);
+  const m = n / 2;
+  // The jetty runs out over the water from the middle of the water side.
+  const pier = (): void => {
+    if (side === 0) jetty(g, n - 0.2, m - 0.45, n + 1.25, m + 0.45, 6);
+    else if (side === 1) jetty(g, m - 0.45, n - 0.2, m + 0.45, n + 1.25, 6);
+    else if (side === 2) jetty(g, -1.25, m - 0.45, 0.2, m + 0.45, 6);
+    else jetty(g, m - 0.45, -1.25, m + 0.45, 0.2, 6);
+  };
+  if (side >= 2) pier();
+  // Wharf deck over the whole yard.
+  boxShadow(g, 0.1, 0.1, n - 0.1, n - 0.1, 10);
+  box(g, 0.1, 0.1, n - 0.1, n - 0.1, 5, { base: '#6a4a2c', mat: 'planks' }, {}, 73);
+  boxTop(g, 0.1, 0.1, n - 0.1, n - 0.1, 5, 'planks', '#b08a58');
+  g.save();
+  g.translate(0, -5 * ZK);
+  // Boathouse on the landward half, its open end toward the water.
+  const land = (side + 2) % 4;
+  const bx0 = land === 2 ? 0.2 : land === 0 ? n - 1.7 : 0.35, by0 = land === 3 ? 0.2 : land === 1 ? n - 1.7 : 0.35;
+  const bx1 = land === 2 ? 1.7 : land === 0 ? n - 0.2 : n - 0.35, by1 = land === 3 ? 1.7 : land === 1 ? n - 0.2 : n - 0.35;
+  box(g, bx0, by0, bx1, by1, 26, PLASTER, {
+    left: (len) => {
+      doorAt(g, len / 2, 8, 12);
+      banner(g, len * 0.2, 22, team);
+    },
+    right: (len) => windowAt(g, len / 2, 16, 4, 5),
+  }, 75);
+  gableRoof(g, bx0, by0, bx1, by1, 26, 20, THATCH, side % 2 === 0 ? 'x' : 'y', 0.15, 77);
+  // Crates, barrels and a coil of rope on the wharf; nets drying.
+  const fx = side === 0 ? n - 0.9 : side === 2 ? 0.3 : 0.3, fy = side === 1 ? n - 0.9 : side === 3 ? 0.3 : n - 0.75;
+  crate(g, fx, fy, 0.3);
+  barrel(g, fx + 0.6, fy + 0.1, 3, 8);
+  barrel(g, fx + 0.35, fy + 0.45, 3, 8);
+  if (side % 2 === 0) netRack(g, side === 0 ? 0.35 : n - 0.35, 0.4, 1.4);
+  else netRack(g, n - 0.4, side === 1 ? 0.4 : n - 1.4, side === 1 ? 1.4 : n - 0.4);
+  // A timber crane at the head of the jetty.
+  const cx = side === 0 ? n - 0.4 : side === 2 ? 0.4 : m + 0.55, cy = side === 1 ? n - 0.4 : side === 3 ? 0.4 : m + 0.55;
+  post(g, cx, cy, 34, 2.4, '#5e3f22');
+  const ox = side === 0 ? 0.9 : side === 2 ? -0.9 : 0, oy = side === 1 ? 0.9 : side === 3 ? -0.9 : 0;
+  line3(g, [cx, cy, 33], [cx + ox, cy + oy, 36], '#4e331b', 1.8);
+  line3(g, [cx, cy, 22], [cx + ox * 0.45, cy + oy * 0.45, 34], '#4e331b', 1.1);
+  line3(g, [cx + ox, cy + oy, 36], [cx + ox, cy + oy, 16], 'rgba(200,180,140,0.85)', 0.5);
+  const [hx, hy] = P(cx + ox, cy + oy, 15);
+  g.fillStyle = '#8a6a42';
+  g.fillRect(hx - 2, hy - 2, 4, 3.2);
+  g.restore();
+  if (side < 2) pier();
+  // The owner's flag at the end of the jetty.
+  const [jx, jy] = side === 0 ? [n + 1.1, m - 0.35] : side === 1 ? [m - 0.35, n + 1.1] : side === 2 ? [-1.1, m - 0.35] : [m - 0.35, -1.1];
+  flag(g, jx, jy, 6, team, 0.7);
+}
+
+/** Fish trap: a ring of stakes and nets in the water, fish showing while it is stocked. */
+function fishTrap(g: G, n: number, rng: Rng, stage: number): void {
+  // Disturbed, darker water inside the ring.
+  onGround(g, 0, 0, () => {
+    const W = n * 32;
+    const grad = g.createRadialGradient(W / 2, W / 2, 4, W / 2, W / 2, W * 0.55);
+    grad.addColorStop(0, 'rgba(20,50,70,0.35)');
+    grad.addColorStop(1, 'rgba(20,50,70,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, W);
+  });
+  const ring: Array<[number, number]> = [];
+  const R = n * 0.42, c = n / 2;
+  for (let k = 0; k < 14; k++) {
+    const a = (k / 14) * Math.PI * 2;
+    ring.push([c + Math.cos(a) * R, c + Math.sin(a) * R]);
+  }
+  // Fish flashing in the trap.
+  const fish = [0, 3, 6, 10][stage] ?? 0;
+  for (let k = 0; k < fish; k++) {
+    const a = rng.next() * Math.PI * 2, r = rng.next() * R * 0.7;
+    const [x, y] = P(c + Math.cos(a) * r, c + Math.sin(a) * r, 0);
+    g.fillStyle = 'rgba(200,215,220,0.8)';
+    g.beginPath();
+    g.ellipse(x, y, 2.2, 0.8, rng.next() * Math.PI, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Net between the stakes (back half first), then the stakes, then the front net.
+  const net = (front: boolean) => {
+    g.strokeStyle = 'rgba(220,210,180,0.7)';
+    g.lineWidth = 0.5;
+    for (let k = 0; k < ring.length; k++) {
+      const a = ring[k], b = ring[(k + 1) % ring.length];
+      if (a[0] + a[1] + b[0] + b[1] > 2 * n !== front) continue;
+      for (const z of [2, 5, 8]) {
+        const [ax, ay] = P(a[0], a[1], z), [bx, by] = P(b[0], b[1], z);
+        g.beginPath();
+        g.moveTo(ax, ay);
+        g.quadraticCurveTo((ax + bx) / 2, (ay + by) / 2 + 1.2, bx, by);
+        g.stroke();
+      }
+    }
+  };
+  net(false);
+  for (const [x, y] of [...ring].sort((p, q) => p[0] + p[1] - q[0] - q[1])) {
+    post(g, x, y, 10 + rng.next() * 3, 1.8, '#6a4a2a');
+    // Ripple ring where the stake meets the water.
+    const [px, py] = P(x, y, 0);
+    g.strokeStyle = 'rgba(230,240,245,0.45)';
+    g.lineWidth = 0.5;
+    g.beginPath();
+    g.ellipse(px, py, 2.6, 1.1, 0, 0, Math.PI * 2);
+    g.stroke();
+  }
+  net(true);
+  // Cork floats.
+  for (let k = 0; k < ring.length; k += 2) {
+    const [x, y] = P(ring[k][0], ring[k][1], 0.5);
+    g.fillStyle = '#d0a040';
+    g.beginPath();
+    g.ellipse(x + 2, y + 1, 1.4, 0.8, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+}
+
 const PAINTERS: Record<BuildingType, Painter> = {
+  dock: (g, n, team, _rng, variant) => dock(g, n, team, variant & 3),
+  fish_trap: (g, n, _team, rng, variant) => fishTrap(g, n, rng, variant),
   town_center: (g, n, team) => {
     groundPatch(g, n, '#7d6444', 0.35);
     boxShadow(g, 0.3, 0.3, n - 0.3, n - 0.3, 84);

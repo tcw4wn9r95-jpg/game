@@ -506,5 +506,62 @@
       "building"
     ],
     "advance": true
+  },
+  "dock": {
+    "name": "Dock",
+    "size": 3,
+    "hp": 1800,
+    "buildTime": 35,
+    "cost": {
+      "wood": 150
+    },
+    "pop": 0,
+    "los": 6,
+    "dropoff": [
+      "food"
+    ],
+    "age": 0,
+    "buildable": true,
+    "description": "Built on the shore. Trains ships and takes in fish.",
+    "meleeArmor": 1,
+    "pierceArmor": 7,
+    "trains": [
+      "fishing_ship",
+      "transport_ship",
+      "galley",
+      "fire_ship",
+      "demolition_raft",
+      "siege_barge"
+    ],
+    "classes": [
+      "building"
+    ],
+    "shore": true,
+    "advance": true
+  },
+  "fish_trap": {
+    "name": "Fish Trap",
+    "size": 3,
+    "hp": 300,
+    "buildTime": 25,
+    "cost": {
+      "wood": 100
+    },
+    "pop": 0,
+    "los": 1,
+    "dropoff": [],
+    "age": 0,
+    "buildable": true,
+    "description": "Stakes and nets in deep water, worked by a fishing ship. Restocks itself when emptied, if you have the wood.",
+    "meleeArmor": 0,
+    "pierceArmor": 0,
+    "trains": [],
+    "walkable": true,
+    "food": 420,
+    "requires": "dock",
+    "classes": [
+      "building"
+    ],
+    "naval": true
   }
 }

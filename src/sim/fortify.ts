@@ -123,6 +123,7 @@ export function towerTick(w: World): void {
     const cx = b.x + b.size / 2, cy = b.y + b.size / 2;
     const fog = w.fog[b.owner];
     const reachR = a.range + b.size / 2;
+    const heated = !!w.players[b.owner]?.mods.defense.heatedShot;
     const targets: Array<{ u: Unit; d: number }> = [];
     w.spatial.query(cx, cy, reachR + 1, (o) => {
       if (o.owner === b.owner || o.inside || (fog && !fog.isVisible(o.x, o.y))) return;
@@ -154,7 +155,8 @@ export function towerTick(w: World): void {
         t: 0,
         dt: 1 / ticks,
         arc: 0.6 + dist * 0.05,
-        damage: a.attack,
+        // Heated Shot: red-hot arrows set ships' timbers alight.
+        damage: heated && UNIT_DEFS[t.type].naval ? a.attack * 2 : a.attack,
         height: b.type === 'castle' ? 2 : b.type === 'town_center' ? 1.4 : 1.6,
       });
     }

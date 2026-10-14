@@ -1,5 +1,8 @@
 import { Feature, type GameMap, Terrain } from './terrain';
 
+/** Pass as the player to navigate the water layer (ships): deep water not covered by a solid building. */
+export const WATER = -2;
+
 /** Connected regions of one walkability array, rebuilt lazily after changes. */
 interface Layer {
   walk: Uint8Array;
@@ -30,6 +33,8 @@ export class NavGrid {
   private readonly gates = new Map<number, { owner: number; locked: boolean }>();
   private readonly base: Layer;
   private readonly layers: Layer[] = [];
+  /** Ships: 1 on deep water clear of solid buildings (fish traps are open water). */
+  private readonly water: Layer;
 
   constructor(private readonly map: GameMap) {
     this.N = map.size;
@@ -38,6 +43,7 @@ export class NavGrid {
     this.building = new Int32Array(n);
     this.solid = new Uint8Array(n);
     this.base = { walk: this.walk, comp: new Int32Array(n), walkDirty: false, compDirty: true };
+    this.water = { walk: new Uint8Array(n), comp: new Int32Array(n), walkDirty: false, compDirty: true };
     for (let i = 0; i < n; i++) this.refresh(i);
   }
 
@@ -45,7 +51,7 @@ export class NavGrid {
     return x >= 0 && y >= 0 && x < this.N && y < this.N;
   }
 
-  /** Walkability array for a player (its own unlocked gates open), or the base one for -1. */
+  /** Walkability array for a player (its own unlocked gates open), the base one for -1, ships' for WATER. */
   walkOf(player = -1): Uint8Array {
     return this.layer(player).walk;
   }
@@ -56,6 +62,11 @@ export class NavGrid {
 
   /** Recomputes walkability of one tile from terrain, features and buildings. */
   refresh(i: number): void {
+    const wet = this.map.terrain[i] === Terrain.Deep && this.solid[i] === 0 ? 1 : 0;
+    if (this.water.walk[i] !== wet) {
+      this.water.walk[i] = wet;
+      this.water.compDirty = true;
+    }
     const was = this.walk[i];
     const now = this.map.terrain[i] !== Terrain.Deep && this.map.feature[i] === Feature.None && this.solid[i] === 0 ? 1 : 0;
     if (was !== now) {
@@ -92,6 +103,7 @@ export class NavGrid {
   }
 
   private layer(player: number): Layer {
+    if (player === WATER) return this.water;
     if (player < 0) return this.base;
     let l = this.layers[player];
     if (!l) {
