@@ -778,20 +778,28 @@ export class Renderer {
     ctx.fill();
   }
 
-  /** Which side of a dock's footprint the water is on (0 +x, 1 +y, 2 -x, 3 -y). */
-  private waterSide(b: Building): number {
+  /**
+   * Which side of a dock's footprint the water is on (0 +x, 1 +y, 2 -x, 3 -y):
+   * the side with the most deep water along it, looking a little further out
+   * if none touches (so a ghost not yet on the shore still points its jetty at the sea).
+   */
+  private waterSide(x0: number, y0: number, size: number): number {
     const N = this.world.map.size;
     const deep = (x: number, y: number) => x >= 0 && y >= 0 && x < N && y < N && this.world.map.terrain[y * N + x] === Terrain.Deep;
-    const count = [0, 0, 0, 0];
-    for (let k = 0; k < b.size; k++) {
-      if (deep(b.x + b.size, b.y + k)) count[0]++;
-      if (deep(b.x + k, b.y + b.size)) count[1]++;
-      if (deep(b.x - 1, b.y + k)) count[2]++;
-      if (deep(b.x + k, b.y - 1)) count[3]++;
+    for (let reach = 1; reach <= 4; reach++) {
+      const count = [0, 0, 0, 0];
+      for (let k = 0; k < size; k++)
+        for (let r = 1; r <= reach; r++) {
+          if (deep(x0 + size - 1 + r, y0 + k)) count[0]++;
+          if (deep(x0 + k, y0 + size - 1 + r)) count[1]++;
+          if (deep(x0 - r, y0 + k)) count[2]++;
+          if (deep(x0 + k, y0 - r)) count[3]++;
+        }
+      let best = 0;
+      for (let k = 1; k < 4; k++) if (count[k] > count[best]) best = k;
+      if (count[best]) return best;
     }
-    let best = 0;
-    for (let k = 1; k < 4; k++) if (count[k] > count[best]) best = k;
-    return best;
+    return 0;
   }
 
   private drawBuilding(v: FrameView, b: Building): void {
@@ -803,7 +811,7 @@ export class Renderer {
       (b.type === 'farm' || b.type === 'fish_trap') && b.complete
         ? Math.max(1, Math.ceil((b.amount / (def.food ?? 1)) * 3))
         : def.shore
-          ? this.waterSide(b)
+          ? this.waterSide(b.x, b.y, b.size)
           : def.wall || def.classes.includes('tower')
             ? this.wallVariant(b)
             : 0;
@@ -972,7 +980,10 @@ export class Renderer {
     ctx.strokeStyle = gh.valid ? 'rgba(170,255,180,0.95)' : 'rgba(255,140,130,0.95)';
     ctx.lineWidth = Math.max(1.5, v.S / 14);
     ctx.stroke();
-    this.put(v, v.art.buildings.get(gh.type, size, this.player, gh.type === 'farm' ? 3 : 0, this.world.players[this.player]?.age ?? 0), gh.x, gh.y, 0.6);
+    const def = BUILDING_DEFS[gh.type];
+    // A field shows ripe; a dock turns its jetty toward the water it would stand by.
+    const variant = gh.type === 'farm' || gh.type === 'fish_trap' ? 3 : def.shore ? this.waterSide(gh.x, gh.y, size) : 0;
+    this.put(v, v.art.buildings.get(gh.type, size, this.player, variant, this.world.players[this.player]?.age ?? 0), gh.x, gh.y, 0.6);
   }
 
   /** AoE-style health bar in the owner's colour (gold while under construction). */
