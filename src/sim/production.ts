@@ -25,6 +25,7 @@ export function enqueue(w: World, b: Building, unit: UnitType): boolean {
   const def = BUILDING_DEFS[b.type];
   if (!b.complete || !def.trains.includes(unit)) return false;
   const p = w.players[b.owner];
+  if (UNIT_DEFS[unit].faction && UNIT_DEFS[unit].faction !== p.faction) return false;
   if (UNIT_DEFS[unit].age > p.age) {
     w.events.push({ type: 'error', owner: b.owner, message: `Requires the ${AGES[UNIT_DEFS[unit].age].name} Age` });
     return false;
@@ -91,7 +92,7 @@ export function productionTick(w: World): void {
       continue;
     }
     b.housed = false;
-    head.progress += DT / trainTime(w, b.owner, unit);
+    head.progress += DT / trainTime(w, b.owner, unit, b.type);
     if (head.progress < 1) continue;
     b.queue.shift();
     const u = spawnFrom(w, b, unit);
@@ -146,7 +147,7 @@ export function marketDrift(w: World): void {
 }
 
 export function sellPrice(w: World, owner: number, res: 'food' | 'wood' | 'stone'): number {
-  return Math.floor(w.players[owner].market[res] * SELL_SHARE);
+  return Math.floor(w.players[owner].market[res] * (w.players[owner].mods.sellShare ?? SELL_SHARE));
 }
 
 /** Buys or sells 100 of a commodity for gold at a Market; prices move with each trade. */

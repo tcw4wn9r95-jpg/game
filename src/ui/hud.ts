@@ -2,6 +2,8 @@ import ages from '../data/ages.json';
 import { RESOURCE_KINDS, type ResourceKind, type World } from '../sim/world';
 import { ICONS } from './icons';
 import { tip } from './tooltip';
+import { PLAYER_COLORS } from '../render/palette';
+import { ALL_SITES_HOLD, RELIC_HOLD, dominationTarget, wonderClock } from '../sim/modes';
 
 const RESOURCE_NAMES: Record<ResourceKind, string> = { food: 'Food', wood: 'Wood', gold: 'Gold', stone: 'Stone' };
 
@@ -28,6 +30,11 @@ export class Hud {
   onIdleVillager: () => void = () => {};
   onIdleMilitary: () => void = () => {};
   onAllMilitary: () => void = () => {};
+  /** Regicide: centre on the King; a second tap sends him to shelter. */
+  onKing: () => void = () => {};
+  onKingShelter: () => void = () => {};
+  private readonly kingBtn: HTMLButtonElement;
+  private readonly modeStrip: HTMLElement;
   private readonly idleBtn: HTMLButtonElement;
   private readonly armyBtn: HTMLButtonElement;
   private readonly toasts: HTMLElement;
@@ -83,7 +90,19 @@ export class Hud {
     this.armyBtn = sideBtn('idleArmy', ICONS.helmet, 'Idle Military', 'Jump to the next soldier awaiting orders.', () => this.onIdleMilitary());
     sideBtn('army', ICONS.military, 'Select All Military', 'Select every soldier you command.', () => this.onAllMilitary(), false);
     sideBtn('ships', ICONS.ship, 'Select All Ships', 'Available once you have a Dock.', () => {}, false).disabled = true;
+    let lastKingTap = 0;
+    this.kingBtn = sideBtn('king', ICONS.crown, 'Your King', 'Tap to find him; tap twice quickly to send him into the nearest Castle or tower.', () => {
+      const now = performance.now();
+      if (now - lastKingTap < 400) this.onKingShelter();
+      else this.onKing();
+      lastKingTap = now;
+    }, false);
+    this.kingBtn.hidden = true;
     root.appendChild(side);
+
+    this.modeStrip = el('div', 'mode-strip');
+    this.modeStrip.hidden = true;
+    root.appendChild(this.modeStrip);
 
     this.toasts = el('div', 'toasts');
     root.appendChild(this.toasts);
@@ -171,15 +190,49 @@ export class Hud {
     if (advancing) (this.ageBar.firstElementChild as HTMLElement).style.width = `${advancing.progress * 100}%`;
     // During the Peace Treaty the clock counts down to the end of it.
     this.set('clock', world.peace ? `Peace ${formatClock(world.peaceUntil - world.time)}` : formatClock(world.time));
+    this.kingBtn.hidden = world.mode !== 'regicide';
+    this.updateMode(world, player);
+  }
+
+  /** Domination score, and the countdowns of Wonders and relic holds. */
+  private updateMode(w: World, player: number): void {
+    const parts: string[] = [];
+    const teamColor = (team: number) => PLAYER_COLORS[Math.max(0, w.players.findIndex((p) => p.team === team)) % PLAYER_COLORS.length];
+    const mine = w.players[player].team;
+    const who = (team: number) => (team === mine ? 'You' : 'Enemy');
+    const whose = (team: number) => (team === mine ? 'Your' : 'Enemy');
+    const holds = (team: number) => (team === mine ? 'You hold' : 'Enemy holds');
+    if (w.mode === 'domination') {
+      const target = dominationTarget(w);
+      const teams = [...new Set(w.players.map((p) => p.team))];
+      const scores = teams
+        .map((t) => `<span class="ms-team" style="--c:${teamColor(t)}"><i></i>${who(t)} <b>${Math.floor(w.modeState.score[t] ?? 0)}</b></span>`)
+        .join('');
+      const sites = w.modeState.sites.map((s) => `<i class="ms-site" style="--c:${s.owner >= 0 ? PLAYER_COLORS[s.owner % PLAYER_COLORS.length] : '#d8d0bc'}"></i>`).join('');
+      parts.push(`${scores}<span class="ms-dim">/ ${target}</span><span class="ms-sites">${sites}</span>`);
+      const h = w.modeState.siteHold;
+      if (h) parts.push(`<span class="ms-timer" style="--c:${teamColor(h.team)}">${holds(h.team)} every site · ${formatClock(Math.max(0, ALL_SITES_HOLD - (w.time - h.since)))}</span>`);
+      if (w.peace) parts.push('<span class="ms-dim">Sites open when the treaty ends</span>');
+    }
+    const wc = wonderClock(w);
+    if (wc && w.mode !== 'domination') parts.push(`<span class="ms-timer" style="--c:${PLAYER_COLORS[wc.owner % PLAYER_COLORS.length]}">${whose(w.players[wc.owner].team)} Wonder · ${formatClock(wc.left)}</span>`);
+    const rh = w.modeState.relicHold;
+    if (rh && w.mode === 'standard') parts.push(`<span class="ms-timer" style="--c:${teamColor(rh.team)}">${holds(rh.team)} all relics · ${formatClock(Math.max(0, RELIC_HOLD - (w.time - rh.since)))}</span>`);
+    const html = parts.join('');
+    this.modeStrip.hidden = !html;
+    if (this.last.get('modeStrip') !== html) {
+      this.last.set('modeStrip', html);
+      this.modeStrip.innerHTML = html;
+    }
   }
 
   /** End of the match: Victory or Defeat, with the option to keep watching. */
-  endScreen(won: boolean, time: number): void {
+  endScreen(won: boolean, time: number, reason = ''): void {
     const bg = el('div', 'panel-backdrop');
     bg.innerHTML = `
       <div class="panel frame end-panel ${won ? 'won' : 'lost'}">
         <h2 class="panel-title">${won ? 'Victory' : 'Defeat'}</h2>
-        <div class="end-detail">${won ? 'Every enemy has fallen.' : 'Your realm has fallen.'} Match time ${formatClock(time)}.</div>
+        <div class="end-detail">${reason || (won ? 'Every enemy has fallen.' : 'Your realm has fallen.')} Match time ${formatClock(time)}.</div>
         <button class="btn btn-gold" data-a="new">New Match</button>
         <button class="btn btn-wood" data-a="watch">${won ? 'Look Around' : 'Keep Watching'}</button>
       </div>`;

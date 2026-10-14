@@ -20,6 +20,10 @@ import { buildingMaxHp, unitStats } from '../sim/techs';
 import { UNIT_K, UPGRADE_TECH, type UnitPose, UnitSprites, lookIndex, unitHeight } from './unitSprites';
 import { ZK } from './iso3d';
 import { headingOf } from './shipFigures';
+import { setBanners } from './buildingSprites';
+import { FACTIONS, type FactionId } from '../sim/techs';
+import { CAPTURE_TIME, SITE_RADIUS, type Site } from '../sim/modes';
+import { drawCrownIcon, drawRelicIcon } from './icons2d';
 
 /** Alpha channel of a sprite canvas, read once (for hit tests and occlusion). */
 const masks = new WeakMap<HTMLCanvasElement, Uint8Array>();
@@ -63,7 +67,7 @@ const TEXTURE_K = Math.SQRT2;
 const SPRITE_K = 1.6;
 
 /** Weapon each unit swings in its attack animation. */
-const ATTACK_TOOL: Record<string, Tool> = { villager: 'axe', militia: 'sword', spearman: 'spear', archer: 'bow', skirmisher: 'javelin', scout: 'spear', knight: 'spear', monk: 'staff' };
+const ATTACK_TOOL: Record<string, Tool> = { villager: 'axe', militia: 'sword', spearman: 'spear', archer: 'bow', skirmisher: 'javelin', scout: 'spear', knight: 'spear', monk: 'staff', claymore: 'sword', horse_archer: 'bow', arbalest_guard: 'bow', iron_bear: 'spear', king: 'sword' };
 /** How long the fallen stay on the field, and rubble after a building falls (seconds). */
 const CORPSE_S = 14;
 const RUIN_S = 45;
@@ -147,6 +151,7 @@ export class Renderer {
     this.biome = BIOMES[world.map.type];
     this.chunks = new ChunkCache(world.map, this.biome);
     this.fogLayer = new FogLayer(fog);
+    setBanners(world.players.map((p) => FACTIONS[p.faction as FactionId]?.banner));
   }
 
   private art(level: number): LevelArt {
@@ -338,11 +343,24 @@ export class Renderer {
         // Fields lie flat: draw them before anything standing on or around them.
         const flat = BUILDING_DEFS[e.type].walkable;
         items.push({ d: flat ? e.x + e.y - 1 : e.x + e.y + e.size, draw: () => this.drawBuilding(v, e) });
+      } else if (e.type === 'relic') {
+        if (e.holder || !onScreen(e.x, e.y, pad)) continue;
+        // Lying relics are remembered once seen; carried ones show with their monk.
+        const carrier = e.carrier ? world.unit(e.carrier) : undefined;
+        if (carrier ? carrier.owner !== this.player && !fog.isVisible(e.x, e.y) : !fog.isExplored(e.x, e.y)) continue;
+        if (carrier?.inside) continue;
+        const x = carrier ? carrier.px + (carrier.x - carrier.px) * v.alpha : e.x, y = carrier ? carrier.py + (carrier.y - carrier.py) * v.alpha : e.y;
+        items.push({ d: x + y + 0.05, draw: () => this.drawRelic(v, x, y, carrier ? v.S * 0.75 : 0) });
       } else {
         if (!onScreen(e.x, e.y, pad) || !fog.isVisible(e.x, e.y)) continue;
         const s = e.type === 'sheep' ? sp.sheep : e.type === 'deer' ? sp.deer : sp.fish;
         items.push({ d: e.x + e.y, draw: () => put(s, e.x, e.y) });
       }
+    }
+    for (const st of world.modeState.sites) {
+      if (!onScreen(st.x, st.y, pad + v.S * 4) || !fog.isExplored(st.x, st.y)) continue;
+      items.push({ d: st.x + st.y - 3, draw: () => this.drawSiteRing(v, st) });
+      items.push({ d: st.x + st.y, draw: () => this.drawSitePole(v, st) });
     }
     for (let i = this.ruins.length - 1; i >= 0; i--) {
       const r = this.ruins[i];
@@ -433,7 +451,7 @@ export class Renderer {
       ctx.strokeStyle = u.owner === this.player ? 'rgba(255,255,255,0.95)' : 'rgba(255,90,80,0.95)';
       ctx.lineWidth = Math.max(1.5, S / 16);
       const ship = UNIT_DEFS[u.type].naval;
-      const r = S * (ship ? (u.type === 'demolition_raft' || u.type === 'fishing_ship' ? 1.0 : 1.5) : u.type === 'scout' || u.type === 'knight' || UNIT_DEFS[u.type].classes.includes('siege') ? 0.55 : 0.36);
+      const r = S * (ship ? (u.type === 'demolition_raft' || u.type === 'fishing_ship' ? 1.0 : 1.5) : UNIT_DEFS[u.type].classes.includes('cavalry') || UNIT_DEFS[u.type].classes.includes('siege') ? 0.55 : 0.36);
       ctx.beginPath();
       ctx.ellipse(px, py, r, r / 2, 0, 0, Math.PI * 2);
       ctx.stroke();
@@ -458,6 +476,8 @@ export class Renderer {
     const maxHp = unitStats(this.world, u.owner, u.type).hp;
     const hurt = u.attackedAt > this.world.tick - 50 && u.hp < maxHp;
     if (selected || hurt) this.hpBar(v, px, py - S * UNIT_K * (unitHeight(u.type) + 0.15), S * 0.7, u.hp / maxHp, u.owner);
+    // The King wears a floating crown so he is easy to find in a crowd.
+    if (u.type === 'king') drawCrownIcon(this.view.ctx, px, py - S * UNIT_K * (unitHeight(u.type) + 0.45), Math.max(5, S * 0.18));
   }
 
   /** How many are aboard a transport. */
@@ -491,7 +511,7 @@ export class Renderer {
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, (CORPSE_S - age) / 4));
     ctx.translate(px, py);
-    if (c.type === 'scout' || c.type === 'knight' || UNIT_DEFS[c.type].classes.includes('siege')) {
+    if (UNIT_DEFS[c.type].classes.includes('cavalry') || UNIT_DEFS[c.type].classes.includes('siege')) {
       // A horse goes down on its side: it sinks and flattens rather than toppling end over end.
       ctx.rotate((c.left ? 1 : -1) * fall * 0.18);
       ctx.scale(k, k * (1 - fall * 0.55));
@@ -761,7 +781,7 @@ export class Renderer {
     if (u.state === 'build' || u.state === 'repair') tool = 'hammer';
     else if (u.state === 'gather' && u.order?.type === 'gather') tool = TOOL_FOR[u.order.source] ?? 'none';
     else if (fighting) tool = ATTACK_TOOL[u.type] ?? 'none';
-    const fps = u.type === 'scout' || u.type === 'knight' ? 12 : 10;
+    const fps = UNIT_DEFS[u.type].classes.includes('cavalry') ? 12 : 10;
     let frame = working ? Math.floor(t * 5) % 4 : moving ? Math.floor(t * fps) % 6 : 0;
     if (u.state === 'attack') {
       // Time the swing to the reload: the blow lands (or the arrow looses) as the cooldown restarts.
@@ -999,7 +1019,94 @@ export class Renderer {
       ctx.textBaseline = 'middle';
       ctx.fillText(String(b.garrison.length), bx, by - r * 0.1);
       ctx.textBaseline = 'alphabetic';
+      // The King is inside: a crown over the badge.
+      if (b.owner === this.player && b.garrison.some((id) => this.world.unit(id)?.type === 'king')) drawCrownIcon(ctx, bx, by - r * 1.9, r * 0.9);
     }
+    if (b.type === 'monastery' && b.complete) {
+      let n = 0;
+      for (const r of this.world.resources()) if (r.type === 'relic' && r.holder === b.id) n++;
+      const S2 = Math.max(6, S * 0.22);
+      for (let k = 0; k < n; k++) {
+        const X = this.sx(v, b.x + b.size / 2, b.y + b.size / 2) + (k - (n - 1) / 2) * S2 * 2.2;
+        drawRelicIcon(ctx, X, ny - S * (0.3 + b.size * 0.5) * ZK, S2);
+      }
+    }
+  }
+
+  /** A relic: a small gilded casket, on the ground or held up by its monk. */
+  private drawRelic(v: FrameView, x: number, y: number, lift: number): void {
+    const r = Math.max(4, v.S * 0.2);
+    const X = this.sx(v, x, y), Y = this.sy(v, x, y) - lift;
+    const { ctx } = this.view;
+    if (!lift) {
+      // A soft glow so it can be spotted.
+      const glow = ctx.createRadialGradient(X, Y - r, 1, X, Y - r, r * 3.5);
+      glow.addColorStop(0, 'rgba(255,230,140,0.55)');
+      glow.addColorStop(1, 'rgba(255,230,140,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(X - r * 3.5, Y - r * 4.5, r * 7, r * 7);
+    }
+    drawRelicIcon(ctx, X, Y - r, r);
+  }
+
+  /** The capture circle of a Domination site, in the holder's colour. */
+  private drawSiteRing(v: FrameView, st: Site): void {
+    const { ctx } = this.view;
+    const X = this.sx(v, st.x, st.y), Y = this.sy(v, st.x, st.y);
+    const R = SITE_RADIUS * v.S;
+    const col = st.owner >= 0 ? PLAYER_COLORS[st.owner % PLAYER_COLORS.length] : '#f2ead8';
+    ctx.save();
+    ctx.setLineDash([R * 0.08, R * 0.06]);
+    ctx.lineWidth = Math.max(1.5, v.S / 12);
+    ctx.strokeStyle = col;
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    ctx.ellipse(X, Y, R * 1.414, R * 0.707, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    if (st.capture > 0 && st.by >= 0) {
+      // Capture progress as an arc in the capturer's colour.
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = Math.max(3, v.S / 6);
+      ctx.strokeStyle = PLAYER_COLORS[st.by % PLAYER_COLORS.length];
+      ctx.beginPath();
+      ctx.ellipse(X, Y, R * 1.414, R * 0.707, 0, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * st.capture) / CAPTURE_TIME);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** The site's banner pole: a tall staff with a flag in the holder's colour. */
+  private drawSitePole(v: FrameView, st: Site): void {
+    const { ctx } = this.view;
+    const X = this.sx(v, st.x, st.y), Y = this.sy(v, st.x, st.y);
+    const h = v.S * 2.2;
+    const col = st.owner >= 0 ? PLAYER_COLORS[st.owner % PLAYER_COLORS.length] : '#e8e2d2';
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(X, Y, v.S * 0.35, v.S * 0.17, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Stone base, pole and gilt finial.
+    ctx.fillStyle = '#8e897e';
+    ctx.fillRect(X - v.S * 0.18, Y - v.S * 0.18, v.S * 0.36, v.S * 0.2);
+    ctx.fillStyle = '#4a3019';
+    ctx.fillRect(X - Math.max(1, v.S * 0.03), Y - h, Math.max(2, v.S * 0.06), h);
+    ctx.fillStyle = '#e0b54a';
+    ctx.beginPath();
+    ctx.arc(X, Y - h, Math.max(2, v.S * 0.07), 0, Math.PI * 2);
+    ctx.fill();
+    const wave = Math.sin(v.now * 3 + st.x) * v.S * 0.06;
+    ctx.fillStyle = col;
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(X, Y - h * 0.95);
+    ctx.quadraticCurveTo(X + v.S * 0.4, Y - h * 0.95 - wave, X + v.S * 0.8, Y - h * 0.93);
+    ctx.lineTo(X + v.S * 0.8, Y - h * 0.68);
+    ctx.quadraticCurveTo(X + v.S * 0.4, Y - h * 0.7 + wave, X, Y - h * 0.68);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   }
 
   /** Neighbour joins, damage, gate state and tower level for a fortification sprite. */

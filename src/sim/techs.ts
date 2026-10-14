@@ -2,6 +2,7 @@
 // building stats that follow from it, and the rules for what can be researched,
 // trained and built in each age.
 import ages from '../data/ages.json';
+import factions from '../data/factions.json';
 import techs from '../data/techs.json';
 import type { ResourceKind } from './constants';
 import { BUILDING_DEFS, type Building, type BuildingType, UNIT_DEFS, type UnitClass, type UnitDef, type UnitType } from './entities';
@@ -24,7 +25,15 @@ export type TechEffect =
       speedMult?: number;
       buildingAttack?: number;
       buildingMult?: number;
+      hpMult?: number;
     }
+  /** Training time multiplier at one kind of building. */
+  | { type: 'train'; building: BuildingType; mult: number }
+  /** Unit cost multiplier by class. */
+  | { type: 'cost'; classes: UnitClass[]; mult: number }
+  /** Building cost multiplier (optionally one resource only). */
+  | { type: 'buildingCost'; buildings: BuildingType[]; resource?: ResourceKind; mult: number }
+  | { type: 'market'; sellShare: number }
   | { type: 'ballistics' }
   | { type: 'upgrade'; unit: UnitType; name: string }
   | { type: 'gather'; sources: string[]; mult: number }
@@ -93,9 +102,38 @@ export interface PlayerMods {
   };
   /** Docks: training-time and ship wood-cost multipliers. */
   naval: { trainMult: number; woodMult: number };
+  /** Training-time multiplier per building (faction bonuses). */
+  trainAt: Partial<Record<BuildingType, number>>;
+  /** Unit cost multiplier per unit type. */
+  unitCost: Partial<Record<UnitType, number>>;
+  /** Building cost multipliers per type and resource. */
+  buildingCost: Partial<Record<BuildingType, Partial<Record<ResourceKind, number>>>>;
+  /** Share of the price a sale at the market returns. */
+  sellShare: number;
 }
 
-export function baseMods(): PlayerMods {
+export type FactionId = keyof typeof factions;
+export interface FactionDef {
+  name: string;
+  /** Flag shape on buildings. */
+  banner: 'swallowtail' | 'pennant' | 'square' | 'tongued';
+  unique: UnitType;
+  bonuses: string[];
+  effects: TechEffect[];
+  description: string;
+}
+export const FACTIONS = factions as unknown as Record<FactionId, FactionDef>;
+export const FACTION_IDS = Object.keys(FACTIONS) as FactionId[];
+
+/** A player's starting modifiers: the base rules plus their faction's bonuses. */
+export function baseMods(faction?: FactionId | string): PlayerMods {
+  const m = rawMods();
+  const f = faction ? FACTIONS[faction as FactionId] : undefined;
+  if (f) applyList(m, f.effects);
+  return m;
+}
+
+function rawMods(): PlayerMods {
   const units = {} as Record<UnitType, UnitDef>;
   for (const k of Object.keys(UNIT_DEFS) as UnitType[]) units[k] = { ...UNIT_DEFS[k], bonus: { ...UNIT_DEFS[k].bonus } };
   return {
@@ -108,12 +146,20 @@ export function baseMods(): PlayerMods {
     building: { los: 0, hpMult: 1, meleeArmor: 0, pierceArmor: 0 },
     defense: { towerHp: 0, towerAttack: 0, towerRange: 0, towerName: null, wallHpMult: 1, castleHpMult: 1, murderHoles: false, heatedShot: false },
     naval: { trainMult: 1, woodMult: 1 },
+    trainAt: {},
+    unitCost: {},
+    buildingCost: {},
+    sellShare: 0.7,
   };
 }
 
 /** Applies one tech's effects to a player's modifiers (age changes are applied by the caller). */
 export function applyEffects(m: PlayerMods, id: TechId): void {
-  for (const e of TECH_DEFS[id].effects) {
+  applyList(m, TECH_DEFS[id].effects);
+}
+
+function applyList(m: PlayerMods, effects: TechEffect[]): void {
+  for (const e of effects) {
     switch (e.type) {
       case 'unit':
         for (const k of Object.keys(m.units) as UnitType[]) {
@@ -128,7 +174,24 @@ export function applyEffects(m: PlayerMods, id: TechId): void {
           if (e.speedMult) d.speed *= e.speedMult;
           if (e.buildingAttack) d.buildingAttack = (d.buildingAttack ?? 0) + e.buildingAttack;
           if (e.buildingMult) d.buildingMult = (d.buildingMult ?? 1) * e.buildingMult;
+          if (e.hpMult) d.hp = Math.round(d.hp * e.hpMult);
         }
+        break;
+      case 'train':
+        m.trainAt[e.building] = (m.trainAt[e.building] ?? 1) * e.mult;
+        break;
+      case 'cost':
+        for (const k of Object.keys(m.units) as UnitType[])
+          if (e.classes.some((c) => m.units[k].classes.includes(c))) m.unitCost[k] = (m.unitCost[k] ?? 1) * e.mult;
+        break;
+      case 'buildingCost':
+        for (const b of e.buildings) {
+          const per = (m.buildingCost[b] ??= {});
+          for (const r of e.resource ? [e.resource] : (['food', 'wood', 'gold', 'stone'] as ResourceKind[])) per[r] = (per[r] ?? 1) * e.mult;
+        }
+        break;
+      case 'market':
+        m.sellShare = e.sellShare;
         break;
       case 'upgrade':
         m.units[e.unit].name = e.name;
@@ -185,18 +248,36 @@ export function unitStats(w: World, owner: number, type: UnitType): UnitDef {
   return w.players[owner]?.mods.units[type] ?? UNIT_DEFS[type];
 }
 
-/** What a unit costs its owner (Shipwright makes ships cheaper). */
+/** What a unit costs its owner (faction discounts, Shipwright for ships). */
 export function unitCost(w: World, owner: number, type: UnitType): Partial<Record<ResourceKind, number>> {
   const cost = UNIT_DEFS[type].cost;
-  const m = w.players[owner]?.mods.naval;
-  if (!UNIT_DEFS[type].naval || !m || m.woodMult === 1 || !cost.wood) return cost;
-  return { ...cost, wood: Math.round(cost.wood * m.woodMult) };
+  const m = w.players[owner]?.mods;
+  if (!m) return cost;
+  const all = m.unitCost[type] ?? 1;
+  const wood = UNIT_DEFS[type].naval ? m.naval.woodMult : 1;
+  if (all === 1 && wood === 1) return cost;
+  const out: Partial<Record<ResourceKind, number>> = {};
+  for (const [k, v] of Object.entries(cost)) out[k as ResourceKind] = Math.round((v ?? 0) * all * (k === 'wood' ? wood : 1));
+  return out;
 }
 
-/** Seconds to train a unit (Dry Dock speeds up ships). */
-export function trainTime(w: World, owner: number, type: UnitType): number {
-  const t = UNIT_DEFS[type].trainTime;
-  return UNIT_DEFS[type].naval ? t * (w.players[owner]?.mods.naval.trainMult ?? 1) : t;
+/** What a building costs its owner (faction discounts). */
+export function buildingCost(w: World, owner: number, type: BuildingType): Partial<Record<ResourceKind, number>> {
+  const cost = BUILDING_DEFS[type].cost;
+  const per = w.players[owner]?.mods.buildingCost[type];
+  if (!per) return cost;
+  const out: Partial<Record<ResourceKind, number>> = {};
+  for (const [k, v] of Object.entries(cost)) out[k as ResourceKind] = Math.round((v ?? 0) * (per[k as ResourceKind] ?? 1));
+  return out;
+}
+
+/** Seconds to train a unit (Dry Dock speeds up ships; some factions train faster at a building). */
+export function trainTime(w: World, owner: number, type: UnitType, at?: BuildingType): number {
+  const m = w.players[owner]?.mods;
+  let t = UNIT_DEFS[type].trainTime;
+  if (UNIT_DEFS[type].naval) t *= m?.naval.trainMult ?? 1;
+  if (at) t *= m?.trainAt[at] ?? 1;
+  return t;
 }
 
 /** Max HP of a building for its owner (masonry, fortified walls, tower upgrades, hoardings). */
@@ -291,10 +372,10 @@ export function techsAt(type: BuildingType): TechId[] {
 export function completeTech(w: World, owner: number, id: TechId): void {
   const p = w.players[owner];
   if (p.techs.includes(id)) return;
-  const before = baseMods();
+  const before = baseMods(p.faction);
   for (const t of p.techs) applyEffects(before, t);
   p.techs.push(id);
-  const after = baseMods();
+  const after = baseMods(p.faction);
   for (const t of p.techs) applyEffects(after, t);
   p.mods = after;
   for (const e of TECH_DEFS[id].effects) if (e.type === 'age') p.age = e.age;

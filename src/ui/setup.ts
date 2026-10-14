@@ -6,6 +6,9 @@ import { mapImage } from './mapImage';
 import { type SlotId, listSaves } from './saves';
 import { DIFFICULTIES, type Difficulty } from '../sim/ai/opponent';
 import { showSlots } from './slotPanel';
+import { GAME_MODES, type GameMode, MODE_NAMES } from '../sim/modes';
+import { FACTIONS, FACTION_IDS, type FactionId } from '../sim/techs';
+import { UNIT_DEFS } from '../sim/entities';
 
 const STORAGE_KEY = 'hc.setup';
 
@@ -17,12 +20,21 @@ const MAP_INFO: Record<MapType, { name: string; desc: string }> = {
 };
 const SIZE_LABELS: Record<MapSize, string> = { skirmish: 'Skirmish', standard: 'Standard', epic: 'Epic' };
 const AI_LABELS: Record<Difficulty, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
-const TREATY_LABELS: Record<number, string> = { 0: 'No treaty', 10: '10 min', 20: '20 min', 30: '30 min' };
+const TREATY_LABELS: Record<number, string> = { 0: 'Off', 10: '10 min', 20: '20 min', 30: '30 min' };
+const MODE_INFO: Record<GameMode, string> = {
+  standard: 'Win by conquest, by a Wonder standing 8 minutes, or by holding every relic for 8 minutes.',
+  regicide: 'Each realm starts with a King in a Castle. Slay theirs; keep yours alive.',
+  domination: 'Hold the Banner Sites to score. First to the target, or holding every site for 3 minutes, wins.',
+};
+const FACTION_SHORT: Record<string, string> = { random: 'Random', highland: 'Highland', steppe: 'Steppe', coastal: 'Coastal', mountain: 'Mountain' };
 
 /** Opponent strength and Peace Treaty length (minutes, 0 for none). */
 export interface MatchSettings {
   difficulty: Difficulty;
   treaty: number;
+  mode: GameMode;
+  /** The human's faction, or 'random'. */
+  faction: string;
 }
 const PLAYER_LABELS: Record<number, string> = { 2: '1 vs 1', 3: '1 vs 2', 4: '2 vs 2' };
 
@@ -36,7 +48,7 @@ function loadPrefs(): Partial<MapOptions & MatchSettings> {
 
 function savePrefs(o: MapOptions, m: MatchSettings): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ type: o.type, size: o.size, players: o.players, difficulty: m.difficulty, treaty: m.treaty }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ type: o.type, size: o.size, players: o.players, difficulty: m.difficulty, treaty: m.treaty, mode: m.mode, faction: m.faction }));
   } catch {
     /* storage unavailable: preferences just don't persist */
   }
@@ -63,6 +75,8 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
   const settings: MatchSettings = {
     difficulty: DIFFICULTIES.includes(prefs.difficulty as Difficulty) ? (prefs.difficulty as Difficulty) : 'normal',
     treaty: [0, 10, 20, 30].includes(prefs.treaty as number) ? (prefs.treaty as number) : 0,
+    mode: GAME_MODES.includes(prefs.mode as GameMode) ? (prefs.mode as GameMode) : 'standard',
+    faction: ['random', ...FACTION_IDS].includes(prefs.faction as string) ? (prefs.faction as string) : 'random',
   };
 
   const el = document.createElement('div');
@@ -73,14 +87,18 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
         <header class="setup-title"><span class="crest">${ICONS.crown}</span><h1>Hearth &amp; Crown</h1></header>
         <div class="setup-label">Map</div>
         <div class="cards" data-row="type"></div>
-        <div class="setup-label">Size</div>
-        <div class="seg" data-row="size"></div>
         <div class="setup-pair">
+          <div><div class="setup-label">Size</div><div class="seg" data-row="size"></div></div>
           <div><div class="setup-label">Players</div><div class="seg" data-row="players"></div></div>
-          <div><div class="setup-label">Opponent</div><div class="seg" data-row="difficulty"></div></div>
         </div>
-        <div class="setup-label">Peace Treaty</div>
-        <div class="seg" data-row="treaty"></div>
+        <div class="setup-pair">
+          <div><div class="setup-label">Opponent</div><div class="seg" data-row="difficulty"></div></div>
+          <div><div class="setup-label">Peace Treaty</div><div class="seg" data-row="treaty"></div></div>
+        </div>
+        <div class="setup-label">Game Mode</div>
+        <div class="seg" data-row="mode"></div>
+        <div class="setup-label">Your Faction</div>
+        <div class="seg" data-row="faction"></div>
         <div class="setup-note" data-v="note"></div>
       </section>
       <section class="setup-right frame">
@@ -134,12 +152,28 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
   group('type', MAP_TYPES, (t) => `<span class="card-art">${MAP_ICONS[t]}</span><span class="card-name">${MAP_INFO[t].name}</span>`, () => opts.type, (v) => (opts.type = v));
   group('size', MAP_SIZES, (s) => SIZE_LABELS[s], () => opts.size, (v) => (opts.size = v));
   group('players', [2, 3, 4], (p) => PLAYER_LABELS[p], () => opts.players, (v) => (opts.players = v));
+  // The note explains whatever was last chosen.
+  let topic: 'difficulty' | 'mode' | 'faction' = 'mode';
   const note = () => {
+    const f = FACTIONS[settings.faction as FactionId];
     el.querySelector('[data-v=note]')!.textContent =
-      settings.difficulty === 'hard' ? 'Hard AI gathers 10% faster.' : settings.difficulty === 'easy' ? 'Easy AI never attacks before minute 15.' : '';
+      topic === 'difficulty'
+        ? settings.difficulty === 'hard'
+          ? 'Hard AI gathers 10% faster.'
+          : settings.difficulty === 'easy'
+            ? 'Easy AI never attacks before minute 15.'
+            : 'Normal AI plays a different style each match.'
+        : topic === 'faction'
+          ? f
+            ? `${f.name}: ${f.bonuses.join('; ')}. Unique: ${UNIT_DEFS[f.unique].name}.`
+            : 'A faction picked at random when the match starts.'
+          : MODE_INFO[settings.mode];
   };
-  group('difficulty', DIFFICULTIES, (d) => AI_LABELS[d], () => settings.difficulty, (v) => ((settings.difficulty = v), note()), false);
+  const pick = (t: typeof topic) => () => ((topic = t), note());
+  group('difficulty', DIFFICULTIES, (d) => AI_LABELS[d], () => settings.difficulty, (v) => ((settings.difficulty = v), pick('difficulty')()), false);
   group('treaty', [0, 10, 20, 30], (t) => TREATY_LABELS[t], () => settings.treaty, (v) => (settings.treaty = v), false);
+  group('mode', GAME_MODES, (m) => MODE_NAMES[m], () => settings.mode, (v) => ((settings.mode = v), pick('mode')()), false);
+  group('faction', ['random', ...FACTION_IDS], (f) => FACTION_SHORT[f] ?? f, () => settings.faction, (v) => ((settings.faction = v), pick('faction')()), false);
   note();
 
   el.querySelector('.icon-btn')!.addEventListener('click', () => {

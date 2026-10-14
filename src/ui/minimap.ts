@@ -3,6 +3,7 @@ import { PLAYER_COLORS } from '../render/palette';
 import type { Fog } from '../sim/fog';
 import type { World } from '../sim/world';
 import { mapImage } from './mapImage';
+import { drawCrownIcon, drawRelicIcon } from '../render/icons2d';
 
 const REDRAW_MS = 120;
 const BASE_REFRESH_MS = 3000;
@@ -131,6 +132,34 @@ export class Minimap {
       const [x, y] = at(u.x, u.y);
       g.fillStyle = PLAYER_COLORS[u.owner % PLAYER_COLORS.length];
       g.fillRect(x - dot / 2, y - dot / 2, dot, dot);
+    }
+
+    // Domination sites in their holder's colour; relics lying about as gold specks.
+    for (const st of this.world.modeState.sites) {
+      if (!this.fog.isExplored(st.x, st.y)) continue;
+      const [x, y] = at(st.x, st.y);
+      g.fillStyle = st.owner >= 0 ? PLAYER_COLORS[st.owner % PLAYER_COLORS.length] : '#efe7d2';
+      g.strokeStyle = '#1a1208';
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.arc(x, y, Math.max(3.5, ax * 3), 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+    }
+    for (const r of this.world.resources()) {
+      if (r.type !== 'relic' || r.holder || !this.fog.isExplored(r.x, r.y)) continue;
+      const [x, y] = at(r.x, r.y);
+      drawRelicIcon(g, x, y, Math.max(2.5, ax * 2));
+    }
+    // Your King: a pulsing crown (an enemy King only while in sight).
+    for (const u of this.world.units()) {
+      if (u.type !== 'king') continue;
+      const holder = u.inside ? this.world.building(u.inside) : undefined;
+      const px = holder ? holder.x + holder.size / 2 : u.x, py = holder ? holder.y + holder.size / 2 : u.y;
+      if (u.owner !== this.player && (holder || !this.fog.isVisible(px, py))) continue;
+      const [x, y] = at(px, py);
+      const pulse = 1 + 0.2 * Math.sin((now / 1000) * 5);
+      drawCrownIcon(g, x, y - 2, Math.max(4, ax * 3) * (u.owner === this.player ? pulse : 1));
     }
 
     // Alert pings: red rings pulsing outward.

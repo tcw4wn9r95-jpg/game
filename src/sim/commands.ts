@@ -5,11 +5,12 @@ import { canBoard, setPacked, unload } from './siege';
 import { canBuild, findResource, gatherOrder, isBuilder, isGatherer, setOrder, sourceOf } from './economy';
 import { FlowField } from './flowfield';
 import { WALL_TYPES, canShelter, placeWall, setGateLock, shelterRoom, ungarrison } from './fortify';
-import { buildingMaxHp, unitStats } from './techs';
+import { buildingCost, buildingMaxHp, unitStats } from './techs';
 import { canEngage, landRegion, startFerry, transportsNear } from './naval';
 import { BUILDING_DEFS, type BuildingType, type GatherTarget, type Stance, UNIT_DEFS, type Unit, type UnitType, isShip, navOf } from './entities';
 import { cancelQueued, canAfford, enqueue, enqueueTech, pay, trade } from './production';
 import type { TechId } from './techs';
+import { carried, isRelic } from './modes';
 import type { World } from './world';
 
 export type Command =
@@ -110,6 +111,11 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
       }
       const b = w.building(cmd.id);
       if (!b) return;
+      if (b.type === 'monastery' && b.owner === player)
+        for (const u of units) {
+          const r = carried(w, u);
+          if (r) setOrder(u, { type: 'relic', id: r.id });
+        }
       let room = shelterRoom(b);
       for (const u of units) {
         if (room <= 0 || !canShelter(b, u)) continue;
@@ -188,12 +194,13 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
         w.events.push({ type: 'error', owner: player, message: "Can't build there" });
         return;
       }
-      if (!canAfford(w, player, def.cost)) {
-        const short = Object.entries(def.cost).find(([k, v]) => p.resources[k as keyof typeof p.resources] < (v ?? 0));
+      const cost = buildingCost(w, player, cmd.building);
+      if (!canAfford(w, player, cost)) {
+        const short = Object.entries(cost).find(([k, v]) => p.resources[k as keyof typeof p.resources] < (v ?? 0));
         w.events.push({ type: 'error', owner: player, message: `Not enough ${short?.[0] ?? 'resources'}` });
         return;
       }
-      pay(w, player, def.cost);
+      pay(w, player, cost);
       const b = w.placeBuilding(cmd.building, player, cmd.x, cmd.y);
       for (const u of units) if (canBuild(u, b.type)) setOrder(u, { type: 'build', id: b.id }), (u.resume = null);
       return;
@@ -227,10 +234,11 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
       for (const id of cmd.ids) {
         const e = w.get(id);
         if (!e || e.kind === 'resource' || e.owner !== player) continue;
+        // The King can't be dismissed.
+        if (e.kind === 'unit' && UNIT_DEFS[e.type].classes.includes('king')) continue;
         if (e.kind === 'building') {
           // Refund what wasn't built yet, and everything still queued.
-          const def = BUILDING_DEFS[e.type];
-          if (!e.complete) pay(w, player, Object.fromEntries(Object.entries(def.cost).map(([k, v]) => [k, Math.floor((v ?? 0) * (1 - e.progress))])), -1);
+          if (!e.complete) pay(w, player, Object.fromEntries(Object.entries(buildingCost(w, player, e.type)).map(([k, v]) => [k, Math.floor((v ?? 0) * (1 - e.progress))])), -1);
           while (e.queue.length) cancelQueued(w, e, e.queue.length - 1);
         }
         w.remove(id);
@@ -318,6 +326,15 @@ function spiral(k: number): [number, number] {
 
 /** Sends gatherers to a resource (at most two per tile on clustered tiles); others walk there. */
 function gatherGroup(w: World, units: Unit[], target: GatherTarget): void {
+  const relic = target.kind === 'entity' ? w.get(target.id) : undefined;
+  if (isRelic(relic)) {
+    // The nearest monk fetches it; everyone else just goes there.
+    const monks = units.filter((u) => UNIT_DEFS[u.type].converter && !carried(w, u)).sort((a, b) => Math.hypot(a.x - relic.x, a.y - relic.y) - Math.hypot(b.x - relic.x, b.y - relic.y));
+    if (monks[0] && !relic.holder) setOrder(monks[0], { type: 'relic', id: relic.id });
+    const rest = units.filter((u) => u !== monks[0]);
+    if (rest.length) moveGroup(w, rest, relic.x, relic.y);
+    return;
+  }
   const source = sourceOf(w, target);
   if (!source) return;
   // Fishing ships take only fish; villagers anything they can walk to.

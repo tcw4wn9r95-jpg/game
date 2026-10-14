@@ -4,10 +4,13 @@ import { generateMap } from '../mapgen';
 import type { MapSize, MapType } from '../terrain';
 import { TICK_RATE, World } from '../world';
 import { type Difficulty, Opponent } from './opponent';
+import type { GameMode } from '../modes';
+import { FACTION_IDS } from '../techs';
 
 export interface MatchResult {
   /** Winning slot's team, or null if time ran out. */
   winner: number | null;
+  reason: string | null;
   minutes: number;
   /** Longest stretch (seconds) in which neither side gathered or fought. */
   longestStall: number;
@@ -18,9 +21,11 @@ export interface MatchResult {
   notes: string[];
 }
 
-export function runMatch(opts: { type: MapType; size: MapSize; seed: number; ai: Difficulty[]; maxMinutes: number; logEvery?: number }): MatchResult {
+export function runMatch(opts: { type: MapType; size: MapSize; seed: number; ai: Difficulty[]; maxMinutes: number; logEvery?: number; mode?: GameMode; factions?: string[] }): MatchResult {
   const map = generateMap({ type: opts.type, size: opts.size, players: opts.ai.length, seed: opts.seed });
-  const w = new World(map);
+  // Factions default to a seeded draw so batches cover them all.
+  const factions = opts.factions ?? opts.ai.map((_, i) => FACTION_IDS[(opts.seed * 7 + i * 3) % FACTION_IDS.length]);
+  const w = new World(map, { mode: opts.mode, factions });
   const bots = opts.ai.map((d, i) => {
     const o = new Opponent(i, d, opts.seed);
     o.setup(w);
@@ -46,6 +51,7 @@ export function runMatch(opts: { type: MapType; size: MapSize; seed: number; ai:
   }
   log.push(summary(w));
   log.push(`  styles: ${bots.map((b) => b.style).join(' vs ')}`);
+  log.push(`  factions: ${factions.join(' vs ')}${w.mode === 'domination' ? ` score ${w.modeState.score.map(Math.floor).join('-')}` : ''}`);
   if (w.winner === null)
     w.players.forEach((_, i) => {
       const bl: Record<string, number> = {};
@@ -56,6 +62,7 @@ export function runMatch(opts: { type: MapType; size: MapSize; seed: number; ai:
     });
   return {
     winner: w.winner,
+    reason: w.victoryReason,
     minutes: w.time / 60,
     longestStall,
     players: w.players.map((p, i) => ({

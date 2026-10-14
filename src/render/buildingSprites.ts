@@ -25,6 +25,16 @@ let THATCH: Roof = { color: '#bf9f55', kind: 'thatch' };
 let SHINGLE: Roof = { color: '#8a6a48', kind: 'shingle' };
 /** Gilded finials and trims in the last age. */
 let ORNATE = false;
+/** Banner and flag cut for the player being painted (their faction's). */
+type BannerCut = 'swallowtail' | 'pennant' | 'square' | 'tongued';
+let BANNER: BannerCut = 'swallowtail';
+const BANNERS: BannerCut[] = [];
+
+/** Each player's banner cut, from their faction (set at the start of a match). */
+export function setBanners(cuts: Array<string | undefined>): void {
+  BANNERS.length = 0;
+  for (const c of cuts) BANNERS.push((c as BannerCut) ?? 'swallowtail');
+}
 
 function style(age: number): void {
   ORNATE = age >= 3;
@@ -77,9 +87,21 @@ function flag(g: G, x: number, y: number, z: number, team: string, s = 1): void 
   const top = by - 22.5 * s, bot = by - 14.5 * s, len = 15 * s;
   g.beginPath();
   g.moveTo(bx + 0.6, top);
-  g.bezierCurveTo(bx + len * 0.35, top - 2.2 * s, bx + len * 0.65, top + 1.8 * s, bx + len, top + 1.5 * s);
-  g.lineTo(bx + len * 0.82, (top + bot) / 2 + 1 * s);
-  g.lineTo(bx + len * 0.97, bot + 1.5 * s);
+  const mid = (top + bot) / 2 + 1.2 * s;
+  if (BANNER === 'pennant') {
+    g.bezierCurveTo(bx + len * 0.35, top - 2.2 * s, bx + len * 0.65, top + 1.8 * s, bx + len * 1.25, mid);
+  } else {
+    g.bezierCurveTo(bx + len * 0.35, top - 2.2 * s, bx + len * 0.65, top + 1.8 * s, bx + len, top + 1.5 * s);
+    if (BANNER === 'swallowtail') g.lineTo(bx + len * 0.72, mid);
+    else if (BANNER === 'tongued') {
+      const h = bot + 1.5 * s - (top + 1.5 * s);
+      for (const f of [1 / 3, 2 / 3]) {
+        g.lineTo(bx + len * 0.8, top + 1.5 * s + h * f - h / 6);
+        g.lineTo(bx + len, top + 1.5 * s + h * f);
+      }
+    }
+  }
+  if (BANNER !== 'pennant') g.lineTo(bx + len * 0.97, bot + 1.5 * s);
   g.bezierCurveTo(bx + len * 0.6, bot + 2 * s, bx + len * 0.35, bot - 2 * s, bx + 0.6, bot);
   g.closePath();
   const cloth = g.createLinearGradient(bx, 0, bx + len, 0);
@@ -108,9 +130,16 @@ function banner(g: G, u: number, v: number, team: string): void {
   g.beginPath();
   g.moveTo(u - 3, v);
   g.lineTo(u + 3, v);
-  g.lineTo(u + 3, v - 11);
-  g.lineTo(u, v - 9);
-  g.lineTo(u - 3, v - 11);
+  if (BANNER === 'pennant') g.lineTo(u, v - 13);
+  else if (BANNER === 'square') (g.lineTo(u + 3, v - 10), g.lineTo(u - 3, v - 10));
+  else if (BANNER === 'tongued') {
+    g.lineTo(u + 3, v - 11);
+    for (const x of [1.5, 0, -1.5]) (g.lineTo(u + x, v - 9), g.lineTo(u + x - 1.5, v - 11));
+  } else {
+    g.lineTo(u + 3, v - 11);
+    g.lineTo(u, v - 8);
+    g.lineTo(u - 3, v - 11);
+  }
   g.closePath();
   g.fill();
   g.strokeStyle = 'rgba(20,10,0,0.45)';
@@ -655,7 +684,82 @@ function fishTrap(g: G, n: number, rng: Rng, stage: number): void {
   }
 }
 
+/** A stepped marble monument: three terraces, colonnaded hall, a gilded spire over all. */
+function wonder(g: G, n: number, team: string): void {
+  const marble = { base: '#e3dccb', mat: 'stone' as const };
+  const gold = '#d9b041';
+  groundPatch(g, n, '#8a7a60', 0.4);
+  boxShadow(g, 0.1, 0.1, n - 0.1, n - 0.1, 130);
+  let z = 0;
+  const tier = (i: number, h: number) => {
+    g.save();
+    g.translate(0, -z * ZK);
+    box(g, i, i, n - i, n - i, h, marble, {}, 90 + i * 10);
+    boxTop(g, i, i, n - i, n - i, h, 'stone', '#d6cfbe');
+    g.restore();
+    z += h;
+  };
+  tier(0.15, 8);
+  tier(0.45, 8);
+  tier(0.75, 8);
+  // Steps up the front of the terraces.
+  for (let k = 0; k < 6; k++) {
+    const y = n - 0.15 - k * 0.1;
+    box(g, n / 2 - 0.5, y - 0.1, n / 2 + 0.5, y, 4 * (k + 1), marble, {}, 120 + k);
+  }
+  // The colonnaded hall.
+  g.save();
+  g.translate(0, -z * ZK);
+  box(g, 1.05, 1.05, n - 1.05, n - 1.05, 46, marble, {
+    left: (len) => {
+      for (let u = 6; u < len - 3; u += 8) {
+        g.fillStyle = 'rgba(60,45,30,0.55)';
+        g.fillRect(u + 1.4, 4, 3.4, 34);
+        g.fillStyle = '#f2ecdf';
+        g.fillRect(u - 0.8, 2, 2.4, 38);
+      }
+      doorAt(g, len / 2, 10, 22);
+      banner(g, len * 0.22, 44, team);
+      banner(g, len * 0.78, 44, team);
+    },
+    right: (len) => {
+      for (let u = 6; u < len - 3; u += 8) {
+        g.fillStyle = 'rgba(40,30,20,0.55)';
+        g.fillRect(u + 1.4, 4, 3.4, 34);
+        g.fillStyle = '#d7d0c0';
+        g.fillRect(u - 0.8, 2, 2.4, 38);
+      }
+    },
+  }, 131);
+  boxTop(g, 1.05, 1.05, n - 1.05, n - 1.05, 46, 'stone', '#cfc8b6');
+  // Gilt frieze.
+  line3(g, [1.05, n - 1.05, 44], [n - 1.05, n - 1.05, 44], gold, 1.6);
+  line3(g, [n - 1.05, 1.05, 44], [n - 1.05, n - 1.05, 44], gold, 1.6);
+  g.restore();
+  z += 46;
+  // Upper drum and a tall pointed roof.
+  g.save();
+  g.translate(0, -z * ZK);
+  box(g, 1.7, 1.7, n - 1.7, n - 1.7, 26, marble, { left: (len) => windowAt(g, len / 2, 12, 5, 8), right: (len) => windowAt(g, len / 2, 12, 5, 8) }, 141);
+  hipRoof(g, 1.6, 1.6, n - 1.6, n - 1.6, 26, 52, { color: '#3d6f8f', kind: 'shingle', trim: gold }, 0.1, 9);
+  g.restore();
+  z += 26 + 52;
+  line3(g, [n / 2, n / 2, z - 2], [n / 2, n / 2, z + 18], gold, 2);
+  const [sx, sy] = P(n / 2, n / 2, z + 20);
+  g.fillStyle = gold;
+  g.beginPath();
+  g.arc(sx, sy, 3, 0, Math.PI * 2);
+  g.fill();
+  // Obelisks at the corners of the lowest terrace.
+  for (const [x, y] of [[0.4, 0.4], [n - 0.4, 0.4], [0.4, n - 0.4], [n - 0.4, n - 0.4]] as const) {
+    prism(g, [[x - 0.12, y - 0.12], [x + 0.12, y - 0.12], [x + 0.12, y + 0.12], [x - 0.12, y + 0.12]], 8, 34, marble, 'stone', '#d6cfbe', 151);
+    line3(g, [x, y, 42], [x, y, 50], gold, 1.4);
+  }
+  flag(g, n - 0.4, n - 0.4, 50, team, 1.1);
+}
+
 const PAINTERS: Record<BuildingType, Painter> = {
+  wonder: (g, n, team) => wonder(g, n, team),
   dock: (g, n, team, _rng, variant) => dock(g, n, team, variant & 3),
   fish_trap: (g, n, _team, rng, variant) => fishTrap(g, n, rng, variant),
   town_center: (g, n, team) => {
@@ -1431,6 +1535,7 @@ export class BuildingSprites {
     g.translate(halfW, RISE);
     setScale(k);
     style(age);
+    BANNER = BANNERS[player] ?? 'swallowtail';
     PAINTERS[type](g, n, PLAYER_COLORS[player % PLAYER_COLORS.length], new Rng(n * 31 + type.length), variant);
     grade(c, 0.06, n * 97 + variant);
     // Anchor = footprint's north corner.

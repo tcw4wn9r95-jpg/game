@@ -14,9 +14,10 @@ import {
   navOf,
 } from './entities';
 import { garrisonThink, repairThink } from './fortify';
-import { unitStats } from './techs';
+import { buildingCost, unitStats } from './techs';
 import { boardThink, readyToMove } from './siege';
 import { ferryThink, landingGoal, unloadThink } from './naval';
+import { relicGoal, relicThink } from './modes';
 import type { Goal } from './pathfinding';
 import { Feature } from './terrain';
 import type { World } from './world';
@@ -96,7 +97,7 @@ export function sourceOf(w: World, t: GatherTarget): Source | null {
   }
   const e = w.get(t.id);
   if (isFarm(e)) return e.complete && e.amount > 0 ? fieldSource(e) : null;
-  return e?.kind === 'resource' && e.amount > 0 ? e.type : null;
+  return e?.kind === 'resource' && e.amount > 0 && e.type !== 'relic' ? e.type : null;
 }
 
 function resolve(w: World, t: GatherTarget): ResolvedTarget | null {
@@ -153,7 +154,7 @@ function takeOne(w: World, t: GatherTarget): boolean {
 function reseed(w: World, farm: Building): void {
   const p = w.players[farm.owner];
   const def = BUILDING_DEFS[farm.type];
-  const wood = def.cost.wood ?? 0;
+  const wood = buildingCost(w, farm.owner, farm.type).wood ?? 0;
   if (p.autoReseed && p.resources.wood >= wood) {
     p.resources.wood -= wood;
     farm.amount = (def.food ?? 0) + (w.players[farm.owner]?.mods.farmFood ?? 0);
@@ -227,7 +228,7 @@ export function findResource(
       best = { kind: 'entity', id: b.id };
     }
   for (const r of w.resources()) {
-    if (!sources.includes(r.type) || r.amount <= 0) continue;
+    if (r.type === 'relic' || !sources.includes(r.type) || r.amount <= 0) continue;
     if (skip?.kind === 'entity' && skip.id === r.id) continue;
     const d = Math.hypot(r.x - cx, r.y - cy);
     if (d > radius || d >= bd || !accessible(w, u, r.x, r.y)) continue;
@@ -311,6 +312,8 @@ export function think(w: World, u: Unit): void {
       return repairThink(w, u, o, inReach, () => walkTo(w, u));
     case 'unload':
       return unloadThink(w, u, o, () => walkTo(w, u));
+    case 'relic':
+      return relicThink(w, u, o, () => walkTo(w, u));
     case 'gather':
       return gather(w, u, o);
     case 'dropoff':
@@ -477,6 +480,8 @@ export function goalFor(w: World, u: Unit): Goal | null {
     }
     case 'unload':
       return landingGoal(w, u, o.x, o.y);
+    case 'relic':
+      return relicGoal(w, u, o);
     case 'garrison': {
       const c = w.unit(o.id);
       if (c && isShip(c)) {

@@ -1,3 +1,5 @@
+import { GAME_MODES, type GameMode } from './sim/modes';
+import { FACTION_IDS } from './sim/techs';
 import './style.css';
 import { Game, type MatchSetup } from './game';
 import type { Difficulty } from './sim/ai/opponent';
@@ -63,6 +65,12 @@ function optionsFromUrl(params: URLSearchParams): MapOptions | null {
   };
 }
 
+/** Factions for a new match: the human's choice (or a random one), the AIs at random. */
+function pickFactions(players: number, mine: string): string[] {
+  const any = () => FACTION_IDS[Math.floor(Math.random() * FACTION_IDS.length)];
+  return Array.from({ length: players }, (_, i) => (i === 0 && (FACTION_IDS as string[]).includes(mine) ? mine : any()));
+}
+
 function boot(): void {
   installErrorLog();
   installTheme();
@@ -113,7 +121,8 @@ function boot(): void {
         clearBackdrop();
         backdrop = new MenuBackdrop(view, map);
       },
-      onStart: (_opts, map, s) => start(map, { treaty: s.treaty, ai: map.starts.map((_, i) => (i === 0 ? null : s.difficulty)) }),
+      onStart: (_opts, map, s) =>
+        start(map, { treaty: s.treaty, ai: map.starts.map((_, i) => (i === 0 ? null : s.difficulty)), mode: s.mode, factions: pickFactions(map.starts.length, s.faction) }),
       onLoad: (slot) => void loadFrom(slot),
     });
   }
@@ -182,7 +191,14 @@ function boot(): void {
   const fromUrl = optionsFromUrl(params);
   // ?noai: opponents stand idle (automated UI tests); ?ai=hard picks the difficulty.
   const urlAi = (params.get('ai') as Difficulty | null) ?? 'normal';
-  if (fromUrl) start(generateMap(fromUrl), { ai: Array.from({ length: fromUrl.players }, (_, i) => (params.has('noai') || (i === 0 && !debug.aiVsAi) ? null : urlAi)) });
+  // ?mode=regicide|domination and ?faction=highland|... for testing.
+  const urlMode = GAME_MODES.includes(params.get('mode') as GameMode) ? (params.get('mode') as GameMode) : 'standard';
+  if (fromUrl)
+    start(generateMap(fromUrl), {
+      ai: Array.from({ length: fromUrl.players }, (_, i) => (params.has('noai') || (i === 0 && !debug.aiVsAi) ? null : urlAi)),
+      mode: urlMode,
+      factions: pickFactions(fromUrl.players, params.get('faction') ?? 'random'),
+    });
   else toSetup();
 
   let last = performance.now();

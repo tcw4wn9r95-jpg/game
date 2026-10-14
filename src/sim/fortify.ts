@@ -3,7 +3,7 @@
 import { DT, type ResourceKind, TICK_RATE } from './constants';
 import { setOrder } from './economy';
 import { BUILDING_DEFS, type Building, type BuildingType, UNIT_DEFS, type Unit, distToRect } from './entities';
-import { buildingAttack, buildingMaxHp, unitStats } from './techs';
+import { buildingAttack, buildingCost, buildingMaxHp, unitStats } from './techs';
 import type { World } from './world';
 
 /** Repairs cost this share of the building's price, spread over its HP. */
@@ -21,6 +21,8 @@ export function canShelter(b: Building, u: Unit): boolean {
   if (!def.garrison || !b.complete || b.owner !== u.owner) return false;
   const cls = UNIT_DEFS[u.type].classes;
   if (cls.includes('siege')) return false;
+  // The King shelters only behind stone: Castles and towers.
+  if (cls.includes('king')) return b.type === 'castle' || b.type === 'watch_tower';
   if (b.type === 'castle') return true;
   return !cls.includes('cavalry');
 }
@@ -97,7 +99,7 @@ export function repairThink(w: World, u: Unit, o: { id: number }, reach: (u: Uni
   const hp = Math.min(max - b.hp, (max / def.buildTime) * REPAIR_RATE * DT * (w.players[u.owner]?.mods.buildSpeed ?? 1));
   // Pay for it as it goes: half the building's cost, pro rata.
   const p = w.players[u.owner];
-  const cost = Object.entries(def.cost).map(([k, v]) => [k as ResourceKind, ((v ?? 0) * REPAIR_COST * hp) / max] as const);
+  const cost = Object.entries(buildingCost(w, b.owner, b.type)).map(([k, v]) => [k as ResourceKind, ((v ?? 0) * REPAIR_COST * hp) / max] as const);
   if (cost.some(([k, v]) => p.resources[k] < v)) {
     setOrder(u, null);
     u.state = 'idle';
@@ -212,11 +214,12 @@ export function placeWall(w: World, owner: number, kind: 'palisade' | 'stone', t
     const type = t.gate ? types.gate : types.wall;
     const def = BUILDING_DEFS[type];
     if (def.age > p.age || !w.canPlace(type, owner, t.x, t.y)) continue;
-    if (Object.entries(def.cost).some(([k, v]) => p.resources[k as ResourceKind] < (v ?? 0))) {
+    const cost = buildingCost(w, owner, type);
+    if (Object.entries(cost).some(([k, v]) => p.resources[k as ResourceKind] < (v ?? 0))) {
       short = true;
       break;
     }
-    for (const [k, v] of Object.entries(def.cost)) p.resources[k as ResourceKind] -= v ?? 0;
+    for (const [k, v] of Object.entries(cost)) p.resources[k as ResourceKind] -= v ?? 0;
     placed.push(w.placeBuilding(type, owner, t.x, t.y));
   }
   if (short) w.events.push({ type: 'error', owner, message: placed.length ? 'Ran out of resources partway along the wall' : 'Not enough resources' });

@@ -10,7 +10,12 @@ import {
   SKINS,
   type Tool,
   type View,
+  drawArbalest,
   drawArcher,
+  drawClaymore,
+  drawHorseArcher,
+  drawIronBear,
+  drawKing,
   drawKnight,
   drawMilitia,
   drawMonk,
@@ -42,6 +47,11 @@ const DEFS: Record<Exclude<UnitType, ShipType>, { tilesPer100: number; x0: numbe
   scorpion: { tilesPer100: 0.95, x0: -50, x1: 70, y0: -80, y1: 12, draw: drawScorpion },
   siege_tower: { tilesPer100: 0.9, x0: -50, x1: 70, y0: -225, y1: 14, draw: drawSiegeTower },
   trebuchet: { tilesPer100: 0.95, x0: -100, x1: 115, y0: -250, y1: 14, draw: drawTrebuchet },
+  claymore: { tilesPer100: 0.9, x0: -55, x1: 60, y0: -170, y1: 12, draw: drawClaymore },
+  horse_archer: { tilesPer100: 1.2, x0: -60, x1: 75, y0: -150, y1: 12, draw: drawHorseArcher },
+  arbalest_guard: { tilesPer100: 0.86, x0: -50, x1: 50, y0: -150, y1: 12, draw: drawArbalest },
+  iron_bear: { tilesPer100: 1.3, x0: -70, x1: 110, y0: -160, y1: 12, draw: drawIronBear },
+  king: { tilesPer100: 0.9, x0: -45, x1: 45, y0: -165, y1: 12, draw: drawKing },
 };
 
 /**
@@ -58,7 +68,7 @@ export const unitHeight = (type: UnitType) =>
       : type === 'fishing_ship'
         ? 1.4
         : 1.9
-    : type === 'siege_tower' ? 2 : type === 'trebuchet' ? 1.6 : type === 'scout' || type === 'knight' ? 1.3 : type === 'ram' || type === 'mangonel' ? 0.95 : type === 'scorpion' ? 0.7 : type === 'villager' ? 0.85 : 0.9;
+    : type === 'siege_tower' ? 2 : type === 'trebuchet' ? 1.6 : type === 'scout' || type === 'knight' || type === 'horse_archer' || type === 'iron_bear' ? 1.3 : type === 'ram' || type === 'mangonel' ? 0.95 : type === 'scorpion' ? 0.7 : type === 'villager' ? 0.85 : 0.9;
 
 /** Eight preset looks so crowds vary; picked by unit id. */
 const LOOKS: Look[] = Array.from({ length: 8 }, (_, i) => ({
@@ -143,7 +153,7 @@ export class UnitSprites {
     c.width = c.height = px;
     const g = c.getContext('2d')!;
     // Frame the upper body: villagers from the waist up, scouts the rider and horse's head.
-    const mounted = type === 'scout' || type === 'knight';
+    const mounted = type === 'scout' || type === 'knight' || type === 'horse_archer' || type === 'iron_bear';
     const engine = ['ram', 'mangonel', 'scorpion', 'siege_tower', 'trebuchet'].includes(type);
     if (engine) {
       // Engines are shown whole.

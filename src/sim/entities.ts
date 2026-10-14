@@ -61,6 +61,8 @@ export interface UnitDef {
   naval?: boolean;
   /** Load carried before returning to a drop-off (fishing ships), instead of the villager amount. */
   carry?: number;
+  /** Only this faction can train it (unique units). */
+  faction?: string;
 }
 
 export type UnitClass =
@@ -82,7 +84,9 @@ export type UnitClass =
   | 'fireship'
   | 'raft'
   | 'barge'
-  | 'transport';
+  | 'transport'
+  | 'king'
+  | 'wonder';
 
 /** aggressive: chase anything seen; defensive: chase a short way then return; stand: hold position; passive: never attack. */
 export type Stance = 'aggressive' | 'defensive' | 'stand' | 'passive';
@@ -150,7 +154,9 @@ export type Order =
   /** Restore a damaged building, paying half its cost per HP. */
   | { type: 'repair'; id: number }
   /** Transports: sail to the shore by this point and let everyone off. */
-  | { type: 'unload'; x: number; y: number; at?: { x: number; y: number } };
+  | { type: 'unload'; x: number; y: number; at?: { x: number; y: number } }
+  /** Monks: pick up a relic and take it to a Monastery. */
+  | { type: 'relic'; id: number };
 
 export interface Unit {
   id: number;
@@ -261,10 +267,13 @@ export interface Building {
 export interface ResourceEntity {
   id: number;
   kind: 'resource';
-  type: 'sheep' | 'deer' | 'fish';
+  type: 'sheep' | 'deer' | 'fish' | 'relic';
   x: number;
   y: number;
   amount: number;
+  /** Relics: the monk carrying it, or the Monastery keeping it (0 = lying on the ground). */
+  carrier?: number;
+  holder?: number;
 }
 
 export type Entity = Unit | Building | ResourceEntity;

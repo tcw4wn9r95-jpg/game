@@ -5,7 +5,8 @@ import type { Controller } from '../input/controller';
 import { isGatherer } from '../sim/economy';
 import { BUILDING_DEFS, STANCES, type Stance, type BuildingType, type Entity, UNIT_DEFS, type Unit } from '../sim/entities';
 import { sellPrice } from '../sim/production';
-import { AGES, TECH_DEFS, type TechId, buildingMaxHp, researchBlock, techsAt, unitStats } from '../sim/techs';
+import { carried } from '../sim/modes';
+import { AGES, TECH_DEFS, type TechId, buildingCost, buildingMaxHp, researchBlock, techsAt, unitCost, unitStats } from '../sim/techs';
 import type { World } from '../sim/world';
 import { ICONS, techIcon } from './icons';
 import { portrait } from './portraits';
@@ -18,7 +19,7 @@ const CAP = 10;
 
 /** Build tabs; buildings arrive in later milestones and simply join their tab. */
 const TABS: Array<{ key: string; name: string; icon: string; types: BuildingType[] }> = [
-  { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'farm', 'mill', 'lumber_camp', 'mining_camp', 'market'] },
+  { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'farm', 'mill', 'lumber_camp', 'mining_camp', 'market', 'wonder'] },
   { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks', 'archery_range', 'stable', 'blacksmith', 'monastery', 'university', 'siege_workshop'] },
   { key: 'defense', name: 'Defense', icon: ICONS.meleeArmor, types: ['palisade_wall', 'palisade_gate', 'stone_wall', 'gate', 'watch_tower', 'castle'] },
   { key: 'naval', name: 'Naval', icon: ICONS.ship, types: ['dock'] },
@@ -86,6 +87,8 @@ function status(w: World, u: Unit): string {
       return u.state === 'convert' ? 'Converting' : 'Going to convert';
     case 'garrison':
       return w.unit(o.id) ? 'Climbing aboard' : 'Going inside';
+    case 'relic':
+      return carried(w, u) ? 'Bringing a relic home' : 'Fetching a relic';
     case 'attackGround':
       return u.state === 'attack' ? 'Bombarding' : 'Moving to bombard';
     case 'repair': {
@@ -199,7 +202,7 @@ export class CommandCenter {
       const age = this.world.players[this.player].age;
       const actions: Cmd[] = tab.types.map((type) => {
         const def = BUILDING_DEFS[type];
-        const cost = def.cost as Record<string, number>;
+        const cost = buildingCost(this.world, this.player, type) as Record<string, number>;
         const locked = def.age > age;
         return {
           icon: ICON[type],
@@ -390,8 +393,10 @@ export class CommandCenter {
     }
     const actions: Cmd[] = [];
     for (const unit of def.trains) {
+      // Each faction trains only its own unique unit.
+      if (UNIT_DEFS[unit].faction && UNIT_DEFS[unit].faction !== p.faction) continue;
       const u = unitStats(this.world, this.player, unit);
-      const cost = u.cost as Record<string, number>;
+      const cost = unitCost(this.world, this.player, unit) as Record<string, number>;
       const locked = u.age > p.age;
       actions.push({
         icon: ICON[unit],
@@ -632,14 +637,13 @@ export class CommandCenter {
     if (p.wall) {
       const plan = this.ctl.wallPlan();
       const gates = plan.filter((t) => t.gate).length;
-      const gateDef = BUILDING_DEFS[p.wall.kind === 'stone' ? 'gate' : 'palisade_gate'];
       const total: Record<string, number> = {};
-      for (const [k, v] of Object.entries(def.cost)) total[k] = (total[k] ?? 0) + (v ?? 0) * (plan.length - gates);
-      for (const [k, v] of Object.entries(gateDef.cost)) total[k] = (total[k] ?? 0) + (v ?? 0) * gates;
+      for (const [k, v] of Object.entries(buildingCost(this.world, this.player, p.type))) total[k] = (total[k] ?? 0) + (v ?? 0) * (plan.length - gates);
+      for (const [k, v] of Object.entries(buildingCost(this.world, this.player, p.wall.kind === 'stone' ? 'gate' : 'palisade_gate'))) total[k] = (total[k] ?? 0) + (v ?? 0) * gates;
       this.info.innerHTML = `
         <div class="pf-frame"><div class="pf">${portrait({ kind: 'building', type: p.type, owner: this.player })}</div></div>
         <div class="ci-body">
-          <div class="ci-head"><span class="ci-name">${def.name}</span><span class="ci-owner">${plan.length ? costHtml(total) : costHtml(def.cost as Record<string, number>)}</span></div>
+          <div class="ci-head"><span class="ci-name">${def.name}</span><span class="ci-owner">${plan.length ? costHtml(total) : costHtml(buildingCost(this.world, this.player, p.type) as Record<string, number>)}</span></div>
           <div class="ci-status"><span class="ci-status-text">${plan.length ? `${plan.length - gates} segments, ${gates} gate${gates === 1 ? '' : 's'}` : 'Drag along the ground to draw a wall.'}</span></div>
           <div class="ci-status"><span class="ci-status-text dim">Drag again to add lines. Tap a segment to make it a gate. Then confirm.</span></div>
         </div>`;
@@ -648,7 +652,7 @@ export class CommandCenter {
     this.info.innerHTML = `
       <div class="pf-frame"><div class="pf">${portrait({ kind: 'building', type: p.type, owner: this.player })}</div></div>
       <div class="ci-body">
-        <div class="ci-head"><span class="ci-name">${def.name}</span><span class="ci-owner">${costHtml(def.cost as Record<string, number>)}</span></div>
+        <div class="ci-head"><span class="ci-name">${def.name}</span><span class="ci-owner">${costHtml(buildingCost(this.world, this.player, p.type) as Record<string, number>)}</span></div>
         <div class="ci-status"><span class="ci-status-text">Tap the map to choose a spot, then confirm.</span></div>
         <div class="ci-status"><span class="ci-status-text dim">${def.description}</span></div>
       </div>`;

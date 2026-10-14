@@ -184,6 +184,45 @@ export const ICONS = {
     <path d="M8.5 12l1-6h4l1 6z" fill="#2f5aa0" stroke="${INK}" stroke-width="1"/>
     <rect x="9.6" y="1.2" width="4.4" height="4.6" rx=".5" fill="#c4ccd1" stroke="${INK}" stroke-width=".9"/><path d="M10.3 3.4h3" stroke="#1a1a1a" stroke-width=".8"/>
     <path d="M13 9l11-2" stroke="#7a5430" stroke-width="1.4" stroke-linecap="round"/>`),
+  claymore: svg(`
+    <circle cx="11" cy="7.5" r="3.2" fill="#e0b48c" stroke="${INK}" stroke-width="1.1"/>
+    <path d="M7.4 6c0-2.4 1.6-3.4 3.6-3.4s3.6 1 3.6 3.4z" fill="#2f3f6a" stroke="${INK}" stroke-width=".8"/><path d="M8 4l-3-3" stroke="#efe9dc" stroke-width="1.2"/>
+    <path d="M6.5 16l1.3-4.6c.4-1.6 1.6-2.2 3.2-2.2s2.8.6 3.2 2.2L15.5 16z" fill="#2f5aa0" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M6.5 16h9l1 4h-11z" fill="#3e6a3a" stroke="${INK}" stroke-width="1"/><path d="M9 16v4M13 16v4M6 18h11" stroke="#c03838" stroke-width=".7"/>
+    <path d="M17 18L22 2" stroke="#d8dee2" stroke-width="2.2" stroke-linecap="round"/><path d="M15 15l5 1.6" stroke="#8a8f92" stroke-width="1.6" stroke-linecap="round"/>`),
+  horse_archer: svg(`
+    <path d="M2 17c0-3 2-5 6-5h7l3-4 3 1-2 5v4" fill="#c9a46c" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M5 15h11v2H5z" fill="#2f5aa0" stroke="${INK}" stroke-width=".7"/>
+    <path d="M4 18v4M8 18v4M14 18v4M17 18v4" stroke="${INK}" stroke-width="1.6" stroke-linecap="round"/>
+    <path d="M8.5 12l1-5h4l1 5z" fill="#2f5aa0" stroke="${INK}" stroke-width="1"/>
+    <circle cx="11.7" cy="4.6" r="2.4" fill="#e0b48c" stroke="${INK}" stroke-width=".8"/><path d="M9 3.6h5.4" stroke="#6a4a2c" stroke-width="1.8"/>
+    <path d="M17 1c3 3 3 9 0 12" fill="none" stroke="#8a5a2b" stroke-width="1.6" stroke-linecap="round"/><path d="M17 1v12" stroke="#f1e9d6" stroke-width=".5"/>`),
+  arbalest_guard: svg(`
+    <rect x="1.5" y="6" width="7" height="14" rx="1" fill="#2f5aa0" stroke="${INK}" stroke-width="1"/><path d="M5 7v12" stroke="#1d3c70" stroke-width="1.6"/>
+    <circle cx="13" cy="7.5" r="3" fill="#e0b48c" stroke="${INK}" stroke-width="1"/><path d="M10 6.5c0-3 1.4-4 3-4s3 1 3 4z" fill="#c4ccd1" stroke="${INK}" stroke-width=".8"/>
+    <path d="M9 21l1.2-7c.4-2 1.4-3 2.8-3s2.4 1 2.8 3L17 21z" fill="#3e5a8a" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M14 13h9" stroke="#7a5430" stroke-width="2"/><path d="M21 9.5v7" stroke="#6d777d" stroke-width="1.6" stroke-linecap="round"/>`),
+  iron_bear: svg(`
+    <path d="M2 17c0-3 2-5 6-5h7l3-4 3 1-2 5v4" fill="#3e322b" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M2.5 14h16v5h-16z" fill="#2f5aa0" stroke="${INK}" stroke-width=".8"/><path d="M4 16.5h13" stroke="#c4ccd1" stroke-width="1" stroke-dasharray="1.5 1"/>
+    <path d="M4 19v3M8 19v3M14 19v3M17 19v3" stroke="${INK}" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M7.5 12.5l1-6h5l1 6z" fill="#7d868b" stroke="${INK}" stroke-width="1"/>
+    <path d="M7 8c0-2 2-4 4.5-4S16 6 16 8c-1 1-8 1-9 0z" fill="#563824" stroke="${INK}" stroke-width=".8"/><circle cx="8" cy="4.6" r="1.2" fill="#563824"/><circle cx="15" cy="4.6" r="1.2" fill="#563824"/>`),
+  king: svg(`
+    <path d="M7.5 7l-.8-4 2.6 2L12 1.8 14.7 5l2.6-2-.8 4z" fill="#f2c94c" stroke="${INK}" stroke-width=".9" stroke-linejoin="round"/>
+    <circle cx="12" cy="9.5" r="3" fill="#e0b48c" stroke="${INK}" stroke-width="1"/>
+    <path d="M5 22l2-8.5c.5-1.8 2.5-2.8 5-2.8s4.5 1 5 2.8L19 22z" fill="#2f5aa0" stroke="${INK}" stroke-width="1.1" stroke-linejoin="round"/>
+    <path d="M5 21h14M8 12.5h8" stroke="#f4f1ea" stroke-width="1.8"/>
+    <path d="M18.5 20l2-10" stroke="#d9b041" stroke-width="1.4"/><circle cx="20.6" cy="9.4" r="1.5" fill="#f0cf5a" stroke="${INK}" stroke-width=".6"/>`),
+  relic: svg(`
+    <path d="M4 10h16v10H4z" fill="#c8962a" stroke="${INK}" stroke-width="1.2"/>
+    <path d="M3 10l3-5h12l3 5z" fill="#f0cf5a" stroke="${INK}" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M12 12v6M9.5 14.5h5" stroke="#fff6d8" stroke-width="1.6" stroke-linecap="round"/>`),
+  wonder: svg(`
+    <path d="M2 21h20v-2H2zM4 19h16v-2H4z" fill="#e3dccb" stroke="${INK}" stroke-width=".9"/>
+    <path d="M6 17V10h12v7z" fill="#efe9dc" stroke="${INK}" stroke-width="1"/><path d="M8 11v6M10.7 11v6M13.3 11v6M16 11v6" stroke="#a89f8c" stroke-width="1"/>
+    <path d="M7.5 10L12 3l4.5 7z" fill="#3d6f8f" stroke="${INK}" stroke-width="1" stroke-linejoin="round"/>
+    <path d="M12 3V.8" stroke="#d9b041" stroke-width="1.4"/><circle cx="12" cy="1" r="1" fill="#f0cf5a"/>`),
   monk: svg(`
     <circle cx="12" cy="6.5" r="3.3" fill="#e0b48c" stroke="${INK}" stroke-width="1.1"/>
     <path d="M9.2 5.2a3 2 0 015.6 0" fill="none" stroke="#6b4a28" stroke-width="1.4"/>

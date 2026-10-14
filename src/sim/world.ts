@@ -26,6 +26,7 @@ import { Rng } from './rng';
 import { SpatialHash } from './spatial';
 import { type PlayerMods, type TechId, baseMods, buildingMaxHp, unitStats } from './techs';
 import { type GameMap, Terrain } from './terrain';
+import { type GameMode, type ModeState, type VictoryReason, modeTick, newModeState, setupMode } from './modes';
 
 export { DT, RESOURCE_KINDS, TICK_MS, TICK_RATE, type ResourceKind } from './constants';
 
@@ -62,6 +63,8 @@ export interface PlayerState {
   gatherBonus: number;
   /** Out of the match: lost every Town Center, Castle, Dock and soldier. */
   defeated: boolean;
+  /** Faction (bonuses and unique unit); empty for none. */
+  faction: string;
 }
 
 export type SimEvent =
@@ -79,7 +82,9 @@ export type SimEvent =
   | { type: 'blast'; x: number; y: number; size: number; owner?: number }
   | { type: 'defeated'; owner: number }
   /** The match is over: this team won. */
-  | { type: 'victory'; owner: number; team: number };
+  | { type: 'victory'; owner: number; team: number; reason: VictoryReason }
+  /** A Domination site changed hands, a Wonder was finished, a relic came home... (for alerts). */
+  | { type: 'mode'; owner: number; message: string; x: number; y: number };
 
 /** Game state, advanced only by step(); input and AI both act through issue(). */
 export class World {
@@ -103,6 +108,12 @@ export class World {
   peaceUntil = 0;
   /** Winning team once the match is decided. */
   winner: number | null = null;
+  /** How it was won. */
+  victoryReason: VictoryReason | null = null;
+  /** Standard, Regicide or Domination. */
+  readonly mode: GameMode;
+  /** Wonder and relic clocks, Domination sites and score. */
+  modeState: ModeState;
   nextProjectileId = 1;
   private nextId = 1;
   private pending: Array<{ player: number; cmd: Command }> = [];
@@ -111,8 +122,10 @@ export class World {
 
   constructor(
     readonly map: GameMap,
-    opts: { spawnStarts?: boolean; teams?: number[] } = {},
+    opts: { spawnStarts?: boolean; teams?: number[]; factions?: string[]; mode?: GameMode } = {},
   ) {
+    this.mode = opts.mode ?? 'standard';
+    this.modeState = newModeState(map.starts.length);
     this.rng = new Rng(map.seed ^ 0x9e3779b9);
     this.grid = new NavGrid(map);
     this.paths = new Pathfinder(this.grid);
@@ -126,11 +139,12 @@ export class World {
       age: 0,
       autoReseed: true,
       techs: [],
-      mods: baseMods(),
+      mods: baseMods(opts.factions?.[i]),
       market: { food: 100, wood: 100, stone: 130 },
       team: opts.teams?.[i] ?? defaultTeams(map.starts.length)[i],
       gatherBonus: 1,
       defeated: false,
+      faction: opts.factions?.[i] ?? '',
     }));
     this.fog = map.starts.map((s) => {
       const fog = new Fog(map.size);
@@ -138,7 +152,10 @@ export class World {
       return fog;
     });
     for (const a of map.animals) this.add<ResourceEntity>({ kind: 'resource', type: a.kind, x: a.x, y: a.y, amount: a.amount });
-    if (opts.spawnStarts !== false) map.starts.forEach((s, p) => this.spawnStart(p, s.x, s.y));
+    if (opts.spawnStarts !== false) {
+      map.starts.forEach((s, p) => this.spawnStart(p, s.x, s.y));
+      setupMode(this);
+    }
     this.updatePopulation();
     this.updateVision();
   }
@@ -164,7 +181,8 @@ export class World {
 
   // ---------- entities ----------
 
-  private add<T extends Entity>(e: Omit<T, 'id'>): T {
+  /** @internal Adds an entity as is (map setup, modes). */
+  add<T extends Entity>(e: Omit<T, 'id'>): T {
     const full = { ...e, id: this.nextId++ } as T;
     this.entities.set(full.id, full);
     return full;
@@ -411,24 +429,21 @@ export class World {
     marketDrift(this);
     this.updatePopulation();
     if (this.tick % 2 === 0) this.updateVision();
+    modeTick(this);
     if (this.tick % TICK_RATE === 0) this.checkConquest();
     this.tick++;
   }
 
   /** A player concedes: out of the match at once (the AI does when beaten; so can the human). */
   resign(player: number): void {
-    const p = this.players[player];
-    if (!p || p.defeated) return;
-    p.defeated = true;
-    this.events.push({ type: 'defeated', owner: player });
-    this.checkConquest();
+    this.defeat(player);
   }
 
   /**
    * Conquest: a side with no Town Center, Castle or Dock and no soldiers or
    * warships left is out; when only one team remains, it has won.
    */
-  private checkConquest(): void {
+  checkConquest(reason: VictoryReason = 'conquest'): void {
     if (this.winner !== null) return;
     const alive = this.players.map(() => false);
     for (const b of this.buildings()) if (CONQUEST_BUILDINGS.has(b.type) && b.complete) alive[b.owner] = true;
@@ -439,10 +454,30 @@ export class World {
       this.events.push({ type: 'defeated', owner: i });
     });
     const teams = new Set(this.players.filter((p) => !p.defeated).map((p) => p.team));
-    if (teams.size <= 1) {
-      this.winner = [...teams][0] ?? -1;
-      this.events.push({ type: 'victory', owner: this.players.findIndex((p) => p.team === this.winner), team: this.winner });
-    }
+    if (teams.size <= 1) this.declareWinner([...teams][0] ?? -1, reason);
+  }
+
+  /** The match is over: this team has won. */
+  declareWinner(team: number, reason: VictoryReason): void {
+    if (this.winner !== null) return;
+    this.winner = team;
+    this.victoryReason = reason;
+    // Everyone else is out.
+    this.players.forEach((p, i) => {
+      if (p.team === team || p.defeated) return;
+      p.defeated = true;
+      this.events.push({ type: 'defeated', owner: i });
+    });
+    this.events.push({ type: 'victory', owner: this.players.findIndex((p) => p.team === team), team, reason });
+  }
+
+  /** A player is out of the match (their King fell, they resigned...). */
+  defeat(player: number, reason: VictoryReason = 'conquest'): void {
+    const p = this.players[player];
+    if (!p || p.defeated) return;
+    p.defeated = true;
+    this.events.push({ type: 'defeated', owner: player });
+    this.checkConquest(reason);
   }
 
   drainEvents(): SimEvent[] {

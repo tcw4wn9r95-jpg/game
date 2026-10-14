@@ -293,6 +293,11 @@
   padding: 6px 12px 10px;
 }
 
+.setup-left {
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .setup-title {
   display: flex;
   align-items: center;
@@ -1161,4 +1166,86 @@
   text-align: center;
   color: var(--cream);
   margin-bottom: 4px;
+}
+
+/* Game-mode status under the top bar: Domination score, Wonder and relic countdowns. */
+.mode-strip {
+  position: absolute;
+  top: calc(var(--safe-t) + 54px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(10, 6, 2, 0.72);
+  border: 1px solid rgba(214, 168, 73, 0.45);
+  font: 700 13px/1 'Alegreya Sans', sans-serif;
+  color: var(--cream);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.ms-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ms-team i,
+.ms-site {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--c);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
+.ms-site {
+  border-radius: 50%;
+  margin-left: 3px;
+}
+
+.ms-team b {
+  font-variant-numeric: tabular-nums;
+  color: #ffe9a6;
+}
+
+.ms-dim {
+  color: rgba(246, 234, 208, 0.6);
+  font-weight: 400;
+}
+
+.ms-timer {
+  padding-left: 8px;
+  border-left: 3px solid var(--c);
+}
+
+.mode-strip:not([hidden]) ~ .toasts {
+  top: calc(var(--safe-t) + 84px);
+}
+
+/* Phones in landscape: tighten the setup screen so every row fits without scrolling. */
+@media (max-height: 460px) {
+  .setup-title h1 {
+    font-size: 20px;
+  }
+  .crest svg {
+    width: 24px;
+    height: 24px;
+  }
+  .setup-label {
+    margin: 4px 2px 2px;
+  }
+  .seg-btn {
+    min-height: 30px;
+  }
+  .card-art svg {
+    height: 32px;
+  }
+  .setup-note {
+    min-height: 0;
+  }
 }

@@ -1,4 +1,5 @@
 // Turns gestures into selection changes and player commands.
+import { carried, isRelic } from '../sim/modes';
 import type { Camera } from '../render/camera';
 import type { Effect } from '../render/renderer';
 import { canBuild, isGatherer, sourceOf } from '../sim/economy';
@@ -174,6 +175,13 @@ export class Controller {
         this.ring(b.x + b.size / 2, b.y + b.size / 2, '#ffe28a');
         return;
       }
+      // Monks carrying relics bring them in.
+      const bearers = units.filter((u) => carried(this.world, u));
+      if (b.type === 'monastery' && b.complete && bearers.length) {
+        this.issue({ type: 'garrison', ids: bearers.map((u) => u.id), id: b.id });
+        this.ring(b.x + b.size / 2, b.y + b.size / 2, '#ffe28a');
+        return;
+      }
       // Villagers act on it only if there is work there: build or repair it, or unload what they carry.
       const accepts = (BUILDING_DEFS[b.type].dropoff as string[]);
       const damaged = b.complete && b.hp < buildingMaxHp(this.world, b) - 0.5;
@@ -214,6 +222,12 @@ export class Controller {
       // Nothing to command: tapping something selects it for a look, tapping ground clears.
       if (pick.kind === 'entity') return this.select([pick.e.id]);
       if (this.selection.size) this.deselect();
+      return;
+    }
+    if (pick.kind === 'entity' && isRelic(pick.e)) {
+      // Monks fetch relics; anyone else just walks over.
+      this.issue({ type: 'gather', ids: units.map((u) => u.id), target: { kind: 'entity', id: pick.e.id } });
+      this.ring(pick.e.x, pick.e.y, '#ffe28a');
       return;
     }
     const target = this.gatherTarget(pick);
@@ -398,7 +412,7 @@ export class Controller {
     let rb: Entity | null = null;
     let rd = 0.7;
     for (const e of world.entities.values()) {
-      if (e.kind !== 'resource' || !fog.isVisible(e.x, e.y)) continue;
+      if (e.kind !== 'resource' || !fog.isVisible(e.x, e.y) || e.holder || e.carrier) continue;
       const p = camera.tileToScreen(e.x, e.y);
       const d = Math.hypot(sx - p.x, sy - (p.y - 0.3 * Z)) / Math.max(Z, 26);
       if (d < rd) (rd = d), (rb = e);

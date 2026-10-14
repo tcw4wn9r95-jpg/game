@@ -7,6 +7,7 @@ import type { Projectile } from './combat';
 import { type PlayerState, World } from './world';
 import { baseMods, applyEffects } from './techs';
 import type { GameMap } from './terrain';
+import type { GameMode, ModeState, VictoryReason } from './modes';
 
 export const SAVE_VERSION = 1;
 
@@ -27,6 +28,9 @@ export interface SaveData {
   winner?: number | null;
   /** Per-slot AI difficulty (null for the human), restored by the game. */
   ai?: Array<string | null>;
+  mode?: GameMode;
+  modeState?: ModeState;
+  victoryReason?: VictoryReason | null;
 }
 
 // ---------- typed arrays <-> base64 ----------
@@ -86,6 +90,9 @@ export function saveWorld(w: World): SaveData {
     projectiles: w.projectiles,
     peaceUntil: w.peaceUntil,
     winner: w.winner,
+    mode: w.mode,
+    modeState: w.modeState,
+    victoryReason: w.victoryReason,
   };
 }
 
@@ -100,7 +107,7 @@ export function loadWorld(d: SaveData): World {
     feature: unpack(d.map.feature) as Uint8Array,
     amount: unpack(d.map.amount) as Uint16Array,
   };
-  const w = new World(map, { spawnStarts: false });
+  const w = new World(map, { spawnStarts: false, mode: d.mode ?? 'standard' });
   const inner = w as unknown as WorldInternals;
   w.entities.clear();
   for (const e of d.entities) {
@@ -117,8 +124,10 @@ export function loadWorld(d: SaveData): World {
   w.projectiles = d.projectiles;
   w.peaceUntil = d.peaceUntil ?? 0;
   w.winner = d.winner ?? null;
+  w.victoryReason = d.victoryReason ?? null;
+  if (d.modeState) w.modeState = d.modeState;
   d.players.forEach((p, i) => {
-    const mods = baseMods();
+    const mods = baseMods(p.faction);
     for (const t of p.techs) applyEffects(mods, t);
     Object.assign(w.players[i], p, { mods });
   });

@@ -8,7 +8,7 @@ import type { Command } from '../commands';
 import type { ResourceKind } from '../constants';
 import { type Source, findResource, gatherOrder, isGatherer } from '../economy';
 import { BUILDING_DEFS, type Building, type BuildingType, UNIT_DEFS, type Unit, distToRect } from '../entities';
-import { AGES, TECH_DEFS, type TechId, researchBlock } from '../techs';
+import { AGES, TECH_DEFS, type TechId, buildingCost, researchBlock } from '../techs';
 import type { World } from '../world';
 
 /** How a bot paces itself; the defaults are a steady, unhurried player. */
@@ -199,9 +199,8 @@ export class EconomyBot {
 
   /** Places a building near (x, y) with up to `crew` villagers (nearest first). */
   protected build(w: World, type: BuildingType, x: number, y: number, villagers: Unit[], crew: number, minR: number): boolean {
-    const def = BUILDING_DEFS[type];
     const p = w.players[this.player];
-    if (Object.entries(def.cost).some(([k, v]) => p.resources[k as ResourceKind] < (v ?? 0))) return false;
+    if (Object.entries(buildingCost(w, this.player, type)).some(([k, v]) => p.resources[k as ResourceKind] < (v ?? 0))) return false;
     const spot = this.findSpot(w, type, x, y, minR);
     if (!spot) return false;
     const free = villagers

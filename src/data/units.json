@@ -645,5 +645,159 @@
     "description": "A floating catapult. Batters coastal walls and buildings from long range.",
     "strong": "Coastal buildings and walls (3x), Fire Ships",
     "weak": "Galleys, anything inside its minimum range"
+  },
+  "claymore": {
+    "pop": 1,
+    "reload": 2.0,
+    "attackType": "melee",
+    "meleeArmor": 1,
+    "pierceArmor": 1,
+    "range": 0,
+    "bonus": {
+      "infantry": 1.3,
+      "building": 1.5
+    },
+    "stance": "aggressive",
+    "name": "Claymore Warrior",
+    "hp": 75,
+    "speed": 0.95,
+    "los": 4,
+    "radius": 0.26,
+    "cost": {
+      "food": 65,
+      "gold": 35
+    },
+    "trainTime": 24,
+    "attack": 10,
+    "splash": 0.6,
+    "age": 2,
+    "classes": [
+      "infantry"
+    ],
+    "faction": "highland",
+    "description": "Highland Clans heavy infantry with a two-handed sword that cleaves through those beside the target.",
+    "strong": "Infantry, packed formations",
+    "weak": "Archers, cavalry"
+  },
+  "horse_archer": {
+    "pop": 1,
+    "reload": 2.1,
+    "attackType": "pierce",
+    "meleeArmor": 0,
+    "pierceArmor": 1,
+    "range": 4,
+    "bonus": {
+      "spear": 1.2
+    },
+    "stance": "aggressive",
+    "name": "Horse Archer",
+    "hp": 55,
+    "speed": 1.45,
+    "los": 6,
+    "radius": 0.4,
+    "cost": {
+      "food": 45,
+      "gold": 60
+    },
+    "trainTime": 26,
+    "attack": 6,
+    "projectileSpeed": 7,
+    "age": 2,
+    "classes": [
+      "cavalry",
+      "archer"
+    ],
+    "faction": "steppe",
+    "description": "Steppe Riders mounted archer: shoots on the move and outruns what it cannot outfight.",
+    "strong": "Infantry, siege",
+    "weak": "Skirmishers, knights"
+  },
+  "arbalest_guard": {
+    "pop": 1,
+    "reload": 2.4,
+    "attackType": "pierce",
+    "meleeArmor": 0,
+    "pierceArmor": 0,
+    "range": 7,
+    "bonus": {
+      "infantry": 1.2
+    },
+    "stance": "aggressive",
+    "name": "Arbalest Guard",
+    "hp": 40,
+    "speed": 0.95,
+    "los": 8,
+    "radius": 0.22,
+    "cost": {
+      "wood": 35,
+      "gold": 55
+    },
+    "trainTime": 27,
+    "attack": 7,
+    "projectileSpeed": 8,
+    "age": 2,
+    "classes": [
+      "archer"
+    ],
+    "faction": "coastal",
+    "description": "Coastal League crossbowman with a heavy arbalest: the longest-reaching foot archer.",
+    "strong": "Infantry, archers",
+    "weak": "Cavalry, skirmishers"
+  },
+  "iron_bear": {
+    "pop": 1,
+    "reload": 2.0,
+    "attackType": "melee",
+    "meleeArmor": 3,
+    "pierceArmor": 3,
+    "range": 0,
+    "bonus": {
+      "building": 1.4
+    },
+    "stance": "aggressive",
+    "name": "Iron Bear Rider",
+    "hp": 220,
+    "speed": 0.95,
+    "los": 5,
+    "radius": 0.45,
+    "cost": {
+      "food": 90,
+      "gold": 85
+    },
+    "trainTime": 34,
+    "attack": 13,
+    "age": 2,
+    "classes": [
+      "cavalry"
+    ],
+    "faction": "mountain",
+    "description": "Mountain Throne heavy cavalry: slow, armoured, very hard to kill.",
+    "strong": "Archers, siege, buildings",
+    "weak": "Spearmen, monks"
+  },
+  "king": {
+    "pop": 1,
+    "reload": 2.0,
+    "attackType": "melee",
+    "meleeArmor": 1,
+    "pierceArmor": 1,
+    "range": 0,
+    "bonus": {},
+    "stance": "defensive",
+    "name": "King",
+    "hp": 75,
+    "speed": 0.8,
+    "los": 10,
+    "radius": 0.24,
+    "cost": {},
+    "trainTime": 1,
+    "attack": 3,
+    "age": 0,
+    "classes": [
+      "king"
+    ],
+    "description": "Your sovereign. Lose the King and you lose the game: keep him behind stone.",
+    "strong": "",
+    "weak": "Everything"
   }
 }

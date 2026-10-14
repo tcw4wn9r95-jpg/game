@@ -5,12 +5,16 @@ import { type Effect, type Overlay, Renderer } from './render/renderer';
 import type { GameMap } from './sim/terrain';
 import { TICK_MS, World } from './sim/world';
 import { Bench } from './ui/bench';
-import { AGES, TECH_DEFS } from './sim/techs';
+import { AGES, TECH_DEFS, buildingMaxHp } from './sim/techs';
+import { VICTORY_TEXT, kingOf } from './sim/modes';
+import { canShelter, shelterRoom } from './sim/fortify';
+import type { Building } from './sim/entities';
 import { Hud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { CommandCenter } from './ui/commandCenter';
 import { type SaveData, saveWorld } from './sim/save';
 import { type Difficulty, type Opponent, makeOpponent } from './sim/ai/opponent';
+import type { GameMode } from './sim/modes';
 
 const PLAYER_NAMES = ['Blue', 'Red', 'Gold', 'Green'];
 import type { SaveMeta } from './ui/saves';
@@ -34,6 +38,9 @@ export interface MatchSetup {
   ai: Array<Difficulty | null>;
   /** Peace Treaty, minutes (new matches only). */
   treaty: number;
+  /** New matches only: game mode and each slot's faction. */
+  mode?: GameMode;
+  factions?: string[];
 }
 
 /** One match: owns the world, camera, renderer, input controller and HUD. */
@@ -56,7 +63,7 @@ export class Game {
 
   constructor(source: GameMap | World, private readonly view: View, hudRoot: HTMLElement, debug: DebugFlags, setup?: Partial<MatchSetup>) {
     const fresh = !(source instanceof World);
-    this.world = source instanceof World ? source : new World(source);
+    this.world = source instanceof World ? source : new World(source, { mode: setup?.mode, factions: setup?.factions });
     const map = this.world.map;
     this.setup = { ai: setup?.ai ?? map.starts.map((_, i) => (i === 0 && !debug.aiVsAi ? null : 'normal')), treaty: setup?.treaty ?? 0 };
     if (fresh && this.setup.treaty) this.world.peaceUntil = this.setup.treaty * 60;
@@ -89,10 +96,38 @@ export class Game {
     this.hud.onIdleVillager = () => this.controller.nextIdleVillager();
     this.hud.onIdleMilitary = () => this.controller.nextIdleMilitary();
     this.hud.onAllMilitary = () => this.controller.selectAllMilitary();
+    this.hud.onKing = () => this.findKing(false);
+    this.hud.onKingShelter = () => this.findKing(true);
     this.bench = debug.bench ? new Bench(this.camera, map.size, hudRoot.querySelector('#bench')!) : null;
   }
 
+  /** Regicide: centre on the King and select him; with `shelter`, send him into the nearest Castle or tower. */
+  private findKing(shelter: boolean): void {
+    const w = this.world;
+    const king = kingOf(w, this.player);
+    if (!king) return;
+    const home = king.inside ? w.building(king.inside) : undefined;
+    const at = home ? { x: home.x + home.size / 2, y: home.y + home.size / 2 } : king;
+    this.camera.centerOn(at.x, at.y);
+    if (home) {
+      this.controller.select([home.id]);
+      return;
+    }
+    this.controller.select([king.id]);
+    if (!shelter) return;
+    let best: Building | null = null;
+    let bd = Infinity;
+    for (const b of w.buildings(this.player)) {
+      if (!canShelter(b, king) || shelterRoom(b) <= 0) continue;
+      const d = Math.hypot(b.x + b.size / 2 - king.x, b.y + b.size / 2 - king.y);
+      if (d < bd) (bd = d), (best = b);
+    }
+    if (best) w.issue(this.player, { type: 'garrison', ids: [king.id], id: best.id });
+    else this.hud.toast('No Castle or tower to shelter in');
+  }
+
   /** Seconds-clock of the last attack alert, and where, so alerts don't spam. */
+  private lastKingAlert = -100;
   private lastAlert = -100;
   private alertAt: { x: number; y: number } | null = null;
   private deaths = 0;
@@ -136,13 +171,36 @@ export class Game {
       if (ev.type === 'converted' && ev.from === this.player) this.alert('A unit was converted by an enemy monk!', ev.x, ev.y, nowS, true);
       if (ev.type === 'victory') {
         const won = ev.team === this.world.players[this.player].team;
-        this.hud.endScreen(won, this.world.time);
+        const how = VICTORY_TEXT[ev.reason] ?? '';
+        this.hud.endScreen(won, this.world.time, `${won ? 'Your side won' : 'The enemy won'} ${how}.`);
         continue;
       }
       if (ev.type === 'defeated' && ev.owner !== this.player) {
         const ally = !this.world.isEnemy(this.player, ev.owner);
-        this.hud.toast(`${ally ? 'Your ally' : 'An enemy'} (${PLAYER_NAMES[ev.owner] ?? 'player'}) has been defeated`);
+        const how = this.world.mode === 'regicide' && !kingOf(this.world, ev.owner) ? "'s King has fallen" : ' has been defeated';
+        this.hud.toast(`${ally ? 'Your ally' : 'An enemy'} (${PLAYER_NAMES[ev.owner] ?? 'player'})${how}`);
         continue;
+      }
+      if (ev.type === 'mode') {
+        const ours = !this.world.isEnemy(this.player, ev.owner);
+        const msg =
+          ev.message === 'Site captured'
+            ? ours ? 'A Banner Site is ours' : 'The enemy has taken a Banner Site!'
+            : ev.message === 'Wonder finished'
+              ? ours ? 'Our Wonder stands! Hold it for 8 minutes.' : 'The enemy has finished a Wonder! Destroy it within 8 minutes.'
+              : ours ? 'A relic is safe in our Monastery' : 'The enemy has secured a relic';
+        this.alert(msg, ev.x, ev.y, nowS, true);
+        continue;
+      }
+      if (ev.type === 'hit' && ev.owner === this.player && this.world.mode === 'regicide' && ev.by !== this.player && nowS - this.lastKingAlert > 10) {
+        const t = this.world.get(ev.id);
+        const king = kingOf(this.world, this.player);
+        const holder = t?.kind === 'building' && king?.inside === t.id;
+        if ((t?.kind === 'unit' && t.type === 'king') || (holder && t.hp < buildingMaxHp(this.world, t) * 0.5)) {
+          this.lastKingAlert = nowS;
+          this.alert(holder ? "The King's stronghold is failing!" : 'Your King is under attack!', ev.x, ev.y, nowS, true);
+          continue;
+        }
       }
       if (ev.owner !== this.player) continue;
       if (ev.type === 'hit' && ev.by !== this.player && ev.by >= 0) {

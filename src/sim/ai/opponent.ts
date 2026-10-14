@@ -12,7 +12,9 @@ import { findResource, gatherOrder, isGatherer } from '../economy';
 import { BUILDING_DEFS, type Building, type BuildingType, UNIT_DEFS, type Unit, type UnitClass, type UnitType, distToRect } from '../entities';
 import { wallLine } from '../fortify';
 import { WATER } from '../grid';
-import { TECH_DEFS, type TechId, researchBlock, unitCost } from '../techs';
+import { FACTIONS, type FactionId, TECH_DEFS, type TechId, buildingCost, buildingMaxHp, researchBlock, unitCost } from '../techs';
+import { CAPTURE_TIME, type Site, carried, kingOf, relics } from '../modes';
+import { canShelter, shelterRoom } from '../fortify';
 import { Terrain } from '../terrain';
 import type { World } from '../world';
 import { type BotProfile, EconomyBot, NORMAL } from './bot';
@@ -170,6 +172,8 @@ for (const [b, def] of Object.entries(BUILDING_DEFS)) for (const u of def.trains
 
 const valueOf = (t: UnitType) => Object.values(UNIT_DEFS[t].cost).reduce((a, b) => a + (b ?? 0), 0);
 const isSiege = (u: Unit) => UNIT_DEFS[u.type].classes.includes('siege');
+const SITE_RADIUS_AI = 4;
+const buildingMaxHpOf = (w: World, b: Building) => buildingMaxHp(w, b);
 
 export class Opponent extends EconomyBot {
   readonly difficulty: Difficulty;
@@ -192,6 +196,10 @@ export class Opponent extends EconomyBot {
   readonly notes: string[] = [];
   /** Hold back on other buildings and research this round (saving for a key building). */
   private saving = false;
+  /** Domination: soldiers posted to hold each site (by site index). */
+  private readonly guards = new Map<number, number>();
+  /** Domination: the soldiers sent to take a site, and which. */
+  private push: { ids: Set<number>; site: number; since: number } | null = null;
 
   private note(w: World, s: string): void {
     this.notes.push(`${(w.time / 60).toFixed(1)}m ${s}`);
@@ -240,6 +248,10 @@ export class Opponent extends EconomyBot {
     this.produce(w);
     this.trade(w);
     this.researchMilitary(w);
+    if (tc) this.relicHunt(w);
+    if (w.mode === 'regicide') this.guardKing(w);
+    if (w.mode === 'domination' && tc) this.holdSites(w, tc, villagers);
+    if (tc && w.mode !== 'domination') this.wonder(w, tc, villagers);
     this.command(w, tc);
   }
 
@@ -435,9 +447,8 @@ export class Opponent extends EconomyBot {
   }
 
   private buildAt(w: World, type: BuildingType, spot: { x: number; y: number }, villagers: Unit[], crew: number): boolean {
-    const def = BUILDING_DEFS[type];
     const p = w.players[this.player];
-    if (Object.entries(def.cost).some(([k, v]) => p.resources[k as ResourceKind] < (v ?? 0))) return false;
+    if (Object.entries(buildingCost(w, this.player, type)).some(([k, v]) => p.resources[k as ResourceKind] < (v ?? 0))) return false;
     const free = villagers
       .filter((u) => !this.builders.has(u.id) && u.order?.type !== 'build')
       .sort((a, b) => Math.hypot(a.x - spot.x, a.y - spot.y) - Math.hypot(b.x - spot.x, b.y - spot.y))
@@ -548,7 +559,7 @@ export class Opponent extends EconomyBot {
   // ---------- army ----------
 
   private army(w: World): Unit[] {
-    return [...w.units(this.player)].filter((u) => !isGatherer(u) && !UNIT_DEFS[u.type].naval && u.type !== 'scout' && !u.inside);
+    return [...w.units(this.player)].filter((u) => !isGatherer(u) && !UNIT_DEFS[u.type].naval && u.type !== 'scout' && u.type !== 'king' && u.type !== 'monk' && !u.inside && !this.guards.has(u.id) && !this.push?.ids.has(u.id));
   }
 
   /** Wanted share of each unit type now: the age's mix, leaning toward counters. */
@@ -568,6 +579,9 @@ export class Opponent extends EconomyBot {
         break;
       }
     }
+    // The faction's own unit, once there is a Castle to train it.
+    const unique = FACTIONS[p.faction as FactionId]?.unique;
+    if (unique && p.age >= 2 && [...w.buildings(this.player)].some((b) => b.type === 'castle' && b.complete)) base[unique] = 0.3;
     // Siege when walls stand in the way.
     // Siege: rams always from Age III (Town Centers and Castles don't fall to arrows), more against walls.
     if (this.ai.siege && p.age >= 2) {
@@ -601,7 +615,7 @@ export class Opponent extends EconomyBot {
     const size = army.length + queued + 1;
     for (const b of w.buildings(this.player)) {
       if (!b.complete || b.queue.length >= 2 || b.type === 'town_center' || b.type === 'dock') continue;
-      const options = BUILDING_DEFS[b.type].trains.filter((t) => (mix[t] ?? 0) > 0 && UNIT_DEFS[t].age <= p.age);
+      const options = BUILDING_DEFS[b.type].trains.filter((t) => (mix[t] ?? 0) > 0 && UNIT_DEFS[t].age <= p.age && (!UNIT_DEFS[t].faction || UNIT_DEFS[t].faction === p.faction));
       if (!options.length) continue;
       options.sort((a, c) => (have.get(a) ?? 0) / size - (mix[a] ?? 0) / total - ((have.get(c) ?? 0) / size - (mix[c] ?? 0) / total));
       const age = p.age < 3 ? TECH_DEFS[(['age2', 'age3', 'age4'] as TechId[])[p.age]].cost : {};
@@ -732,7 +746,9 @@ export class Opponent extends EconomyBot {
     for (const e of w.units()) if (w.isEnemy(this.player, e.owner) && !isGatherer(e) && !UNIT_DEFS[e.type].naval) enemyValue += valueOf(e.type);
     const advantage = p.age > 0 && value >= this.ai.wave[p.age] * 0.8 && value > enemyValue * 1.5;
     const strong = value >= this.ai.wave[p.age] || (army.length >= this.ai.armyCap[p.age] * 0.9 && p.age > 0) || advantage;
-    const ready = boats && strong && !w.peace && w.time >= this.ai.firstAttack && w.time - this.lastWave > 45 && !threats.length;
+    // An enemy Wonder or relic hold is a clock running against us: go now with what we have.
+    const urgent = army.length >= 6 && (this.enemyWonder(w) || (!!w.modeState.relicHold && w.modeState.relicHold.team !== p.team));
+    const ready = boats && (strong || urgent) && !w.peace && (w.time >= this.ai.firstAttack || urgent) && w.time - this.lastWave > 45 && !threats.length;
     if (!ready) {
       if (w.tick % 600 === 0) this.note(w, `holding: value ${value}/${this.ai.wave[p.age]} threats ${threats.length}`);
       return;
@@ -814,7 +830,11 @@ export class Opponent extends EconomyBot {
       const def = BUILDING_DEFS[b.type];
       if (def.wall || def.naval || this.unreachable.has(b.id)) continue;
       const armed = !!def.attack;
-      const d = distToRect(from.x, from.y, b.x, b.y, b.size) + (armed && !siege ? 60 : 0) - (b.type === 'town_center' && siege ? 15 : 0);
+      let d = distToRect(from.x, from.y, b.x, b.y, b.size) + (armed && !siege ? 60 : 0) - (b.type === 'town_center' && siege ? 15 : 0);
+      // What would lose us the match comes first: a Wonder, the monastery with the relics, the King's stronghold.
+      if (b.type === 'wonder' && b.complete) d -= 200;
+      if (b.type === 'monastery' && w.modeState.relicHold && w.modeState.relicHold.team !== w.players[this.player].team) d -= 120;
+      if (w.mode === 'regicide' && b.garrison.some((id) => w.unit(id)?.type === 'king')) d -= siege ? 80 : 20;
       if (d < bd) (bd = d), (best = b);
     }
     return best;
@@ -867,6 +887,13 @@ export class Opponent extends EconomyBot {
       if (d < 30) around.push(e);
     }
     const fighters = units.filter((u) => !isSiege(u));
+    // Regicide: a King caught in the open is the whole match.
+    const king = w.mode === 'regicide' ? around.find((e) => e.type === 'king') : undefined;
+    if (king) {
+      const ids = fighters.filter((u) => !(u.order?.type === 'attack' && u.order.id === king.id)).map((u) => u.id);
+      if (ids.length) this.issue(w, { type: 'attack', ids, id: king.id });
+      return;
+    }
     if (near.length) this.engage(w, fighters, near, 14);
     // Every soldier also turns on enemies right beside it (stragglers too), rather than marching past them.
     if (around.length) this.engage(w, fighters.filter((u) => u.order?.type !== 'attack' || !w.unit(u.order.id)), around, 7);
@@ -970,6 +997,155 @@ export class Opponent extends EconomyBot {
       }
     }
     return false;
+  }
+
+  // ---------- game modes ----------
+
+  private enemyWonder(w: World): boolean {
+    return this.enemyBuildings(w).some((b) => b.type === 'wonder');
+  }
+
+  /** In the last age with money to spare, raise a Wonder (Hard and Normal boomers). */
+  private wonder(w: World, tc: Building, villagers: Unit[]): void {
+    const p = w.players[this.player];
+    if (p.age < 3 || this.difficulty === 'easy' || this.saving) return;
+    if ([...w.buildings(this.player)].some((b) => b.type === 'wonder')) {
+      // Keep plenty of hands on it.
+      const site = [...w.buildings(this.player)].find((b) => b.type === 'wonder' && !b.complete);
+      if (site && w.builders.get(site.id) === undefined && w.tick % 50 === 0) {
+        const crew = villagers.filter((u) => u.order?.type !== 'build').slice(0, 8);
+        if (crew.length) this.issue(w, { type: 'help', ids: crew.map((u) => u.id), id: site.id });
+      }
+      return;
+    }
+    if ((['food', 'wood', 'gold', 'stone'] as ResourceKind[]).every((r) => p.resources[r] >= 1100)) {
+      if (this.build(w, 'wonder', tc.x + tc.size / 2, tc.y + tc.size / 2, villagers, 8, 7)) this.note(w, 'builds a Wonder');
+    }
+  }
+
+  /** With a Monastery up, a couple of monks fetch the relics we know of. */
+  private relicHunt(w: World): void {
+    const mon = [...w.buildings(this.player)].find((b) => b.type === 'monastery' && b.complete);
+    if (!mon) return;
+    const fog = w.fog[this.player];
+    const loose = [...relics(w)].filter((r) => !r.holder && !r.carrier && fog?.isExplored(r.x, r.y));
+    const monks = [...w.units(this.player)].filter((u) => u.type === 'monk' && !u.inside);
+    if (!loose.length) {
+      // Nothing to fetch: idle monks wait by the Monastery.
+      for (const m of monks) if (!m.order && distToRect(m.x, m.y, mon.x, mon.y, mon.size) > 4) this.issue(w, { type: 'move', ids: [m.id], x: mon.x + mon.size / 2, y: mon.y + mon.size + 1 });
+      return;
+    }
+    if (monks.length < 2 && mon.queue.length === 0) this.trainIf(w, mon, 'monk');
+    const taken = new Set(monks.map((m) => (m.order?.type === 'relic' ? m.order.id : 0)));
+    for (const m of monks) {
+      if (m.order || carried(w, m)) continue;
+      const r = loose.filter((x) => !taken.has(x.id)).sort((a, b) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(b.x - m.x, b.y - m.y))[0];
+      if (!r) break;
+      taken.add(r.id);
+      this.issue(w, { type: 'gather', ids: [m.id], target: { kind: 'entity', id: r.id } });
+    }
+  }
+
+  /**
+   * Regicide: the King stays inside the strongest shelter; when that falls
+   * below a third of its strength he slips out to another; any enemy near
+   * him calls the army home.
+   */
+  private guardKing(w: World): void {
+    const king = kingOf(w, this.player);
+    if (!king) return;
+    const holder = king.inside ? w.building(king.inside) : undefined;
+    const shelters = [...w.buildings(this.player)].filter((b) => b.id !== holder?.id && canShelter(b, king) && shelterRoom(b) > 0 && b.hp > buildingMaxHpOf(w, b) * 0.5);
+    const threats = this.threats(w);
+    const at = holder ? { x: holder.x + holder.size / 2, y: holder.y + holder.size / 2 } : king;
+    const danger = threats.filter((e) => Math.hypot(e.x - at.x, e.y - at.y) < 14);
+    if (danger.length && this.wave && danger.length >= 3) this.endWave(w, this.rally(w, this.townCenter(w)));
+    if (holder) {
+      // Leave a failing stronghold for a sound one, away from the attackers.
+      if (holder.hp < buildingMaxHpOf(w, holder) * 0.33 && shelters.length) this.issue(w, { type: 'ungarrison', id: holder.id });
+      return;
+    }
+    if (king.order?.type === 'garrison') return;
+    const best = shelters.sort((a, b) => this.shelterScore(a, king, danger) - this.shelterScore(b, king, danger))[0];
+    if (best) this.issue(w, { type: 'garrison', ids: [king.id], id: best.id });
+    else if (danger.length) {
+      // Nowhere to hide: run from the nearest attacker toward the army.
+      const rally = this.rally(w, this.townCenter(w));
+      this.issue(w, { type: 'move', ids: [king.id], x: rally.x, y: rally.y });
+    }
+  }
+
+  private shelterScore(b: Building, king: Unit, danger: Unit[]): number {
+    const cx = b.x + b.size / 2, cy = b.y + b.size / 2;
+    const near = danger.reduce((s, e) => s + Math.max(0, 16 - Math.hypot(e.x - cx, e.y - cy)), 0);
+    return Math.hypot(cx - king.x, cy - king.y) + near * 4 - (b.type === 'castle' ? 8 : 0);
+  }
+
+  /**
+   * Domination: post a few soldiers on each site we hold (and a tower beside
+   * it), and send the rest of the free army to take the nearest site we
+   * don't, fighting whatever stands on it.
+   */
+  private holdSites(w: World, tc: Building, villagers: Unit[]): void {
+    const sites = w.modeState.sites;
+    if (!sites.length || w.peace) return;
+    const p = w.players[this.player];
+    const ours = (s: Site) => s.owner >= 0 && w.players[s.owner].team === p.team;
+    // Drop guards that died or whose site was lost.
+    for (const [id, k] of this.guards) if (!w.unit(id) || !ours(sites[k])) this.guards.delete(id);
+    const free = this.army(w).filter((u) => !isSiege(u) && !this.raid?.ids.has(u.id) && !this.wave?.ids.has(u.id));
+    const pushing = this.push ? [...this.push.ids] : [];
+    const pool = [...free];
+    sites.forEach((s, k) => {
+      if (!ours(s)) return;
+      const posted = [...this.guards.values()].filter((v) => v === k).length;
+      for (const u of pool.splice(0, Math.max(0, 3 - posted))) {
+        this.guards.set(u.id, k);
+        this.issue(w, { type: 'move', ids: [u.id], x: s.x + (((u.id * 37) % 5) - 2) * 0.7, y: s.y + (((u.id * 53) % 5) - 2) * 0.7 });
+      }
+      // A tower by each site we hold (it also speeds recapture).
+      if (p.age >= 1 && w.tick % 100 === 0) {
+        const tower = [...w.buildings(this.player)].some((b) => (b.type === 'watch_tower' || b.type === 'castle') && distToRect(s.x, s.y, b.x, b.y, b.size) <= 5);
+        if (!tower) {
+          const spot = this.findSpot(w, 'watch_tower', s.x, s.y, 2);
+          if (spot && Math.hypot(spot.x - s.x, spot.y - s.y) < 5) this.buildAt(w, 'watch_tower', spot, villagers, 2);
+        }
+      }
+    });
+    // Guards drift back to their post after a chase.
+    for (const [id, k] of this.guards) {
+      const u = w.unit(id)!;
+      if (!u.order && Math.hypot(u.x - sites[k].x, u.y - sites[k].y) > 4) this.issue(w, { type: 'move', ids: [id], x: sites[k].x, y: sites[k].y });
+    }
+    // Take the next site.
+    if (this.push) {
+      const s = sites[this.push.site];
+      for (const id of this.push.ids) if (!w.unit(id)) this.push.ids.delete(id);
+      const units = pushing.map((id) => w.unit(id)).filter((u): u is Unit => !!u && !u.inside);
+      if (ours(s) || !units.length || w.time - this.push.since > 240) {
+        // Taken (the push stays as its guard) or failed.
+        for (const u of units.slice(0, 3)) if (ours(s)) this.guards.set(u.id, this.push.site);
+        this.push = null;
+        return;
+      }
+      const fog = w.fog[this.player];
+      const foes = [...w.field()].filter((e) => w.canFight(this.player, e.owner) && fog?.isVisible(e.x, e.y) && Math.hypot(e.x - s.x, e.y - s.y) < SITE_RADIUS_AI + 6);
+      if (foes.length) this.engage(w, units, foes, 16);
+      const idle = units.filter((u) => !u.order && Math.hypot(u.x - s.x, u.y - s.y) > 3);
+      if (idle.length) this.issue(w, { type: 'move', ids: idle.map((u) => u.id), x: s.x, y: s.y });
+      return;
+    }
+    const pushers = pool;
+    if (pushers.length < 4 || this.threats(w).length) return;
+    const home = { x: tc.x + tc.size / 2, y: tc.y + tc.size / 2 };
+    const targets = sites.map((s, k) => ({ s, k })).filter(({ s }) => !ours(s) && !(s.by >= 0 && w.players[s.by].team === p.team && s.capture > CAPTURE_TIME * 0.5));
+    // Nearest first; neutral ones before enemy-held.
+    targets.sort((a, b) => Math.hypot(a.s.x - home.x, a.s.y - home.y) + (a.s.owner >= 0 ? 15 : 0) - Math.hypot(b.s.x - home.x, b.s.y - home.y) - (b.s.owner >= 0 ? 15 : 0));
+    const t = targets[0];
+    if (!t) return;
+    this.push = { ids: new Set(pushers.map((u) => u.id)), site: t.k, since: w.time };
+    this.note(w, `push of ${pushers.length} on site ${t.k}`);
+    this.issue(w, { type: 'move', ids: pushers.map((u) => u.id), x: t.s.x, y: t.s.y });
   }
 
   /** The enemy wall segment to break: the nearest gate or wall to the army (any near the target, seen or not). */

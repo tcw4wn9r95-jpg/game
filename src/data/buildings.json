@@ -251,7 +251,8 @@
     "classes": [
       "building"
     ],
-    "advance": true
+    "advance": true,
+    "garrison": 0
   },
   "blacksmith": {
     "name": "Blacksmith",
@@ -464,7 +465,11 @@
     "pierceArmor": 11,
     "trains": [
       "trebuchet",
-      "petard"
+      "petard",
+      "claymore",
+      "horse_archer",
+      "arbalest_guard",
+      "iron_bear"
     ],
     "classes": [
       "building",
@@ -563,5 +568,30 @@
       "building"
     ],
     "naval": true
+  },
+  "wonder": {
+    "name": "Wonder",
+    "size": 5,
+    "hp": 4800,
+    "buildTime": 900,
+    "cost": {
+      "food": 1000,
+      "wood": 1000,
+      "gold": 1000,
+      "stone": 1000
+    },
+    "pop": 0,
+    "los": 8,
+    "dropoff": [],
+    "age": 3,
+    "buildable": true,
+    "description": "A monument for the ages. Keep it standing for 8 minutes after it is finished and you win.",
+    "meleeArmor": 3,
+    "pierceArmor": 10,
+    "trains": [],
+    "classes": [
+      "building",
+      "wonder"
+    ]
   }
 }
