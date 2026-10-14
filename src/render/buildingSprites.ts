@@ -5,7 +5,7 @@ import { Rng } from '../sim/rng';
 import { type G, P, ZK, box, boxShadow, boxTop, crenels, doorAt, gableRoof, hipRoof, line3, log, mat, onGround, poly3, post, prism, setScale, shadeColor, softShadow, windowAt } from './iso3d';
 import { grade } from './materials';
 import { PLAYER_COLORS } from './palette';
-import type { Sprite } from './sprites';
+import { type Sprite, SpriteCache, cropSprite } from './sprites';
 
 /** n: footprint in tiles; variant: building-specific state, e.g. a farm's crop stage (0 bare .. 3 ripe). */
 type Painter = (g: G, n: number, team: string, rng: Rng, variant: number) => void;
@@ -1404,19 +1404,19 @@ const PAINTERS: Record<BuildingType, Painter> = {
 
 /** Building sprites for one zoom level, cached per type, player and variant. */
 export class BuildingSprites {
-  private readonly cache = new Map<string, Sprite>();
+  /** Memory allowed for one zoom level's building sprites. */
+  private readonly cache = new SpriteCache(56 * 1024 * 1024);
 
   /** `tw`: device px across one tile diamond. */
   constructor(readonly tw: number) {}
 
   get(type: BuildingType, size: number, player: number, variant = 0, age = 0): Sprite {
-    const key = `${type}|${player}|${variant}|${age}`;
-    let sp = this.cache.get(key);
-    if (!sp) {
-      sp = this.render(type, size, player, variant, age);
-      this.cache.set(key, sp);
-    }
-    return sp;
+    return this.cache.get(`${type}|${player}|${variant}|${age}`, () => cropSprite(this.render(type, size, player, variant, age)));
+  }
+
+  /** Releases every cached sprite. */
+  dispose(): void {
+    this.cache.clear();
   }
 
   private render(type: BuildingType, n: number, player: number, variant: number, age: number): Sprite {

@@ -176,6 +176,18 @@ describe('naval (M8)', () => {
   });
 });
 
+describe('sinking', () => {
+  it('a transport sunk at sea takes its riders down with it', () => {
+    const w = setup();
+    const t = w.spawnUnit('transport_ship', 0, 36.5, 30.5);
+    const m = w.spawnUnit('militia', 0, 36.5, 30.5);
+    m.inside = t.id;
+    t.cargo.push(m.id);
+    w.remove(t.id);
+    expect(w.get(m.id)).toBeUndefined();
+  });
+});
+
 describe('Islands acceptance (M8)', () => {
   it('ships 10 units to an enemy island and unloads them', () => {
     const map = generateMap({ type: 'islands', size: 'standard', players: 2, seed: 7 });

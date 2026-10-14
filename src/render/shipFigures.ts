@@ -17,7 +17,7 @@ export const SHIP_TYPES: ShipType[] = ['fishing_ship', 'transport_ship', 'galley
 export interface ShipPose {
   /** Heading 0-7: 0 toward +x (screen lower right), counting clockwise on the map. */
   dir: number;
-  /** Swell frame 0-3. */
+  /** Swell frame 0-1. */
   frame: number;
   /** Fishing: net out. */
   work: boolean;
@@ -87,7 +87,8 @@ class ShipPainter {
     const a = (p.dir * Math.PI) / 4;
     this.fx = Math.cos(a);
     this.fy = Math.sin(a);
-    this.t = (p.frame * Math.PI) / 2;
+    // Frame 0 rolls one way, frame 1 the other.
+    this.t = Math.PI / 2 + (p.frame % 2) * Math.PI;
     this.roll = 0.05 * Math.sin(this.t);
   }
 

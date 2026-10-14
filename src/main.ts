@@ -119,15 +119,25 @@ function boot(): void {
   else toSetup();
 
   let last = performance.now();
+  let reported = false;
   const frame = (now: number) => {
+    // Schedule the next frame first: one bad frame must never stop the game.
+    requestAnimationFrame(frame);
     // rAF timestamps can precede a performance.now() read taken just before, so clamp.
     const dt = Math.max(0, now - last);
     last = Math.max(last, now);
-    if (game) {
-      game.frame(now, dt);
-      fps?.frame(now);
-    } else if (backdrop) backdrop.frame(dt);
-    requestAnimationFrame(frame);
+    try {
+      if (game) {
+        game.frame(now, dt);
+        fps?.frame(now);
+      } else if (backdrop) backdrop.frame(dt);
+    } catch (e) {
+      console.error(e);
+      if (!reported && game) {
+        reported = true;
+        game.hud.toast('Something went wrong; the game recovered. Save often.');
+      }
+    }
   };
   requestAnimationFrame(frame);
 }

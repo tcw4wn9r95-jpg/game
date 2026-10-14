@@ -24,7 +24,7 @@ import { drawMangonel, drawRam, drawScorpion, drawSiegeTower, drawTrebuchet } fr
 import { grade } from './materials';
 import { SHIP_TYPES, type ShipType, shipPortrait, shipSprite } from './shipFigures';
 import { PLAYER_COLORS } from './palette';
-import type { Sprite } from './sprites';
+import { type Sprite, SpriteCache, cropSprite } from './sprites';
 
 /** Per-type size (tiles per 100 figure units) and drawing bounds in figure units. */
 const DEFS: Record<Exclude<UnitType, ShipType>, { tilesPer100: number; x0: number; x1: number; y0: number; y1: number; draw: (g: CanvasRenderingContext2D, f: FigureSpec) => void }> = {
@@ -82,6 +82,8 @@ export const UPGRADE_TECH: Partial<Record<UnitType, string>> = {
 
 /** Ships are drawn larger than their footprint in the simulation, as in AoE, so they read at sea. */
 const SHIP_K = 1.5;
+/** Most device px per tile a ship sprite is painted at. */
+const SHIP_PX_CAP = 110;
 
 const isShipType = (t: UnitType): t is ShipType => (SHIP_TYPES as string[]).includes(t);
 
@@ -101,29 +103,36 @@ export interface UnitPose {
   carry: ResourceKind | null;
 }
 
+/** Memory allowed for one zoom level's unit and ship sprites. */
+const UNIT_BUDGET = 40 * 1024 * 1024;
+
 export class UnitSprites {
-  private readonly cache = new Map<string, Sprite>();
+  private readonly cache = new SpriteCache(UNIT_BUDGET);
 
   constructor(readonly s: number) {}
 
   get(type: UnitType, player: number, look: number, p: UnitPose, elite = false): Sprite {
     if (isShipType(type)) {
       const work = p.anim === 'work' && !p.attack;
-      const key = `${type}|${player}|${p.dir ?? 1}|${p.frame % 4}|${work ? 1 : 0}|${p.attack ? 1 : 0}|${elite ? 1 : 0}`;
-      let sp = this.cache.get(key);
-      if (!sp) {
-        sp = shipSprite(type, (this.s / UNIT_K) * SHIP_K, PLAYER_COLORS[player % PLAYER_COLORS.length], { dir: p.dir ?? 1, frame: p.frame % 4, work, attack: !!p.attack, elite });
-        this.cache.set(key, sp);
-      }
-      return sp;
+      // Two swell frames: rolled to port and to starboard.
+      const frame = p.frame % 2;
+      const key = `${type}|${player}|${p.dir ?? 1}|${frame}|${work ? 1 : 0}|${p.attack ? 1 : 0}|${elite ? 1 : 0}`;
+      return this.cache.get(key, () => {
+        // Big ships at close zoom on dense screens would take megabytes each: paint them
+        // at a capped resolution and scale up when drawn.
+        const want = (this.s / UNIT_K) * SHIP_K, paint = Math.min(want, SHIP_PX_CAP);
+        const sp = cropSprite(shipSprite(type, paint, PLAYER_COLORS[player % PLAYER_COLORS.length], { dir: p.dir ?? 1, frame, work, attack: !!p.attack, elite }));
+        sp.k = want / paint;
+        return sp;
+      });
     }
     const key = `${type}|${player}|${look}|${p.view}|${p.left ? 1 : 0}|${p.anim}|${p.frame}|${p.tool}|${p.carry ?? ''}|${elite ? 1 : 0}|${p.packed === false ? 0 : 1}`;
-    let sp = this.cache.get(key);
-    if (!sp) {
-      sp = this.render(type as Exclude<UnitType, ShipType>, player, look, p, elite);
-      this.cache.set(key, sp);
-    }
-    return sp;
+    return this.cache.get(key, () => this.render(type as Exclude<UnitType, ShipType>, player, look, p, elite));
+  }
+
+  /** Releases every cached sprite. */
+  dispose(): void {
+    this.cache.clear();
   }
 
   /** A large head-and-shoulders render for the HUD portrait. */

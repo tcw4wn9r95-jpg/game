@@ -205,6 +205,7 @@ export function unload(w: World, carrier: Unit, shore?: { x: number; y: number }
       }
     }
   }
+  const drowned: Unit[] = [];
   for (const id of carrier.cargo) {
     const r = w.unit(id);
     if (!r) continue;
@@ -216,10 +217,18 @@ export function unload(w: World, carrier: Unit, shore?: { x: number; y: number }
     if (spot) {
       r.x = r.px = spot.x + 0.5 + (w.rng.next() - 0.5) * 0.5;
       r.y = r.py = spot.y + 0.5 + (w.rng.next() - 0.5) * 0.5;
+    } else if (isShip(carrier)) {
+      // A transport sunk out at sea: no shore to swim to.
+      drowned.push(r);
+      continue;
     }
     r.guard = { x: r.x, y: r.y };
   }
   carrier.cargo = [];
+  for (const r of drowned) {
+    w.events.push({ type: 'death', owner: r.owner, unit: r.type, x: r.x, y: r.y, face: r.face, by: -1 });
+    w.remove(r.id);
+  }
 }
 
 /** An enemy wall or gate segment touching the vehicle (within a tile and a half). */

@@ -110,7 +110,8 @@ export function drawShipSheet(view: View, zoom = 1.6): void {
   types.forEach((t, row) =>
     [0, 1, 2, 3, 4, 5, 6, 7].forEach((dir, col) => {
       const sp = shipSprite(t, s, '#2f6fe0', { dir, frame: col % 4, work: t === 'fishing_ship' && col === 7, attack: col === 6, elite: false });
-      ctx.drawImage(sp.c, (col + 0.6) * cw - sp.ax, (row + 0.75) * ch * 0.62 + s * 0.8 - sp.ay);
+      const k = sp.k ?? 1;
+      ctx.drawImage(sp.c, (col + 0.6) * cw - sp.ax * k, (row + 0.75) * ch * 0.62 + s * 0.8 - sp.ay * k, sp.c.width * k, sp.c.height * k);
     }),
   );
 }

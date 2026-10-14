@@ -8,6 +8,75 @@ export interface Sprite {
   /** Anchor in device px: this canvas point is placed on the object's ground point. */
   ax: number;
   ay: number;
+  /** Drawn this many times its canvas size (art painted below display resolution to save memory). */
+  k?: number;
+}
+
+const bytesOf = (s: Sprite) => s.c.width * s.c.height * 4;
+
+/**
+ * Sprites rendered on demand, kept up to a memory budget: the least recently
+ * drawn are dropped (and their canvases released) when it is exceeded. Phones
+ * cap total canvas memory, and running out locks the page up.
+ */
+export class SpriteCache {
+  private readonly map = new Map<string, Sprite>();
+  private bytes = 0;
+
+  constructor(private readonly budget: number) {}
+
+  get(key: string, make: () => Sprite): Sprite {
+    let sp = this.map.get(key);
+    if (sp) {
+      // Most recently used goes to the back of the queue.
+      this.map.delete(key);
+      this.map.set(key, sp);
+      return sp;
+    }
+    sp = make();
+    this.map.set(key, sp);
+    this.bytes += bytesOf(sp);
+    while (this.bytes > this.budget && this.map.size > 1) {
+      const [k, old] = this.map.entries().next().value as [string, Sprite];
+      this.map.delete(k);
+      this.bytes -= bytesOf(old);
+      old.c.width = old.c.height = 0;
+    }
+    return sp;
+  }
+
+  clear(): void {
+    for (const sp of this.map.values()) sp.c.width = sp.c.height = 0;
+    this.map.clear();
+    this.bytes = 0;
+  }
+
+  get size(): number {
+    return this.bytes;
+  }
+}
+
+/** Trims a sprite's canvas to its painted pixels (keeping the anchor in place). */
+export function cropSprite(sp: Sprite): Sprite {
+  const { c } = sp;
+  if (!c.width || !c.height) return sp;
+  const d = c.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++)
+    for (let x = 0; x < c.width; x++)
+      if (d[(y * c.width + x) * 4 + 3] > 2) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+  if (x1 < 0) return sp;
+  const out = document.createElement('canvas');
+  out.width = x1 - x0 + 1;
+  out.height = y1 - y0 + 1;
+  out.getContext('2d')!.drawImage(c, -x0, -y0);
+  c.width = c.height = 0;
+  return { c: out, ax: sp.ax - x0, ay: sp.ay - y0, k: sp.k };
 }
 
 type Painter = (g: CanvasRenderingContext2D) => void;

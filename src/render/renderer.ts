@@ -133,6 +133,13 @@ export class Renderer {
         buildings: new BuildingSprites(z * 2),
       };
       this.levels[level] = a;
+      // Free the art of zoom levels well away from this one; it is rebuilt if needed.
+      this.levels.forEach((o, i) => {
+        if (!o || Math.abs(i - level) <= 1) return;
+        o.units.dispose();
+        o.buildings.dispose();
+        this.levels[i] = null;
+      });
     }
     return a;
   }
@@ -335,8 +342,12 @@ export class Renderer {
     const { ctx } = this.view;
     const px = this.sx(v, wx, wy), py = this.sy(v, wx, wy);
     if (alpha !== 1) ctx.globalAlpha = alpha;
-    if (v.exact) ctx.drawImage(s.c, Math.round(px - s.ax), Math.round(py - s.ay));
-    else ctx.drawImage(s.c, px - s.ax * v.k, py - s.ay * v.k, s.c.width * v.k, s.c.height * v.k);
+    const sk = s.k ?? 1;
+    if (v.exact && sk === 1) ctx.drawImage(s.c, Math.round(px - s.ax), Math.round(py - s.ay));
+    else {
+      const k = (v.exact ? 1 : v.k) * sk;
+      ctx.drawImage(s.c, px - s.ax * k, py - s.ay * k, s.c.width * k, s.c.height * k);
+    }
     if (alpha !== 1) ctx.globalAlpha = 1;
   }
 
@@ -434,7 +445,7 @@ export class Renderer {
     const sink = Math.min(1, age / 6);
     if (sink < 1) {
       const sp = v.art.units.get(c.type, c.owner, 0, { view: 'side', left: false, anim: 'idle', frame: 0, tool: 'none', carry: null, dir: c.look % 8 });
-      const k = v.exact ? 1 : v.k;
+      const k = (v.exact ? 1 : v.k) * (sp.k ?? 1);
       ctx.save();
       // Clip at the waterline as it sinks.
       ctx.beginPath();
