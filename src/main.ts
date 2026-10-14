@@ -9,6 +9,14 @@ import { MenuBackdrop } from './ui/backdrop';
 import { FpsCounter } from './ui/fps';
 import { randomSeed, showSetup } from './ui/setup';
 import { installTheme } from './ui/theme';
+import { type SlotId, readSave, writeSave } from './ui/saves';
+import { showSlots } from './ui/slotPanel';
+import { loadWorld } from './sim/save';
+import type { World } from './sim/world';
+import type { GameMap } from './sim/terrain';
+
+/** Real time between autosaves. */
+const AUTOSAVE_MS = 60_000;
 
 function blockBrowserGestures(): void {
   // iOS Safari ignores user-scalable=no, so block pinch and double-tap zoom here.
@@ -80,10 +88,12 @@ function boot(): void {
     backdrop?.dispose();
     backdrop = null;
   };
-  const start = (map: ReturnType<typeof generateMap>) => {
+  const start = (source: GameMap | World) => {
     clearBackdrop();
-    game = new Game(map, view, hud, debug);
+    game = new Game(source, view, hud, debug);
     game.hud.onNewMatch = toSetup;
+    game.hud.onSave = () => showSlots(document.body, 'save', (slot) => void saveTo(slot), () => {});
+    game.hud.onLoad = () => showSlots(document.body, 'load', (slot) => void loadFrom(slot), () => {});
     // Automated browser tests drive the match through this handle.
     if (params.has('test')) (window as unknown as { __game: Game }).__game = game;
     fps = new FpsCounter(hud.querySelector('#fps')!);
@@ -99,8 +109,56 @@ function boot(): void {
         backdrop = new MenuBackdrop(view, map);
       },
       onStart: (_opts, map) => start(map),
+      onLoad: (slot) => void loadFrom(slot),
     });
   }
+
+  /** Saves the match to a slot; the autosave goes quietly. */
+  async function saveTo(slot: SlotId): Promise<void> {
+    const g = game;
+    if (!g) return;
+    try {
+      const snap = g.snapshot();
+      await writeSave(slot, snap.meta, snap.data);
+      if (slot !== 'auto') g.hud.toast('Game saved');
+    } catch (e) {
+      console.error(e);
+      if (slot !== 'auto') g.hud.toast("Couldn't save: storage is unavailable or full");
+    }
+  }
+
+  /** Replaces whatever is running with a saved match. */
+  async function loadFrom(slot: SlotId): Promise<void> {
+    try {
+      const rec = await readSave(slot);
+      if (!rec) return;
+      const world = loadWorld(rec.data);
+      document.querySelector('.setup')?.remove();
+      game?.destroy();
+      game = null;
+      start(world);
+      const g = game as Game | null;
+      if (g) {
+        if (rec.meta.camera) g.restoreCamera(rec.meta.camera);
+        g.hud.toast('Game loaded');
+      }
+    } catch (e) {
+      console.error(e);
+      (game as Game | null)?.hud.toast("Couldn't load that save");
+    }
+  }
+
+  // Autosave every minute of play, and whenever the app goes to the background
+  // (a phone may kill a backgrounded tab without warning).
+  setInterval(() => {
+    if (game && !game.hud.paused) void saveTo('auto');
+  }, AUTOSAVE_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && game) void saveTo('auto');
+  });
+  window.addEventListener('pagehide', () => {
+    if (game) void saveTo('auto');
+  });
 
   if (params.has('ships')) {
     void import('./ui/spriteSheet').then((m) => m.drawShipSheet(view, Number(params.get('ships')) || 1.6));

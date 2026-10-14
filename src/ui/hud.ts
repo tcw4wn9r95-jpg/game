@@ -22,6 +22,8 @@ export class Hud {
   private readonly last = new Map<string, string>();
   private readonly pauseMenu: HTMLElement;
   onNewMatch: () => void = () => {};
+  onSave: () => void = () => {};
+  onLoad: () => void = () => {};
   onIdleVillager: () => void = () => {};
   onIdleMilitary: () => void = () => {};
   onAllMilitary: () => void = () => {};
@@ -91,9 +93,13 @@ export class Hud {
       <div class="panel frame">
         <h2 class="panel-title">Paused</h2>
         <button class="btn btn-gold" data-a="resume">Resume</button>
+        <button class="btn btn-wood" data-a="save">Save Game</button>
+        <button class="btn btn-wood" data-a="load">Load Game</button>
         <button class="btn btn-wood" data-a="new">New Match</button>
       </div>`;
     this.pauseMenu.querySelector('[data-a=resume]')!.addEventListener('click', () => this.setPaused(false));
+    this.pauseMenu.querySelector('[data-a=save]')!.addEventListener('click', () => this.onSave());
+    this.pauseMenu.querySelector('[data-a=load]')!.addEventListener('click', () => this.onLoad());
     this.pauseMenu.querySelector('[data-a=new]')!.addEventListener('click', () => {
       this.setPaused(false);
       this.onNewMatch();

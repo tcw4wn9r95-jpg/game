@@ -9,6 +9,10 @@ import { AGES, TECH_DEFS } from './sim/techs';
 import { Hud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { CommandCenter } from './ui/commandCenter';
+import { type SaveData, saveWorld } from './sim/save';
+import type { SaveMeta } from './ui/saves';
+
+const MAP_NAMES = { heartland: 'Heartland', coastal: 'Coastal', lakes: 'Lakes', islands: 'Islands' } as const;
 
 /** Longest frame gap we catch up on; anything longer (app backgrounded) is dropped. */
 const MAX_FRAME_MS = 250;
@@ -34,8 +38,10 @@ export class Game {
   /** The human player's slot. */
   readonly player = 0;
 
-  constructor(map: GameMap, private readonly view: View, hudRoot: HTMLElement, debug: DebugFlags) {
-    this.world = new World(map);
+  /** Starts a new match on a map, or resumes a loaded world. */
+  constructor(source: GameMap | World, private readonly view: View, hudRoot: HTMLElement, debug: DebugFlags) {
+    this.world = source instanceof World ? source : new World(source);
+    const map = this.world.map;
     const fog = this.world.fog[this.player];
     if (debug.reveal || debug.bench) fog.revealAll();
 
@@ -136,6 +142,28 @@ export class Game {
     this.minimap.draw(now);
     this.hud.update(this.world, this.player, c.idleVillagers().length, c.idleMilitary().length);
     this.panel.update();
+  }
+
+  /** A save of the match: the world, and a summary for the slot list. */
+  snapshot(): { meta: SaveMeta; data: SaveData } {
+    const m = this.world.map;
+    return {
+      meta: {
+        title: `${MAP_NAMES[m.type]} · ${m.sizeName[0].toUpperCase()}${m.sizeName.slice(1)}`,
+        time: this.world.time,
+        age: this.world.players[this.player].age,
+        savedAt: Date.now(),
+        camera: { x: this.camera.x, y: this.camera.y, level: this.camera.level },
+      },
+      data: saveWorld(this.world),
+    };
+  }
+
+  /** Puts the camera back where it was when the match was saved. */
+  restoreCamera(c: { x: number; y: number; level: number }): void {
+    this.camera.level = c.level;
+    this.camera.scale = ZOOM_LEVELS[c.level] ?? ZOOM_LEVELS[0];
+    this.camera.centerOn(c.x, c.y);
   }
 
   destroy(): void {

@@ -3,6 +3,8 @@ import { generateMap, type MapOptions } from '../sim/mapgen';
 import { type GameMap, MAP_SIZES, MAP_TYPES, type MapSize, type MapType } from '../sim/terrain';
 import { ICONS, MAP_ICONS } from './icons';
 import { mapImage } from './mapImage';
+import { type SlotId, listSaves } from './saves';
+import { showSlots } from './slotPanel';
 
 const STORAGE_KEY = 'hc.setup';
 
@@ -36,6 +38,8 @@ export const randomSeed = () => Math.floor(Math.random() * 1e6);
 export interface SetupHooks {
   onPreview(map: GameMap): void;
   onStart(opts: MapOptions, map: GameMap): void;
+  /** Resume a saved match (the setup screen has already gone). */
+  onLoad(slot: SlotId): void;
 }
 
 /** New-match screen with a live preview of the generated map. Removes itself on start. */
@@ -67,6 +71,10 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
         <div class="map-desc"></div>
         <div class="seed-row"><span class="seed"></span><button class="icon-btn" aria-label="New map">${ICONS.dice}</button></div>
         <button class="btn btn-gold start">Start Match</button>
+        <div class="load-row" hidden>
+          <button class="btn btn-wood continue" hidden>Continue</button>
+          <button class="btn btn-wood load">Load Game</button>
+        </div>
       </section>
     </div>
     <div class="setup-build">build ${__BUILD_ID__}</div>`;
@@ -119,6 +127,20 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
     cancelAnimationFrame(pending);
     el.remove();
     hooks.onStart(opts, map);
+  });
+
+  // Saved games: Continue picks up the autosave; Load lists every slot.
+  const leave = (slot: SlotId) => {
+    cancelAnimationFrame(pending);
+    el.remove();
+    hooks.onLoad(slot);
+  };
+  el.querySelector('.continue')!.addEventListener('click', () => leave('auto'));
+  el.querySelector('.load')!.addEventListener('click', () => showSlots(document.body, 'load', leave, () => {}));
+  void listSaves().then((saves) => {
+    if (!Object.values(saves).some(Boolean)) return;
+    el.querySelector<HTMLElement>('.load-row')!.hidden = false;
+    el.querySelector<HTMLElement>('.continue')!.hidden = !saves.auto;
   });
 
   root.appendChild(el);
