@@ -169,6 +169,14 @@ export class Controller {
         this.ring(b.x + b.size / 2, b.y + b.size / 2, '#ffe28a');
         return;
       }
+      // With units selected, a tap on the ground beside (or visually behind) a building moves them there;
+      // only a tap on the building's own footprint picks the building.
+      const onFootprint = t.x >= b.x && t.x <= b.x + b.size && t.y >= b.y && t.y <= b.y + b.size;
+      if (units.length && !onFootprint && this.world.grid.isWalkable(Math.floor(t.x), Math.floor(t.y), me)) {
+        this.issue({ type: 'move', ids: units.map((u) => u.id), x: t.x, y: t.y });
+        this.ring(t.x, t.y, '#9cf59a');
+        return;
+      }
       // Otherwise units that fit go inside a tower, castle or town centre.
       const shelter = units.filter((u) => canShelter(b, u));
       if (shelter.length && shelterRoom(b) > 0) {
