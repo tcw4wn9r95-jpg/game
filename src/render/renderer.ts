@@ -17,7 +17,8 @@ import { type Sprite, SpriteSet } from './sprites';
 import { TerrainTextures } from './textures';
 import { tileHash } from './tiles';
 import { buildingMaxHp, unitStats } from '../sim/techs';
-import { UPGRADE_TECH, type UnitPose, UnitSprites, lookIndex, unitHeight } from './unitSprites';
+import { UNIT_K, UPGRADE_TECH, type UnitPose, UnitSprites, lookIndex, unitHeight } from './unitSprites';
+import { ZK } from './iso3d';
 
 /** Time (ms) per frame spent building chunks after the first frame; at least one is built.
  * Chunks still missing draw from another zoom level meanwhile. */
@@ -125,7 +126,7 @@ export class Renderer {
         z,
         tiles: new TerrainTextures(Math.round(z * TEXTURE_K), this.biome),
         sprites: new SpriteSet(sprite),
-        units: new UnitSprites(sprite),
+        units: new UnitSprites(Math.round(z * UNIT_K)),
         buildings: new BuildingSprites(z * 2),
       };
       this.levels[level] = a;
@@ -355,7 +356,7 @@ export class Renderer {
     if (selected) {
       ctx.strokeStyle = u.owner === this.player ? 'rgba(255,255,255,0.95)' : 'rgba(255,90,80,0.95)';
       ctx.lineWidth = Math.max(1.5, S / 16);
-      const r = S * (u.type === 'scout' || u.type === 'knight' ? 0.75 : 0.5);
+      const r = S * (u.type === 'scout' || u.type === 'knight' || UNIT_DEFS[u.type].classes.includes('siege') ? 0.55 : 0.36);
       ctx.beginPath();
       ctx.ellipse(px, py, r, r / 2, 0, 0, Math.PI * 2);
       ctx.stroke();
@@ -369,7 +370,7 @@ export class Renderer {
     // Health shows on selection, and for a few seconds after any hit.
     const maxHp = unitStats(this.world, u.owner, u.type).hp;
     const hurt = u.attackedAt > this.world.tick - 50 && u.hp < maxHp;
-    if (selected || hurt) this.hpBar(v, px, py - S * SPRITE_K * (unitHeight(u.type) + 0.12), S * 0.9, u.hp / maxHp, u.owner);
+    if (selected || hurt) this.hpBar(v, px, py - S * UNIT_K * (unitHeight(u.type) + 0.15), S * 0.7, u.hp / maxHp, u.owner);
   }
 
   /** A fallen soldier lying on its side, fading out. */
@@ -489,7 +490,7 @@ export class Renderer {
     const { S } = v;
     const at = (q: number) => {
       const x = p.sx + (p.tx - p.sx) * q, y = p.sy + (p.ty - p.sy) * q;
-      const z = p.arc * 4 * q * (1 - q) + (p.height ?? 0.55) * (1 - q) + 0.25 * q;
+      const z = p.arc * 4 * q * (1 - q) + (p.height !== undefined ? p.height * ZK : 0.4) * (1 - q) + 0.2 * q;
       return { X: this.sx(v, x, y), Y: this.sy(v, x, y), Z: z * S };
     };
     const a = at(t), b = at(Math.min(1, t + 0.04));
@@ -666,19 +667,19 @@ export class Renderer {
     if (b.complete && b.hp < maxHp * 0.6 && !def.walkable && !def.wall) {
       // Burning: smoke from the start, flames once badly hurt.
       const frac = b.hp / maxHp;
-      const top = S * b.size * 0.55;
+      const top = S * b.size * 0.55 * ZK;
       this.smoke(v, b.x + b.size * 0.5, b.y + b.size * 0.5, top, 1.2 - frac, b.id);
       if (frac < 0.45) this.flames(v, b.x + b.size * 0.35, b.y + b.size * 0.7, top * 0.5, 0.5 + b.size * 0.12, b.id);
       if (frac < 0.25) this.flames(v, b.x + b.size * 0.75, b.y + b.size * 0.4, top * 0.7, 0.45 + b.size * 0.1, b.id + 3);
     }
     if (selected || !b.complete || (b.hp < maxHp - 0.5 && !def.walkable)) {
       const cx = this.sx(v, b.x + b.size / 2, b.y + b.size / 2);
-      const top = def.walkable ? this.sy(v, b.x, b.y) - S * 0.6 : ny - S * (0.4 + b.size * 0.55);
+      const top = def.walkable ? this.sy(v, b.x, b.y) - S * 0.6 : ny - S * (0.4 + b.size * 0.55) * ZK;
       this.hpBar(v, cx, top, Math.min(b.size * S * 1.2, S * 3), b.complete ? b.hp / maxHp : b.progress, b.owner, !b.complete);
     }
     if (b.garrison.length && (b.owner === this.player || selected)) {
       // Garrison badge: a shield with the count.
-      const bx = this.sx(v, b.x + b.size / 2, b.y + b.size / 2), by = this.sy(v, b.x, b.y) - S * (0.6 + b.size * 0.55);
+      const bx = this.sx(v, b.x + b.size / 2, b.y + b.size / 2), by = this.sy(v, b.x, b.y) - S * (0.6 + b.size * 0.55) * ZK;
       const r = Math.max(7, S * 0.28);
       ctx.fillStyle = PLAYER_COLORS[b.owner % PLAYER_COLORS.length];
       ctx.strokeStyle = '#f1d48a';

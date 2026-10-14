@@ -3,7 +3,8 @@ import type { Camera } from '../render/camera';
 import type { Effect } from '../render/renderer';
 import { isGatherer, sourceOf } from '../sim/economy';
 import { BUILDING_DEFS, type Building, type BuildingType, type Entity, type GatherTarget, UNIT_DEFS, type Unit } from '../sim/entities';
-import { unitHeight } from '../render/unitSprites';
+import { UNIT_K, unitHeight } from '../render/unitSprites';
+import { ZK } from '../render/iso3d';
 import type { Command } from '../sim/commands';
 import { canShelter, shelterRoom, wallLine } from '../sim/fortify';
 import { canBoard } from '../sim/siege';
@@ -328,12 +329,12 @@ export class Controller {
     let best: Entity | null = null;
     let bd = Infinity;
     // Generous hit box: about 22 CSS px around the figure so fingers can hit it.
-    const tolX = Math.max(0.45 * 1.6 * Z, 22);
+    const tolX = Math.max(0.45 * UNIT_K * Z, 22);
     for (const e of world.entities.values()) {
       if (e.kind !== 'unit') continue;
       if (e.owner !== this.host.player && !fog.isVisible(e.x, e.y)) continue;
       const p = camera.tileToScreen(e.x, e.y);
-      const h = Math.max(unitHeight(e.type) * 1.6 * Z, 26);
+      const h = Math.max(unitHeight(e.type) * UNIT_K * Z, 26);
       if (Math.abs(sx - p.x) > tolX || sy < p.y - h - 8 || sy > p.y + 12) continue;
       // Own units win ties so a crowd can always be tapped into.
       const d = Math.hypot(sx - p.x, sy - (p.y - h / 2)) / Z - (e.owner === this.host.player ? 0.2 : 0);
@@ -354,7 +355,7 @@ export class Controller {
       const left = camera.tileToScreen(b.x, b.y + b.size).x, right = camera.tileToScreen(b.x + b.size, b.y).x;
       const top = camera.tileToScreen(b.x, b.y).y, mid = camera.tileToScreen(b.x + b.size, b.y).y;
       const flat = b.type === 'farm';
-      const above = !flat && sx >= left && sx <= right && sy <= mid && sy >= top - b.size * Z * 1.4;
+      const above = !flat && sx >= left && sx <= right && sy <= mid && sy >= top - b.size * Z * 1.4 * ZK;
       if (!inside && !above) continue;
       // Prefer the building nearest the viewer (larger x+y) when sprites overlap.
       const d = -(b.x + b.y + b.size) + (inside ? 0 : 0.5);
@@ -427,7 +428,8 @@ export class Controller {
     const size = BUILDING_DEFS[type].size;
     this.placing = { type, x: Math.round(camera.x - size / 2), y: Math.round(camera.y - size / 2) };
     const wall = BUILDING_DEFS[type].wall;
-    if (wall) this.placing.wall = { kind: wall, tiles: [], line: null };
+    // Wall types draw lines; gates are set one at a time (into a wall or on open ground).
+    if (wall && !BUILDING_DEFS[type].gate) this.placing.wall = { kind: wall, tiles: [], line: null };
     this.changed();
   }
 

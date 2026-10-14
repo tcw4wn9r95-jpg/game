@@ -2,7 +2,7 @@
 // level, player colour and variant. Age I style: timber, plaster, thatch and canvas.
 import type { BuildingType } from '../sim/entities';
 import { Rng } from '../sim/rng';
-import { type G, P, box, boxShadow, boxTop, crenels, doorAt, gableRoof, hipRoof, line3, log, mat, onGround, poly3, post, prism, setScale, shadeColor, softShadow, windowAt } from './iso3d';
+import { type G, P, ZK, box, boxShadow, boxTop, crenels, doorAt, gableRoof, hipRoof, line3, log, mat, onGround, poly3, post, prism, setScale, shadeColor, softShadow, windowAt } from './iso3d';
 import { grade } from './materials';
 import { PLAYER_COLORS } from './palette';
 import type { Sprite } from './sprites';
@@ -11,7 +11,7 @@ import type { Sprite } from './sprites';
 type Painter = (g: G, n: number, team: string, rng: Rng, variant: number) => void;
 
 /** Units of structure drawn above the footprint's north corner. */
-const RISE = 150;
+const RISE = 240;
 const PAD = 26;
 
 // Materials by age: the town is restyled as it advances, thatch and wattle giving
@@ -354,6 +354,7 @@ function stoneWall(g: G, variant: number, rng: Rng, height = 24): void {
 /** A sharpened stake (log) standing at (x, y). */
 function stake(g: G, x: number, y: number, h: number, w = 2.6): void {
   const [bx, by] = P(x, y, 0);
+  h *= ZK;
   g.fillStyle = mat(g, 'woodV', '#6b4626', 21);
   g.fillRect(bx - w / 2, by - h, w, h);
   const sh = g.createLinearGradient(bx - w / 2, 0, bx + w / 2, 0);
@@ -476,7 +477,7 @@ function tower(g: G, variant: number, team: string, rng: Rng): void {
     // Watch tower: a timber hoarding and a pointed shingle roof.
     box(g, 0.02, 0.02, 0.98, 0.98, 10, { base: '#6b4a2a', mat: 'planks' }, {}, 43);
     g.save();
-    g.translate(0, -h);
+    g.translate(0, -h * ZK);
     box(g, 0.02, 0.02, 0.98, 0.98, 10, { base: '#6b4a2a', mat: 'planks' }, {}, 44);
     g.restore();
     hipRoof(g, -0.02, -0.02, 1.02, 1.02, h + 10, 22, SHINGLE, 0.08, 45);
@@ -488,7 +489,7 @@ function tower(g: G, variant: number, team: string, rng: Rng): void {
       // Keep: a turret on top.
       box(g, 0.3, 0.3, 0.7, 0.7, 0, st, {}, 49);
       g.save();
-      g.translate(0, -h);
+      g.translate(0, -h * ZK);
       box(g, 0.3, 0.3, 0.7, 0.7, 14, st, {}, 49);
       g.restore();
       hipRoof(g, 0.28, 0.28, 0.72, 0.72, h + 14, 16, SHINGLE, 0.05, 51);
@@ -511,7 +512,7 @@ const PAINTERS: Record<BuildingType, Painter> = {
       box(g, n / 2 - 0.45, y - 0.12, n / 2 + 0.45, y, 2 * (k + 1), STONE, {}, 40 + k);
     }
     g.save();
-    g.translate(0, -6);
+    g.translate(0, -6 * ZK);
     box(g, 0.5, 0.6, n - 0.6, n - 0.5, 34, PLASTER, {
       left: (len) => {
         doorAt(g, len / 2, 9, 14);

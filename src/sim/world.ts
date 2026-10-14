@@ -218,6 +218,7 @@ export class World {
     const fog = this.fog[owner];
     if (def.requires && ![...this.buildings(owner)].some((b) => b.type === def.requires && b.complete)) return false;
     if (this.players[owner] && def.age > this.players[owner].age) return false;
+    if (this.wallUnderGate(type, owner, x, y)) return true;
     for (let ty = y; ty < y + size; ty++)
       for (let tx = x; tx < x + size; tx++) {
         if (!grid.inside(tx, ty)) return false;
@@ -230,8 +231,20 @@ export class World {
     return true;
   }
 
+  /** A gate may be set into one of its owner's own wall segments of the same material, replacing it. */
+  private wallUnderGate(type: BuildingType, owner: number, x: number, y: number): Building | null {
+    const def = BUILDING_DEFS[type];
+    if (!def.gate || !this.grid.inside(x, y)) return null;
+    const b = this.building(this.grid.building[y * this.map.size + x]);
+    if (!b || b.owner !== owner) return null;
+    const bd = BUILDING_DEFS[b.type];
+    return bd.wall === def.wall && !bd.gate ? b : null;
+  }
+
   placeBuilding(type: BuildingType, owner: number, x: number, y: number, complete = false): Building {
     const def = BUILDING_DEFS[type];
+    const old = this.wallUnderGate(type, owner, x, y);
+    if (old) this.remove(old.id);
     const b = this.add<Building>({
       kind: 'building',
       type,

@@ -20,7 +20,7 @@ const CAP = 10;
 const TABS: Array<{ key: string; name: string; icon: string; types: BuildingType[] }> = [
   { key: 'economy', name: 'Economy', icon: ICONS.economy, types: ['house', 'farm', 'mill', 'lumber_camp', 'mining_camp', 'market'] },
   { key: 'military', name: 'Military', icon: ICONS.military, types: ['barracks', 'archery_range', 'stable', 'blacksmith', 'monastery', 'university', 'siege_workshop'] },
-  { key: 'defense', name: 'Defense', icon: ICONS.meleeArmor, types: ['palisade_wall', 'stone_wall', 'watch_tower', 'castle'] },
+  { key: 'defense', name: 'Defense', icon: ICONS.meleeArmor, types: ['palisade_wall', 'palisade_gate', 'stone_wall', 'gate', 'watch_tower', 'castle'] },
   { key: 'naval', name: 'Naval', icon: ICONS.ship, types: [] },
 ];
 

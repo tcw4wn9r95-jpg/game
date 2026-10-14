@@ -43,7 +43,13 @@ const DEFS: Record<UnitType, { tilesPer100: number; x0: number; x1: number; y0: 
   trebuchet: { tilesPer100: 0.95, x0: -100, x1: 115, y0: -250, y1: 14, draw: drawTrebuchet },
 };
 
-/** Height of a unit's figure in tiles, for hit-testing taps. */
+/**
+ * Unit sprite px per 32-unit tile, relative to Z. Smaller than trees and
+ * scenery so that people stand at about a third of a house's height.
+ */
+export const UNIT_K = 1.05;
+
+/** Height of a unit's figure in tiles (before UNIT_K), for hit-testing taps. */
 export const unitHeight = (type: UnitType) =>
   type === 'siege_tower' ? 2 : type === 'trebuchet' ? 1.6 : type === 'scout' || type === 'knight' ? 1.3 : type === 'ram' || type === 'mangonel' ? 0.95 : type === 'scorpion' ? 0.7 : type === 'villager' ? 0.85 : 0.9;
 

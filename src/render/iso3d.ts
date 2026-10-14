@@ -18,8 +18,14 @@ export function setScale(k: number): void {
 }
 export const mat = (g: G, m: Material, base: string, seed = 1) => material(g, m, base, K, seed);
 
+/**
+ * Vertical exaggeration: heights (z, in units) are drawn this much taller than
+ * a tile edge, so buildings stand well above the people beside them, as in AoE.
+ */
+export const ZK = 1.6;
+
 export function P(x: number, y: number, z = 0): [number, number] {
-  return [(x - y) * HALF_W, (x + y) * HALF_H - z];
+  return [(x - y) * HALF_W, (x + y) * HALF_H - z * ZK];
 }
 
 /** Sun direction in unit space (x, y along tile axes, z up), normalised. */
@@ -87,8 +93,8 @@ export function line3(g: G, a: V3, b: V3, color: string, lw = 1): void {
 export function onWall(g: G, side: 'left' | 'right', x: number, y: number, z: number, draw: () => void): void {
   g.save();
   const [ex, ey] = P(x, y, z);
-  if (side === 'left') g.transform(1, 0.5, 0, -1, ex, ey);
-  else g.transform(1, -0.5, 0, -1, ex, ey);
+  if (side === 'left') g.transform(1, 0.5, 0, -ZK, ex, ey);
+  else g.transform(1, -0.5, 0, -ZK, ex, ey);
   draw();
   g.restore();
 }
@@ -339,7 +345,7 @@ export function boxTop(g: G, x0: number, y0: number, x1: number, y1: number, h: 
   g.save();
   path3(g, pts);
   g.clip();
-  g.translate(0, -h);
+  g.translate(0, -h * ZK);
   onGround(g, 0, 0, () => {
     g.fillStyle = mat(g, m, base, 4);
     g.fillRect(-400, -400, 800, 800);
@@ -364,7 +370,7 @@ const MAT_OF: Record<RoofStyle['kind'], Material> = { thatch: 'thatch', shingle:
 
 /** Unit-space vector (x, y scaled to units) and its screen projection. */
 const U = (p: V3): V3 => [p[0] * 32, p[1] * 32, p[2]];
-const proj = (v: V3): [number, number] => [v[0] - v[1], (v[0] + v[1]) / 2 - v[2]];
+const proj = (v: V3): [number, number] => [v[0] - v[1], (v[0] + v[1]) / 2 - v[2] * ZK];
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const scale = (a: V3, k: number): V3 => [a[0] * k, a[1] * k, a[2] * k];
@@ -540,6 +546,7 @@ export function hipRoof(g: G, x0: number, y0: number, x1: number, y1: number, h:
 /** A round wooden post (log) standing at (x, y). */
 export function post(g: G, x: number, y: number, h: number, w = 2.2, color = '#6e4b2a'): void {
   const [bx, by] = P(x, y, 0);
+  h *= ZK;
   g.fillStyle = mat(g, 'woodV', color, 11);
   g.fillRect(bx - w / 2, by - h, w, h);
   const grad = g.createLinearGradient(bx - w / 2, 0, bx + w / 2, 0);
@@ -623,7 +630,7 @@ export function prism(g: G, base: Array<[number, number]>, z0: number, h: number
     // Lay the material in the face's own plane so courses run along the wall.
     const [ax, ay] = P(f.a[0], f.a[1], z0), [bx, by] = P(f.b[0], f.b[1], z0);
     const len = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]) * 32 || 1;
-    g.transform((bx - ax) / len, (by - ay) / len, 0, 1, ax, ay - h);
+    g.transform((bx - ax) / len, (by - ay) / len, 0, ZK, ax, ay - h * ZK);
     g.fillStyle = mat(g, m, style.base, seed);
     g.fillRect(-4, -2, len + 8, h + 4);
     const foot = g.createLinearGradient(0, h, 0, h - 6);
@@ -642,7 +649,7 @@ export function prism(g: G, base: Array<[number, number]>, z0: number, h: number
   g.save();
   path3(g, topPts);
   g.clip();
-  g.translate(0, -(z0 + h));
+  g.translate(0, -(z0 + h) * ZK);
   onGround(g, 0, 0, () => {
     g.fillStyle = mat(g, top, topColor, seed + 2);
     g.fillRect(-400, -400, 800, 800);

@@ -148,3 +148,21 @@ describe('towers, garrisons and repair', () => {
     expect(w.grid.isWalkable(Math.floor(v.x), Math.floor(v.y))).toBe(true);
   });
 });
+
+describe('gates', () => {
+  it('a gate can be set into an existing wall, replacing that segment', () => {
+    const w = new World(flatMap(), { spawnStarts: false });
+    w.players[0].resources = { food: 9999, wood: 9999, gold: 9999, stone: 9999 };
+    w.players[0].age = 3;
+    w.fog[0].revealAll();
+    placeWall(w, 0, 'stone', wallLine(20, 10, 20, 30));
+    const v = w.spawnUnit('villager', 0, 18.5, 20.5);
+    expect(w.canPlace('gate', 0, 20, 20)).toBe(true);
+    expect(w.canPlace('palisade_gate', 0, 20, 20)).toBe(false);
+    w.issue(0, { type: 'build', ids: [v.id], building: 'gate', x: 20, y: 20 });
+    w.step();
+    const at = w.building(w.grid.building[20 * 48 + 20])!;
+    expect(at.type).toBe('gate');
+    expect([...w.buildings(0)].filter((b) => b.type === 'stone_wall')).toHaveLength(20);
+  });
+});
