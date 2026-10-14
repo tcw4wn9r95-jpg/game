@@ -948,6 +948,7 @@ const PAINTERS: Record<BuildingType, Painter> = {
       g.lineWidth = 1.6;
       g.strokeRect(0.8, 0.8, W - 1.6, W - 1.6);
     });
+    stage = Math.max(0, Math.min(3, stage));
     const ripe = ['#6f8a34', '#a9a03c', '#cfae45', '#e2c155'][stage];
     const tip = ['#8fae48', '#d9c35c', '#f0d478', '#fbe08e'][stage];
     const fill = [0.12, 0.45, 0.75, 1][stage];

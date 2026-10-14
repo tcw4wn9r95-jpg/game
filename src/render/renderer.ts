@@ -820,7 +820,7 @@ export class Renderer {
     // Farms show how much crop is left; walls how they join up and how battered they are.
     const variant =
       (b.type === 'farm' || b.type === 'fish_trap') && b.complete
-        ? Math.max(1, Math.ceil((b.amount / (def.food ?? 1)) * 3))
+        ? Math.max(1, Math.min(3, Math.ceil((b.amount / (def.food ?? 1)) * 3)))
         : def.shore
           ? this.waterSide(b.x, b.y, b.size)
           : def.wall || def.classes.includes('tower')

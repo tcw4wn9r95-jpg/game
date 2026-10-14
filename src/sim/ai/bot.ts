@@ -253,7 +253,10 @@ export class EconomyBot {
         .filter((r) => ratio[r] > 0)
         .sort((a, b) => count[a] / villagers.length - ratio[a] - (count[b] / villagers.length - ratio[b]));
       for (const res of order) {
-        const t = findResource(w, u, SOURCES[res], tc.x + tc.size / 2, tc.y + tc.size / 2, res === 'food' ? 24 : 40);
+        // Mines further afield once the ones at home are worked out.
+        const t =
+          findResource(w, u, SOURCES[res], tc.x + tc.size / 2, tc.y + tc.size / 2, res === 'food' ? 24 : 40) ??
+          (res === 'gold' || res === 'stone' ? findResource(w, u, SOURCES[res], tc.x + tc.size / 2, tc.y + tc.size / 2, 85) : null);
         const o = t && gatherOrder(w, t);
         if (o) {
           this.issue(w, { type: 'gather', ids: [u.id], target: t });

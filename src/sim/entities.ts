@@ -211,6 +211,8 @@ export interface Ferry {
   pickup: { x: number; y: number };
   /** Where the riders were ordered to go (null: just take them aboard). */
   dest: { x: number; y: number } | null;
+  /** Match time the ferry was arranged (it stops waiting for stragglers after a while). */
+  since?: number;
 }
 
 /** Navigation layer a unit moves on: ships the water, everyone else their own side's land. */

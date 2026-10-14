@@ -9,6 +9,8 @@ import type { Goal } from './pathfinding';
 import { unload } from './siege';
 import type { World } from './world';
 
+/** Seconds a transport waits at the pickup for stragglers before it sails. */
+const FERRY_WAIT = 90;
 /** How far out from a point to look for a landing or boarding place (tiles). */
 const SHORE_SEARCH = 80;
 
@@ -74,7 +76,7 @@ export function startFerry(w: World, ship: Unit, riders: Unit[], dest: { x: numb
   const pickup = shoreWater(w, ship, cx, cy, home, ship.owner);
   if (!pickup) return [];
   if (dest && !shoreWater(w, ship, dest.x, dest.y, landRegion(w, dest.x, dest.y, ship.owner), ship.owner)) return [];
-  ship.ferry = { riders: group.map((r) => r.id), pickup, dest };
+  ship.ferry = { riders: group.map((r) => r.id), pickup, dest, since: w.time };
   setOrder(ship, { type: 'move', x: pickup.x + 0.5, y: pickup.y + 0.5 });
   for (const r of group) {
     setOrder(r, { type: 'garrison', id: ship.id });
@@ -91,6 +93,14 @@ export function ferryThink(w: World, u: Unit): void {
     const r = w.unit(id);
     return r && !r.inside && r.order?.type === 'garrison' && r.order.id === u.id;
   });
+  // Don't wait for ever on someone who can't get here.
+  if (coming.length && w.time - (f.since ?? w.time) > FERRY_WAIT) {
+    for (const id of coming) {
+      const r = w.unit(id);
+      if (r) setOrder(r, null);
+    }
+    coming.length = 0;
+  }
   if (coming.length) {
     f.riders = coming.concat(u.cargo.filter((id) => f.riders.includes(id)));
     // Make sure the boat comes in to the shore by them.
@@ -124,8 +134,9 @@ export function unloadThink(w: World, u: Unit, o: Extract<Order, { type: 'unload
     return;
   }
   const d = Math.hypot(o.at.x + 0.5 - u.x, o.at.y + 0.5 - u.y);
+  // Close enough to wade ashore (other boats may be crowding the same spot).
   const stuck = !u.path && !u.pathPending && u.repaths > 2 && d < 3;
-  if (d > 0.7 && !stuck) return walk();
+  if (d > 2.2 && !stuck) return walk();
   const riders = u.cargo.map((id) => w.unit(id)).filter((r): r is Unit => !!r);
   unload(w, u, { x: o.x, y: o.y });
   setOrder(u, null);

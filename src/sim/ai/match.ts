@@ -22,7 +22,7 @@ export function runMatch(opts: { type: MapType; size: MapSize; seed: number; ai:
   const map = generateMap({ type: opts.type, size: opts.size, players: opts.ai.length, seed: opts.seed });
   const w = new World(map);
   const bots = opts.ai.map((d, i) => {
-    const o = new Opponent(i, d);
+    const o = new Opponent(i, d, opts.seed);
     o.setup(w);
     return o;
   });
@@ -45,6 +45,7 @@ export function runMatch(opts: { type: MapType; size: MapSize; seed: number; ai:
     if (opts.logEvery && t % (opts.logEvery * 60 * TICK_RATE) === 0) log.push(summary(w));
   }
   log.push(summary(w));
+  log.push(`  styles: ${bots.map((b) => b.style).join(' vs ')}`);
   if (w.winner === null)
     w.players.forEach((_, i) => {
       const bl: Record<string, number> = {};

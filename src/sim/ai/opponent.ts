@@ -87,11 +87,12 @@ export const PROFILES: Record<Difficulty, AiProfile> = {
   },
   normal: {
     ...NORMAL,
+    clickUp: [18, 25, 33],
     think: 2,
     gatherBonus: 1,
-    armyCap: [6, 18, 32, 45],
-    wave: [99999, 1300, 2800, 4500],
-    firstAttack: 11 * 60,
+    armyCap: [6, 18, 36, 90],
+    wave: [99999, 1200, 2200, 3000],
+    firstAttack: 10 * 60,
     counter: 0.5,
     walls: 'partial',
     siege: true,
@@ -119,6 +120,30 @@ export const PROFILES: Record<Difficulty, AiProfile> = {
     techs: [...NORMAL.techs, 'gold_shaft', 'bow_saw', 'stone_mining', 'town_watch'],
   },
 };
+
+export type Style = 'standard' | 'rush' | 'boom';
+const STYLES: Style[] = ['standard', 'rush', 'boom'];
+
+/** A profile adjusted for a playing style. */
+function withStyle(p: AiProfile, style: Style): AiProfile {
+  if (style === 'rush')
+    return {
+      ...p,
+      clickUp: [17, p.clickUp[1] - 2, p.clickUp[2]],
+      armyCap: [p.armyCap[0], p.armyCap[1] + 18, p.armyCap[2] + 6, p.armyCap[3]],
+      wave: [p.wave[0], p.wave[1] * 0.6, p.wave[2] * 0.85, p.wave[3]],
+      firstAttack: p.firstAttack - 180,
+    };
+  if (style === 'boom')
+    return {
+      ...p,
+      villagers: [p.villagers[0], p.villagers[1] + 4, p.villagers[2] + 8, p.villagers[3] + 10],
+      clickUp: [p.clickUp[0] + 2, p.clickUp[1] + 3, p.clickUp[2] + 4],
+      wave: [p.wave[0], p.wave[1] * 1.3, p.wave[2] * 1.15, p.wave[3]],
+      firstAttack: p.firstAttack + 120,
+    };
+  return p;
+}
 
 /** Army make-up per age: unit and share. */
 const COMPOSITION: Array<Partial<Record<UnitType, number>>> = [
@@ -154,6 +179,9 @@ export class Opponent extends EconomyBot {
   /** Current attack: its units, its target and what it was worth at launch. */
   private wave: { ids: Set<number>; target: number; value: number; since: number; staged: boolean } | null = null;
   private lastWave = -1e9;
+  /** A cavalry raid on the enemy's outlying workers. */
+  private raid: { ids: Set<number>; camp: number; since: number } | null = null;
+  private lastRaid = -1e9;
   private walled = 0;
   private scoutSent = false;
   private coastLap = 0;
@@ -170,11 +198,16 @@ export class Opponent extends EconomyBot {
     if (this.notes.length > 60) this.notes.shift();
   }
 
-  constructor(player: number, difficulty: Difficulty = 'normal') {
-    const ai = PROFILES[difficulty];
+  /** Playing style (Normal only): rushers strike in Age II, boomers build up then hit hard. */
+  readonly style: Style;
+
+  constructor(player: number, difficulty: Difficulty = 'normal', seed = 0) {
+    const style: Style = difficulty === 'normal' ? STYLES[(seed + player * 2) % STYLES.length] : 'standard';
+    const ai = withStyle(PROFILES[difficulty], style);
     super(player, { ...ai, ageBuildings: [['lumber_camp', 'mill', 'barracks'], ['archery_range', 'blacksmith', 'stable', 'market'], ['siege_workshop', 'university', 'monastery'], []] });
     this.difficulty = difficulty;
     this.ai = ai;
+    this.style = style;
   }
 
   /** Applies the difficulty's (disclosed) handicap. Call once when the match starts. */
@@ -210,11 +243,26 @@ export class Opponent extends EconomyBot {
     this.command(w, tc);
   }
 
-  /** No Town Center, no villagers and nothing left that can train a unit: concede. */
+  /**
+   * Concede when there is no way back: nothing left that can train a unit
+   * and no villagers; or no Town Center, a handful of villagers and an army a
+   * fraction of the enemy's.
+   */
   private hopeless(w: World): boolean {
-    for (const b of w.buildings(this.player)) if (b.type === 'town_center' || (b.complete && BUILDING_DEFS[b.type].trains.length)) return false;
-    for (const u of w.units(this.player)) if (u.type === 'villager') return false;
-    return true;
+    let tc = false, producers = false, villagers = 0, mine = 0, theirs = 0;
+    for (const b of w.buildings(this.player)) {
+      if (b.type === 'town_center') tc = true;
+      if (b.complete && BUILDING_DEFS[b.type].trains.length) producers = true;
+    }
+    for (const u of w.units()) {
+      if (u.owner === this.player && u.type === 'villager') villagers++;
+      else if (!isGatherer(u) && !UNIT_DEFS[u.type].naval) {
+        if (u.owner === this.player) mine += valueOf(u.type);
+        else if (w.isEnemy(this.player, u.owner)) theirs += valueOf(u.type);
+      }
+    }
+    if (!producers && !tc && villagers === 0) return true;
+    return !tc && villagers < 5 && mine < theirs * 0.15 && theirs > 1500;
   }
 
   // ---------- knowledge ----------
@@ -521,10 +569,12 @@ export class Opponent extends EconomyBot {
       }
     }
     // Siege when walls stand in the way.
-    if (this.ai.siege && p.age >= 2 && this.enemyWalls(w).length) {
-      base.ram = 0.12;
-      if (p.age >= 3) base.trebuchet = 0.06;
-      else base.mangonel = 0.05;
+    // Siege: rams always from Age III (Town Centers and Castles don't fall to arrows), more against walls.
+    if (this.ai.siege && p.age >= 2) {
+      const walls = this.enemyWalls(w).length > 0;
+      base.ram = walls ? 0.12 : 0.07;
+      if (p.age >= 3) base.trebuchet = walls ? 0.06 : 0.04;
+      else if (walls) base.mangonel = 0.05;
     }
     // Siege outlives the soldiers around it: never more than a handful.
     const count = (t: UnitType) => this.army(w).filter((u) => u.type === t).length;
@@ -570,9 +620,9 @@ export class Opponent extends EconomyBot {
     const p = w.players[this.player];
     const market = [...w.buildings(this.player)].find((b) => b.type === 'market' && b.complete);
     if (!market || p.age < 2) return;
-    if (p.resources.gold < 300) {
+    if (p.resources.gold < 600) {
       const res = p.resources.food >= p.resources.wood ? 'food' : 'wood';
-      if (p.resources[res] > 1200) this.issue(w, { type: 'trade', id: market.id, action: 'sell', res });
+      if (p.resources[res] > 1500) this.issue(w, { type: 'trade', id: market.id, action: 'sell', res });
     }
   }
 
@@ -665,10 +715,11 @@ export class Opponent extends EconomyBot {
       this.issue(w, { type: 'move', ids: [u.id], x: rally.x, y: rally.y });
     }
 
-    if (this.wave) return this.pressWave(w, army, rally);
+    this.raidThink(w, army, rally, threats.length > 0);
+    if (this.wave) return this.pressWave(w, army.filter((u) => !this.raid?.ids.has(u.id)), rally);
 
     // Between waves: gather at the rally point.
-    const loose = army.filter((u) => !u.order && Math.hypot(u.x - rally.x, u.y - rally.y) > 6);
+    const loose = army.filter((u) => !u.order && !this.raid?.ids.has(u.id) && Math.hypot(u.x - rally.x, u.y - rally.y) > 6);
     if (loose.length) this.issue(w, { type: 'move', ids: loose.map((u) => u.id), x: rally.x, y: rally.y });
 
     const p = w.players[this.player];
@@ -688,9 +739,60 @@ export class Opponent extends EconomyBot {
     }
     // Nothing scouted yet (an enemy overseas, say): head for where they started and look.
     const target = this.pickTarget(w, rally, army.some(isSiege));
-    this.wave = { ids: new Set(army.map((u) => u.id)), target: target?.id ?? 0, value, since: w.time, staged: !target || !!this.geography?.naval };
+    this.wave = { ids: new Set(army.filter((u) => !this.raid?.ids.has(u.id)).map((u) => u.id)), target: target?.id ?? 0, value, since: w.time, staged: !target || !!this.geography?.naval };
     this.note(w, `wave of ${army.length} (value ${value}) at ${target?.type ?? 'enemy start'}`);
     this.lastWave = w.time;
+  }
+
+  /**
+   * Raids: a few horsemen ride at the enemy's furthest-out lumber or mining
+   * camp and cut down the workers there, then come home when hurt or met by
+   * soldiers. Hitting the economy is what lets one side pull ahead.
+   */
+  private raidThink(w: World, army: Unit[], rally: { x: number; y: number }, threatened: boolean): void {
+    const fog = w.fog[this.player];
+    if (this.raid) {
+      const r = this.raid;
+      const riders = army.filter((u) => r.ids.has(u.id));
+      const camp = w.building(r.camp);
+      const hp = riders.reduce((s, u) => s + u.hp / UNIT_DEFS[u.type].hp, 0) / Math.max(1, riders.length);
+      const cx = riders.reduce((s, u) => s + u.x, 0) / Math.max(1, riders.length), cy = riders.reduce((s, u) => s + u.y, 0) / Math.max(1, riders.length);
+      const guards: Unit[] = [], workers: Unit[] = [];
+      for (const e of w.field()) {
+        if (!w.canFight(this.player, e.owner) || !fog?.isVisible(e.x, e.y) || Math.hypot(e.x - cx, e.y - cy) > 10) continue;
+        (isGatherer(e) ? workers : guards).push(e);
+      }
+      const over = riders.length < 2 || hp < 0.45 || guards.length > riders.length || threatened || w.time - r.since > 150 || w.peace;
+      if (over) {
+        this.issue(w, { type: 'move', ids: riders.map((u) => u.id), x: rally.x, y: rally.y });
+        this.raid = null;
+        this.lastRaid = w.time;
+        return;
+      }
+      if (workers.length) this.engage(w, riders, workers, 12);
+      else if (camp) {
+        const idle = riders.filter((u) => !u.order);
+        if (idle.length) this.issue(w, { type: 'move', ids: idle.map((u) => u.id), x: camp.x + 1, y: camp.y + 1 });
+      } else this.raid.since = -1e9; // camp gone and nobody about: done
+      return;
+    }
+    const p = w.players[this.player];
+    if (p.age < 1 || w.peace || threatened || w.time < this.ai.firstAttack - 120 || w.time - this.lastRaid < 90) return;
+    const riders = army.filter((u) => UNIT_DEFS[u.type].classes.includes('cavalry') && !this.wave?.ids.has(u.id) && u.hp > UNIT_DEFS[u.type].hp * 0.8);
+    if (riders.length < 4) return;
+    // The camp furthest from its owner's town centre.
+    let best: Building | null = null, bd = -1;
+    for (const b of this.enemyBuildings(w)) {
+      if (b.type !== 'lumber_camp' && b.type !== 'mining_camp' && b.type !== 'mill') continue;
+      const tc = [...w.buildings(b.owner)].find((t) => t.type === 'town_center');
+      const d = tc ? Math.hypot(b.x - tc.x, b.y - tc.y) : 99;
+      if (d > bd) (bd = d), (best = b);
+    }
+    if (!best || bd < 10) return;
+    const group = riders.slice(0, 8);
+    this.raid = { ids: new Set(group.map((u) => u.id)), camp: best.id, since: w.time };
+    this.note(w, `raid of ${group.length} on ${best.type}`);
+    this.issue(w, { type: 'move', ids: group.map((u) => u.id), x: best.x + 1, y: best.y + 1 });
   }
 
   private endWave(w: World, rally: { x: number; y: number }): void {
@@ -724,8 +826,14 @@ export class Opponent extends EconomyBot {
     const units = army.filter((u) => wave.ids.has(u.id));
     for (const id of wave.ids) if (!w.unit(id)) wave.ids.delete(id);
     const value = units.reduce((s, u) => s + valueOf(u.type), 0);
-    // A wave that has lost two thirds of its strength goes home.
-    if (!units.length || value < wave.value * 0.33 || w.peace) return this.endWave(w, rally);
+    // A wave that has lost two thirds of its strength goes home, unless the enemy has next to nothing left to fight with.
+    let enemyArmy = 0;
+    for (const e of w.units()) if (w.isEnemy(this.player, e.owner) && !isGatherer(e) && !UNIT_DEFS[e.type].naval) enemyArmy += valueOf(e.type);
+    const mopUp = enemyArmy < value * 0.2;
+    // Against a beaten enemy, everyone waiting at home joins in.
+    if (enemyArmy < 400 || mopUp)
+      for (const u of army) if (!wave.ids.has(u.id) && !u.order && !this.raid?.ids.has(u.id) && Math.hypot(u.x - rally.x, u.y - rally.y) < 10) wave.ids.add(u.id);
+    if (!units.length || (value < wave.value * 0.33 && !mopUp) || w.peace) return this.endWave(w, rally);
     let target = w.building(wave.target);
     const cx = units.reduce((s, u) => s + u.x, 0) / units.length, cy = units.reduce((s, u) => s + u.y, 0) / units.length;
     if (!target || !w.isEnemy(this.player, target.owner)) {
@@ -782,18 +890,19 @@ export class Opponent extends EconomyBot {
       }
     }
 
-    // Can we walk there?
-    const reach = this.reachable(w, cx, cy, target);
+    // Can we walk there? (Judged from where a soldier stands: the army's middle may be water.)
+    const anchor = units.find((u) => w.grid.isWalkable(Math.floor(u.x), Math.floor(u.y), this.player)) ?? units[0];
+    const reach = this.reachable(w, anchor.x, anchor.y, target);
     if (w.tick % 300 === 0) this.note(w, `press: ${units.length} units at ${Math.round(cx)},${Math.round(cy)} -> ${target.type}@${target.x},${target.y} reach=${reach} near=${near.length}`);
     if (!reach) {
-      if (this.geography?.naval && !this.sameLand(w, cx, cy, target)) {
+      if (this.geography?.naval && !this.sameLand(w, anchor.x, anchor.y, target)) {
         // Over the water: march on it; transports pick the army up (moveLand ferries).
         const waiting = units.filter((u) => !u.order);
         if (waiting.length) this.issue(w, { type: 'move', ids: waiting.map((u) => u.id), x: target.x + target.size / 2, y: target.y + target.size / 2 });
         return;
       }
       // Walls: break the nearest segment (gates first) with everything, siege leading.
-      const wall = this.breach(w, cx, cy, target);
+      const wall = this.breach(w, anchor.x, anchor.y, target);
       if (!wall) {
         // No way in that we can see: try something else.
         this.unreachable.add(target.id);
@@ -880,7 +989,7 @@ export class Opponent extends EconomyBot {
 
 /** Opponent for a slot, recreated on load from the saved difficulty. */
 export function makeOpponent(w: World, player: number, difficulty: Difficulty): Opponent {
-  const o = new Opponent(player, difficulty);
+  const o = new Opponent(player, difficulty, w.map.seed);
   o.setup(w);
   return o;
 }

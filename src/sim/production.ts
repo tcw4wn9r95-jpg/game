@@ -131,6 +131,20 @@ const PRICE_STEP = 3;
 const SELL_SHARE = 0.7;
 const PRICE_MIN = 20, PRICE_MAX = 400;
 
+/** Where prices settle back to, and how often they move a step back toward it. */
+const PRICE_BASE = { food: 100, wood: 100, stone: 130 } as const;
+const PRICE_DRIFT_TICKS = 50;
+
+/** Market prices recover toward their base over time (a step every 5 seconds). */
+export function marketDrift(w: World): void {
+  if (w.tick === 0 || w.tick % PRICE_DRIFT_TICKS !== 0) return;
+  for (const p of w.players)
+    for (const k of ['food', 'wood', 'stone'] as const) {
+      const d = PRICE_BASE[k] - p.market[k];
+      if (d) p.market[k] += Math.sign(d);
+    }
+}
+
 export function sellPrice(w: World, owner: number, res: 'food' | 'wood' | 'stone'): number {
   return Math.floor(w.players[owner].market[res] * SELL_SHARE);
 }

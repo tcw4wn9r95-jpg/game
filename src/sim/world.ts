@@ -20,7 +20,7 @@ import {
 import { Fog, type VisionSource } from './fog';
 import { NavGrid } from './grid';
 import { moveUnit, separate } from './movement';
-import { productionTick } from './production';
+import { marketDrift, productionTick } from './production';
 import { Pathfinder } from './pathfinding';
 import { Rng } from './rng';
 import { SpatialHash } from './spatial';
@@ -408,6 +408,7 @@ export class World {
     projectileTick(this);
     constructionTick(this);
     productionTick(this);
+    marketDrift(this);
     this.updatePopulation();
     if (this.tick % 2 === 0) this.updateVision();
     if (this.tick % TICK_RATE === 0) this.checkConquest();
