@@ -21,13 +21,12 @@ const MAP_INFO: Record<MapType, { name: string; desc: string }> = {
 };
 const SIZE_LABELS: Record<MapSize, string> = { skirmish: 'Skirmish', standard: 'Standard', epic: 'Epic' };
 const AI_LABELS: Record<Difficulty, string> = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
-const TREATY_LABELS: Record<number, string> = { 0: 'Off', 10: '10 min', 20: '20 min', 30: '30 min' };
+const TREATY_LABELS: Record<number, string> = { 0: 'Off', 10: '10m', 20: '20m', 30: '30m' };
 const MODE_INFO: Record<GameMode, string> = {
   standard: 'Win by conquest, by a Wonder standing 8 minutes, or by holding every relic for 8 minutes.',
   regicide: 'Each realm starts with a King in a Castle. Slay theirs; keep yours alive.',
   domination: 'Hold the Banner Sites to score. First to the target, or holding every site for 3 minutes, wins.',
 };
-const FACTION_SHORT: Record<string, string> = { random: 'Random', highland: 'Highland', steppe: 'Steppe', coastal: 'Coastal', mountain: 'Mountain' };
 
 /** Opponent strength and Peace Treaty length (minutes, 0 for none). */
 export interface MatchSettings {
@@ -98,10 +97,10 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
           <div><div class="setup-label">Opponent</div><div class="seg" data-row="difficulty"></div></div>
           <div><div class="setup-label">Peace Treaty</div><div class="seg" data-row="treaty"></div></div>
         </div>
-        <div class="setup-label">Game Mode</div>
-        <div class="seg" data-row="mode"></div>
-        <div class="setup-label">Your Faction</div>
-        <div class="seg" data-row="faction"></div>
+        <div class="setup-pair">
+          <div><div class="setup-label">Game Mode</div><select class="pick" data-pick="mode" aria-label="Game mode"></select></div>
+          <div><div class="setup-label">Your Faction</div><select class="pick" data-pick="faction" aria-label="Your faction"></select></div>
+        </div>
         <div class="setup-note" data-v="note"></div>
       </section>
       <section class="setup-right frame">
@@ -177,8 +176,20 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
   const pick = (t: typeof topic) => () => ((topic = t), note());
   group('difficulty', DIFFICULTIES, (d) => AI_LABELS[d], () => settings.difficulty, (v) => ((settings.difficulty = v), pick('difficulty')()), false);
   group('treaty', [0, 10, 20, 30], (t) => TREATY_LABELS[t], () => settings.treaty, (v) => (settings.treaty = v), false);
-  group('mode', GAME_MODES, (m) => MODE_NAMES[m], () => settings.mode, (v) => ((settings.mode = v), pick('mode')()), false);
-  group('faction', ['random', ...FACTION_IDS], (f) => FACTION_SHORT[f] ?? f, () => settings.faction, (v) => ((settings.faction = v), pick('faction')()), false);
+  // Mode and faction: dropdowns (the phone's own picker), to keep the screen short.
+  const choice = <T extends string>(key: string, values: T[], render: (v: T) => string, get: () => T, set: (v: T) => void) => {
+    const sel = el.querySelector<HTMLSelectElement>(`[data-pick=${key}]`)!;
+    for (const v of values) {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = render(v);
+      sel.appendChild(o);
+    }
+    sel.value = get();
+    sel.addEventListener('change', () => set(sel.value as T));
+  };
+  choice('mode', GAME_MODES, (m) => MODE_NAMES[m], () => settings.mode, (v) => ((settings.mode = v), pick('mode')()));
+  choice('faction', ['random', ...FACTION_IDS], (f) => (f === 'random' ? 'Random' : FACTIONS[f as FactionId].name), () => settings.faction, (v) => ((settings.faction = v), pick('faction')()));
   note();
 
   el.querySelector('.icon-btn')!.addEventListener('click', () => {

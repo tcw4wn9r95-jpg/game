@@ -231,6 +231,7 @@ export class Hud {
     this.set('ageNum', advancing ? `→ ${ages[advancing.age].numeral}` : ages[ps.age].numeral);
     this.set('ageName', advancing ? `Advancing ${Math.floor(advancing.progress * 100)}%` : `${ages[ps.age].name} Age`);
     this.ageBar.hidden = !advancing;
+    this.ageBar.parentElement!.classList.toggle('advancing', !!advancing);
     if (advancing) (this.ageBar.firstElementChild as HTMLElement).style.width = `${advancing.progress * 100}%`;
     // During the Peace Treaty the clock counts down to the end of it.
     this.set('clock', world.peace ? `Peace ${formatClock(world.peaceUntil - world.time)}` : formatClock(world.time));

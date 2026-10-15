@@ -1227,28 +1227,6 @@
   top: calc(var(--safe-t) + 84px);
 }
 
-/* Phones in landscape: tighten the setup screen so every row fits without scrolling. */
-@media (max-height: 460px) {
-  .setup-title h1 {
-    font-size: 20px;
-  }
-  .crest svg {
-    width: 24px;
-    height: 24px;
-  }
-  .setup-label {
-    margin: 4px 2px 2px;
-  }
-  .seg-btn {
-    min-height: 30px;
-  }
-  .card-art svg {
-    height: 32px;
-  }
-  .setup-note {
-    min-height: 0;
-  }
-}
 
 /* ---------- Pause and speed ---------- */
 
@@ -1428,4 +1406,313 @@ button.clock {
 
 button.clock.active {
   box-shadow: 0 0 10px rgba(255, 210, 110, 0.85);
+}
+
+/* ---------- Phones: fit the top bar between the notch insets ---------- */
+
+@media (max-width: 960px) {
+  .hud-top {
+    gap: 5px;
+  }
+  .resbar {
+    gap: 6px;
+    padding: 0 3px;
+  }
+  .stat {
+    min-width: 0;
+    gap: 3px;
+  }
+  .stat .icon,
+  .stat .icon svg {
+    width: 19px;
+    height: 19px;
+  }
+  .stat-v,
+  .clock span:last-child {
+    font-size: 15px;
+  }
+  .stat-pop {
+    padding-left: 6px;
+  }
+  .workers {
+    padding: 0 3px;
+    font-size: 9px;
+    line-height: 12px;
+  }
+  /* The age plate keeps its crown and numeral; the name shows while advancing. */
+  .ageplate {
+    padding: 0 8px 0 4px;
+  }
+  .ageplate:not(.advancing) [data-v='ageName'] {
+    display: none;
+  }
+  .ageplate-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+  .clock {
+    padding: 0 7px 0 4px;
+    gap: 4px;
+  }
+  .clock .icon,
+  .clock .icon svg {
+    width: 18px;
+    height: 18px;
+  }
+  .hud-top .round-btn {
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+  }
+}
+
+@media (max-width: 720px) {
+  .resbar {
+    gap: 4px;
+  }
+  .stat-v,
+  .clock span:last-child {
+    font-size: 14px;
+  }
+  .workers {
+    display: none;
+  }
+}
+
+/* ---------- Setup: dropdowns, and fitting short phone screens ---------- */
+
+.pick {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 28px 0 10px;
+  border: 1px solid rgba(214, 168, 73, 0.55);
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgba(255, 233, 166, 0.14), rgba(0, 0, 0, 0.35)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23f6df98' stroke-width='2' fill='none'/%3E%3C/svg%3E") right 10px center no-repeat,
+    rgba(0, 0, 0, 0.45);
+  font: 700 13px var(--title-font);
+  letter-spacing: 0.04em;
+  color: var(--cream);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.pick option {
+  color: #111;
+}
+
+.setup-build {
+  position: fixed;
+  right: calc(var(--safe-r) + 6px);
+  bottom: 2px;
+  margin: 0;
+  font-size: 9px;
+  pointer-events: none;
+}
+
+.setup-main {
+  max-width: 100%;
+}
+
+.setup-left {
+  min-width: 0;
+}
+
+/* Phones in landscape (Safari's bars leave as little as 320 px): everything shrinks to fit. */
+@media (max-height: 430px) {
+  .setup {
+    padding-top: 4px;
+    padding-bottom: calc(var(--safe-b) + 4px);
+  }
+  .setup-main {
+    height: 100%;
+  }
+  .setup-left,
+  .setup-right {
+    padding: 2px 10px 6px;
+  }
+  .setup-title {
+    margin: 0;
+  }
+  .setup-title h1 {
+    font-size: 17px;
+  }
+  .crest svg {
+    width: 20px;
+    height: 20px;
+  }
+  .setup-label {
+    margin: 4px 2px 2px;
+    font-size: 10px;
+  }
+  .cards {
+    gap: 4px;
+  }
+  .card {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    flex-direction: row;
+    justify-content: center;
+    gap: 4px;
+    padding: 2px 4px;
+  }
+  .card-art svg {
+    width: 34px;
+    height: 22px;
+  }
+  .card-name {
+    font-size: 10px;
+  }
+  .seg {
+    padding: 2px;
+    gap: 2px;
+  }
+  .seg-btn {
+    min-height: 30px;
+    padding: 0 4px;
+    font-size: 12px;
+  }
+  .pick {
+    min-height: 34px;
+    font-size: 12px;
+  }
+  .setup-pair {
+    gap: 8px;
+  }
+  .setup-note {
+    margin-top: 4px;
+    min-height: 0;
+    font-size: 11.5px;
+    line-height: 1.2;
+  }
+  .setup-right {
+    width: 190px;
+    gap: 3px;
+  }
+  .preview {
+    width: min(120px, 26vh);
+    height: min(120px, 26vh);
+  }
+  .map-name {
+    font-size: 12px;
+  }
+  .map-desc {
+    display: none;
+  }
+  .seed-row .icon-btn,
+  .setup-right .load-row .icon-btn {
+    width: 34px;
+    height: 34px;
+    padding: 6px;
+  }
+  .setup-right .btn {
+    min-height: 36px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+/* Narrow phones (iPhone SE): a slimmer right column. */
+@media (max-width: 700px) {
+  .setup {
+    padding-left: calc(var(--safe-l) + 6px);
+    padding-right: calc(var(--safe-r) + 6px);
+  }
+  .setup-main {
+    gap: 6px;
+  }
+  .setup-right {
+    width: 160px;
+  }
+  .card-art {
+    display: none;
+  }
+  .seg-btn {
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+}
+
+@media (max-height: 430px) {
+  .card-name {
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 700px) {
+  .setup-right .btn {
+    padding-left: 8px;
+    padding-right: 8px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+}
+
+/* Short screens: menus lay their buttons out in two columns and tighten up. */
+@media (max-height: 430px) {
+  .panel {
+    gap: 6px;
+    padding: 8px 14px 12px;
+    max-height: calc(100% - 8px);
+    overflow-y: auto;
+  }
+  .panel-title {
+    margin: 0;
+    font-size: 18px;
+  }
+  .panel .btn {
+    min-height: 38px;
+  }
+  .panel:not(.settings-panel):not(.end-panel):not(.slots-panel) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-width: 340px;
+  }
+  .panel:not(.settings-panel):not(.end-panel):not(.slots-panel) > .panel-title {
+    grid-column: 1 / -1;
+  }
+  .settings-panel .setup-label {
+    margin: 2px 2px 2px;
+  }
+  .settings-panel .seg-btn {
+    min-height: 32px;
+  }
+}
+
+@media (max-height: 430px) {
+  .tut-card {
+    top: calc(var(--safe-t) + 52px);
+    width: min(360px, 48vw);
+    max-height: calc(100% - 52px - 128px - var(--safe-b));
+    overflow-y: auto;
+    padding: 4px 8px 6px;
+    border-width: 6px;
+    border-image-width: 6px;
+  }
+  .tut-title {
+    margin: 0 0 2px;
+    font-size: 14px;
+  }
+  .tut-text {
+    font-size: 12.5px;
+    line-height: 1.22;
+  }
+  .tut-progress {
+    margin-top: 3px;
+    font-size: 12px;
+  }
+  .tut-actions {
+    margin-top: 4px;
+  }
+  .tut-actions .btn {
+    min-height: 30px;
+    font-size: 12px;
+    padding: 0 10px;
+  }
+  .tut-fold {
+    height: 18px;
+  }
 }
