@@ -6,6 +6,7 @@ import { mapImage } from './mapImage';
 import { type SlotId, listSaves } from './saves';
 import { DIFFICULTIES, type Difficulty } from '../sim/ai/opponent';
 import { showSlots } from './slotPanel';
+import { emblemSvg, wordmarkHtml } from './logo';
 import { settings as appSettings, showSettings, updateSettings } from './settings';
 import { GAME_MODES, type GameMode, MODE_NAMES } from '../sim/modes';
 import { FACTIONS, FACTION_IDS, type FactionId } from '../sim/techs';
@@ -86,7 +87,7 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
   el.innerHTML = `
     <div class="setup-main">
       <section class="setup-left frame">
-        <header class="setup-title"><span class="crest">${ICONS.crown}</span><h1>Hearth &amp; Crown</h1></header>
+        <header class="setup-title">${emblemSvg({ className: 'crest' })}<h1>${wordmarkHtml()}</h1></header>
         <div class="setup-label">Map</div>
         <div class="cards" data-row="type"></div>
         <div class="setup-pair">
@@ -109,11 +110,11 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
         <div class="map-desc"></div>
         <div class="seed-row"><span class="seed"></span><button class="icon-btn" aria-label="New map">${ICONS.dice}</button></div>
         <button class="btn btn-gold start">Start Match</button>
-        <div class="load-row">
-          <button class="btn btn-wood continue" hidden>Continue</button>
-          <button class="btn btn-wood load" hidden>Load</button>
-          <button class="btn btn-wood tutorial">Tutorial</button>
-          <button class="icon-btn settings-btn" aria-label="Settings">${ICONS.gear}</button>
+        <div class="menu-grid">
+          <button class="btn btn-wood btn-small continue" hidden>Continue</button>
+          <button class="btn btn-wood btn-small load" hidden>Load</button>
+          <button class="btn btn-wood btn-small tutorial">Tutorial</button>
+          <button class="btn btn-wood btn-small settings-btn" aria-label="Settings"><span class="btn-icon">${ICONS.gear}</span>Settings</button>
         </div>
       </section>
     </div>

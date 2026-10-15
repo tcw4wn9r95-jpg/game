@@ -1,21 +1,20 @@
 // Vite plugin that makes the build an installable, offline-capable iOS web app:
-// - generates the icons and manifest.webmanifest at build time
+// - emits the icons (build/icons, rendered from the emblem) and manifest.webmanifest
 // - injects the iOS/PWA <head> tags
 // - writes sw.js with a precache list of every emitted file and a content hash
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Plugin, ResolvedConfig } from 'vite';
-import { iconPng } from './icon';
 
 const APP_NAME = 'Hearth & Crown';
-const THEME = '#0e1426';
+const THEME = '#140c05';
 
-const ICONS: Array<{ file: string; size: number; scale?: number; purpose?: string }> = [
+const ICONS: Array<{ file: string; size: number; purpose?: string }> = [
   { file: 'icons/apple-touch-icon.png', size: 180 },
   { file: 'icons/icon-192.png', size: 192 },
   { file: 'icons/icon-512.png', size: 512 },
-  { file: 'icons/icon-maskable-512.png', size: 512, scale: 0.8, purpose: 'maskable' },
+  { file: 'icons/icon-maskable-512.png', size: 512, purpose: 'maskable' },
   { file: 'icons/favicon-32.png', size: 32 },
 ];
 
@@ -60,7 +59,8 @@ export function pwa(): Plugin {
   let config: ResolvedConfig;
   const iconCache = new Map<string, Buffer>();
   const icon = (i: (typeof ICONS)[number]) => {
-    if (!iconCache.has(i.file)) iconCache.set(i.file, iconPng(i.size, i.scale));
+    // Rendered from the emblem by scripts/render-icons.sh.
+    if (!iconCache.has(i.file)) iconCache.set(i.file, readFileSync(new URL(`./icons/${i.file.split('/').pop()}`, import.meta.url)));
     return iconCache.get(i.file)!;
   };
 

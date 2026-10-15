@@ -1,3 +1,4 @@
+import { showSplash } from './ui/splash';
 import { audio, installAudioUnlock } from './ui/audio';
 import { GAME_MODES, type GameMode } from './sim/modes';
 import { FACTION_IDS } from './sim/techs';
@@ -221,7 +222,11 @@ function boot(): void {
       factions: pickFactions(fromUrl.players, params.get('faction') ?? 'random'),
     });
   else if (params.has('tutorial')) startTutorial();
-  else toSetup();
+  else {
+    // The menu builds behind the title card; a tap reveals it.
+    toSetup();
+    if (!params.has('nosplash')) showSplash();
+  }
 
   let last = performance.now();
   let reported = false;
