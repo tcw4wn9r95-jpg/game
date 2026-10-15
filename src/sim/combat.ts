@@ -481,7 +481,7 @@ export function applyDamage(w: World, t: Unit | Building, amount: number, by: Un
       t.attackedAt = w.tick;
     }
   }
-  w.events.push({ type: 'hit', owner: t.owner, by: owner, id: t.id, x: centre(t).x, y: centre(t).y, amount, building: t.kind === 'building' });
+  w.events.push({ type: 'hit', owner: t.owner, by: owner, id: t.id, x: centre(t).x, y: centre(t).y, amount, building: t.kind === 'building', src: by?.type });
   if (t.hp > 0) return;
   if (t.kind === 'unit') {
     w.events.push({ type: 'death', owner: t.owner, unit: t.type, x: t.x, y: t.y, face: t.face, by: owner });

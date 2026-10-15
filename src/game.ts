@@ -8,7 +8,7 @@ import { Bench } from './ui/bench';
 import { AGES, TECH_DEFS, buildingMaxHp } from './sim/techs';
 import { VICTORY_TEXT, kingOf } from './sim/modes';
 import { canShelter, shelterRoom } from './sim/fortify';
-import type { Building } from './sim/entities';
+import { BUILDING_DEFS, type Building, UNIT_DEFS } from './sim/entities';
 import { Hud } from './ui/hud';
 import { Minimap } from './ui/minimap';
 import { CommandCenter } from './ui/commandCenter';
@@ -18,6 +18,10 @@ import type { GameMode } from './sim/modes';
 
 const PLAYER_NAMES = ['Blue', 'Red', 'Gold', 'Green'];
 import type { SaveMeta } from './ui/saves';
+import { settings } from './ui/settings';
+import { Tutorial } from './ui/tutorial';
+import { type Sfx, audio } from './ui/audio';
+import type { SimEvent } from './sim/world';
 
 const MAP_NAMES = { heartland: 'Heartland', coastal: 'Coastal', lakes: 'Lakes', islands: 'Islands' } as const;
 
@@ -41,6 +45,8 @@ export interface MatchSetup {
   /** New matches only: game mode and each slot's faction. */
   mode?: GameMode;
   factions?: string[];
+  /** The guided first match. */
+  tutorial?: boolean;
 }
 
 /** One match: owns the world, camera, renderer, input controller and HUD. */
@@ -65,7 +71,7 @@ export class Game {
     const fresh = !(source instanceof World);
     this.world = source instanceof World ? source : new World(source, { mode: setup?.mode, factions: setup?.factions });
     const map = this.world.map;
-    this.setup = { ai: setup?.ai ?? map.starts.map((_, i) => (i === 0 && !debug.aiVsAi ? null : 'normal')), treaty: setup?.treaty ?? 0 };
+    this.setup = { ai: setup?.ai ?? map.starts.map((_, i) => (i === 0 && !debug.aiVsAi ? null : 'normal')), treaty: setup?.treaty ?? 0, tutorial: setup?.tutorial };
     if (fresh && this.setup.treaty) this.world.peaceUntil = this.setup.treaty * 60;
     this.setup.ai.forEach((d, i) => {
       if (d) this.bots.push(makeOpponent(this.world, i, d));
@@ -99,7 +105,24 @@ export class Game {
     this.hud.onKing = () => this.findKing(false);
     this.hud.onKingShelter = () => this.findKing(true);
     this.bench = debug.bench ? new Bench(this.camera, map.size, hudRoot.querySelector('#bench')!) : null;
+    if (this.setup.tutorial) {
+      this.tutorial = new Tutorial({
+        world: this.world,
+        controller: this.controller,
+        camera: this.camera,
+        player: this.player,
+        hudRoot,
+        ring: (x, y) => this.addEffect({ kind: 'ring', x, y, color: '#ffd76a' }),
+        ping: (x, y) => this.minimap.ping(x, y, performance.now()),
+        onFinish: (next) => this.onTutorialDone(next),
+      });
+      if (fresh) this.tutorial.setup();
+    }
   }
+
+  readonly tutorial: Tutorial | null = null;
+  /** Set by the app: the tutorial was finished or skipped. */
+  onTutorialDone: (next: 'menu' | 'match') => void = () => {};
 
   /** Regicide: centre on the King and select him; with `shelter`, send him into the nearest Castle or tower. */
   private findKing(shelter: boolean): void {
@@ -133,14 +156,37 @@ export class Game {
   private deaths = 0;
 
   /** Toasts an alert (at most every 12 s unless forced); tapping it jumps the camera there. */
-  private alert(message: string, x: number, y: number, now: number, force = false): void {
+  private alert(message: string, x: number, y: number, now: number, force = false, sound: Sfx = 'alertTown'): void {
     if (!force && now - this.lastAlert < 12) return;
     this.lastAlert = now;
+    audio.play(sound);
     this.alertAt = { x, y };
     this.hud.toast(message, () => {
       if (this.alertAt) this.camera.centerOn(this.alertAt.x, this.alertAt.y);
     });
     this.minimap.ping(x, y, now);
+  }
+
+  /** How loud something at (x, y) sounds: full on screen, fading out a screen away; silent in the fog. */
+  private heard(x: number, y: number): number {
+    if (!this.world.fog[this.player]?.isVisible(x, y)) return 0;
+    const p = this.camera.tileToScreen(x, y);
+    const W = this.camera.viewW, H = this.camera.viewH;
+    const d = Math.hypot(Math.max(0, -p.x, p.x - W) / W, Math.max(0, -p.y, p.y - H) / H);
+    return Math.max(0, 1 - d * 1.6);
+  }
+
+  /** Sounds of battle and building wherever the camera is. */
+  private battleSound(ev: SimEvent): void {
+    if (ev.type === 'hit') {
+      const def = ev.src ? UNIT_DEFS[ev.src] : undefined;
+      // Engines that hurl stones are heard as their blast lands.
+      if (def?.splash && def.classes.includes('siege')) return;
+      const sound: Sfx = !def ? 'arrow' : def.classes.includes('siege') ? 'boom' : def.attackType === 'pierce' ? 'arrow' : 'clash';
+      audio.play(sound, this.heard(ev.x, ev.y) * (sound === 'boom' ? 0.6 : 0.8));
+    } else if (ev.type === 'blast') audio.play('boom', this.heard(ev.x, ev.y));
+    else if (ev.type === 'death') audio.play('death', this.heard(ev.x, ev.y));
+    else if (ev.type === 'destroyed') audio.play('collapse', this.heard(ev.x + ev.size / 2, ev.y + ev.size / 2));
   }
 
   private addEffect(e: Omit<Effect, 'born'>): void {
@@ -152,7 +198,7 @@ export class Game {
     const now = performance.now();
     const dtClamped = Math.min(dtMs, MAX_FRAME_MS);
     if (!this.hud.paused) {
-      this.acc += dtClamped;
+      this.acc += dtClamped * settings.speed;
       while (this.acc >= TICK_MS) {
         for (const b of this.bots) b.tick(this.world);
         this.world.step();
@@ -161,6 +207,7 @@ export class Game {
     }
     const nowS = now / 1000;
     for (const ev of this.world.drainEvents()) {
+      this.battleSound(ev);
       // Battle aftermath is drawn for every side.
       if (ev.type === 'blast') {
         this.addEffect({ kind: 'blast', x: ev.x, y: ev.y, color: '', size: ev.size });
@@ -168,9 +215,10 @@ export class Game {
       }
       if (ev.type === 'death') this.renderer.addDeath(ev, this.deaths++, nowS);
       else if (ev.type === 'destroyed') this.renderer.addRuin(ev, nowS);
-      if (ev.type === 'converted' && ev.from === this.player) this.alert('A unit was converted by an enemy monk!', ev.x, ev.y, nowS, true);
+      if (ev.type === 'converted' && ev.from === this.player) this.alert('A unit was converted by an enemy monk!', ev.x, ev.y, nowS, true, 'convert');
       if (ev.type === 'victory') {
         const won = ev.team === this.world.players[this.player].team;
+        audio.play(won ? 'victory' : 'defeat');
         const how = VICTORY_TEXT[ev.reason] ?? '';
         this.hud.endScreen(won, this.world.time, `${won ? 'Your side won' : 'The enemy won'} ${how}.`);
         continue;
@@ -189,7 +237,7 @@ export class Game {
             : ev.message === 'Wonder finished'
               ? ours ? 'Our Wonder stands! Hold it for 8 minutes.' : 'The enemy has finished a Wonder! Destroy it within 8 minutes.'
               : ours ? 'A relic is safe in our Monastery' : 'The enemy has secured a relic';
-        this.alert(msg, ev.x, ev.y, nowS, true);
+        this.alert(msg, ev.x, ev.y, nowS, true, 'bell');
         continue;
       }
       if (ev.type === 'hit' && ev.owner === this.player && this.world.mode === 'regicide' && ev.by !== this.player && nowS - this.lastKingAlert > 10) {
@@ -198,24 +246,35 @@ export class Game {
         const holder = t?.kind === 'building' && king?.inside === t.id;
         if ((t?.kind === 'unit' && t.type === 'king') || (holder && t.hp < buildingMaxHp(this.world, t) * 0.5)) {
           this.lastKingAlert = nowS;
-          this.alert(holder ? "The King's stronghold is failing!" : 'Your King is under attack!', ev.x, ev.y, nowS, true);
+          this.alert(holder ? "The King's stronghold is failing!" : 'Your King is under attack!', ev.x, ev.y, nowS, true, 'alertKing');
           continue;
         }
       }
       if (ev.owner !== this.player) continue;
       if (ev.type === 'hit' && ev.by !== this.player && ev.by >= 0) {
-        this.alert(ev.building ? 'Your town is under attack!' : 'Your units are under attack!', ev.x, ev.y, nowS);
+        // Distinct horns: the town, the walls, the fleet.
+        const t = this.world.get(ev.id);
+        const wall = t?.kind === 'building' && !!BUILDING_DEFS[t.type].wall;
+        const ship = (t?.kind === 'unit' && !!UNIT_DEFS[t.type].naval) || (t?.kind === 'building' && (t.type === 'dock' || t.type === 'fish_trap'));
+        const msg = wall ? 'Your walls are under attack!' : ship ? 'Your ships are under attack!' : ev.building ? 'Your town is under attack!' : 'Your units are under attack!';
+        this.alert(msg, ev.x, ev.y, nowS, false, wall ? 'alertWall' : ship ? 'alertShip' : 'alertTown');
         continue;
       }
+      if (ev.type === 'built') audio.play('built');
+      if (ev.type === 'trained') audio.play('trained', 0.8);
       if (ev.type === 'researched') {
         const t = TECH_DEFS[ev.tech];
         const age = t.effects.find((e) => e.type === 'age');
         if (age) this.hud.announce(`${AGES[age.age].name} Age`, 'New buildings, units and technologies are available.');
         else this.hud.toast(`${t.name} researched`);
+        audio.play(age ? 'ageUp' : 'researched');
         continue;
       }
       if (ev.type === 'dropoff') this.addEffect({ kind: 'text', x: ev.x, y: ev.y, text: `+${ev.amount}`, color: RES_COLORS[ev.res] });
-      else if (ev.type === 'error') this.hud.toast(ev.message);
+      else if (ev.type === 'error') {
+        this.hud.toast(ev.message);
+        audio.play('error');
+      }
     }
     const dt = dtClamped / 1000;
     this.bench?.update(dt);
@@ -235,6 +294,7 @@ export class Game {
     this.minimap.draw(now);
     this.hud.update(this.world, this.player, c.idleVillagers().length, c.idleMilitary().length);
     this.panel.update();
+    this.tutorial?.update(nowS);
   }
 
   /** A save of the match: the world, and a summary for the slot list. */
@@ -268,6 +328,7 @@ export class Game {
   }
 
   destroy(): void {
+    this.tutorial?.destroy();
     this.minimap.destroy();
     this.renderer.dispose();
     this.controller.destroy();

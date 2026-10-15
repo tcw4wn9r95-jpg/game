@@ -73,7 +73,7 @@ export type SimEvent =
   | { type: 'trained'; owner: number; id: number }
   | { type: 'error'; owner: number; message: string }
   /** `owner` is the side that was hit; `by` the attacking side. */
-  | { type: 'hit'; owner: number; by: number; id: number; x: number; y: number; amount: number; building: boolean }
+  | { type: 'hit'; owner: number; by: number; id: number; x: number; y: number; amount: number; building: boolean; src?: UnitType }
   | { type: 'death'; owner: number; unit: UnitType; x: number; y: number; face: number; by: number }
   | { type: 'destroyed'; owner: number; building: BuildingType; x: number; y: number; size: number; by: number }
   | { type: 'converted'; owner: number; from: number; id: number; x: number; y: number }

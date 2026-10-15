@@ -2,6 +2,7 @@ import ages from '../data/ages.json';
 import { RESOURCE_KINDS, type ResourceKind, type World } from '../sim/world';
 import { ICONS } from './icons';
 import { tip } from './tooltip';
+import { SPEEDS, type Settings, onSettings, settings, showSettings, speedLabel, updateSettings } from './settings';
 import { PLAYER_COLORS } from '../render/palette';
 import { ALL_SITES_HOLD, RELIC_HOLD, dominationTarget, wonderClock } from '../sim/modes';
 
@@ -38,6 +39,10 @@ export class Hud {
   private readonly idleBtn: HTMLButtonElement;
   private readonly armyBtn: HTMLButtonElement;
   private readonly toasts: HTMLElement;
+  private readonly pauseBtn: HTMLButtonElement;
+  private readonly speedBtn: HTMLButtonElement;
+  private readonly pausedChip: HTMLElement;
+  private readonly unsubscribe: () => void;
   paused = false;
 
   constructor(private readonly root: HTMLElement) {
@@ -56,17 +61,34 @@ export class Hud {
     age.querySelectorAll<HTMLElement>('[data-v]').forEach((n) => this.values.set(n.dataset.v!, n));
     top.appendChild(age);
 
-    const clock = el('div', 'clock frame');
+    // The clock doubles as the pause button: the map stays usable while paused.
+    const clock = el('button', 'clock frame');
+    clock.setAttribute('aria-label', 'Pause');
     clock.innerHTML = `<span class="icon">${ICONS.clock}</span><span data-v="clock">00:00</span>`;
     this.values.set('clock', clock.querySelector('[data-v]')!);
+    clock.addEventListener('click', () => this.togglePause());
+    tip(clock, () => `<div class="tip-title">Pause</div><div class="tip-body">Tap the clock to stop time. You can still look around and give orders.</div>`);
+    this.pauseBtn = clock;
     top.appendChild(clock);
 
+    const speedBtn = el('button', 'round-btn speed-btn');
+    speedBtn.setAttribute('aria-label', 'Game speed');
+    speedBtn.addEventListener('click', () => updateSettings({ speed: SPEEDS[(SPEEDS.indexOf(settings.speed as (typeof SPEEDS)[number]) + 1) % SPEEDS.length] }));
+    tip(speedBtn, () => `<div class="tip-title">Game Speed</div><div class="tip-body">Tap to cycle 1×, 1.5×, 2× and 3×.</div>`);
+    this.speedBtn = speedBtn;
     const menuBtn = el('button', 'round-btn');
     menuBtn.setAttribute('aria-label', 'Menu');
     menuBtn.innerHTML = ICONS.menu;
     menuBtn.addEventListener('click', () => this.setPaused(true));
-    top.appendChild(menuBtn);
+    top.append(speedBtn, menuBtn);
     root.appendChild(top);
+    const pausedChip = el('div', 'paused-chip');
+    pausedChip.textContent = 'Paused';
+    pausedChip.hidden = true;
+    this.pausedChip = pausedChip;
+    root.appendChild(pausedChip);
+    this.unsubscribe = onSettings((st) => this.applySettings(st));
+    this.applySettings(settings);
 
     const debug = el('div', 'hud-debug');
     debug.innerHTML = `<div id="fps" class="hud-chip" hidden></div><div id="bench" class="hud-chip" hidden></div>`;
@@ -116,9 +138,11 @@ export class Hud {
         <button class="btn btn-wood" data-a="save">Save Game</button>
         <button class="btn btn-wood" data-a="load">Load Game</button>
         <button class="btn btn-wood" data-a="new">New Match</button>
+        <button class="btn btn-wood btn-small" data-a="settings">Settings</button>
         <button class="btn btn-wood btn-small" data-a="errors">Error Log</button>
       </div>`;
     this.pauseMenu.querySelector('[data-a=errors]')!.addEventListener('click', () => this.onErrors());
+    this.pauseMenu.querySelector('[data-a=settings]')!.addEventListener('click', () => showSettings(document.body));
     this.pauseMenu.querySelector('[data-a=resume]')!.addEventListener('click', () => this.setPaused(false));
     this.pauseMenu.querySelector('[data-a=save]')!.addEventListener('click', () => this.onSave());
     this.pauseMenu.querySelector('[data-a=load]')!.addEventListener('click', () => this.onLoad());
@@ -139,9 +163,29 @@ export class Hud {
     return s;
   }
 
+  /** Pauses with the menu open (or closes it and plays on). */
   setPaused(p: boolean): void {
     this.paused = p;
     this.pauseMenu.hidden = !p;
+    this.showPause();
+  }
+
+  /** The pause button: the clock stops but the map stays usable. */
+  togglePause(): void {
+    this.paused = !this.paused;
+    this.pauseMenu.hidden = true;
+    this.showPause();
+  }
+
+  private showPause(): void {
+    this.pausedChip.hidden = !this.paused || !this.pauseMenu.hidden;
+    this.pauseBtn.querySelector('.icon')!.innerHTML = this.paused ? ICONS.pause : ICONS.clock;
+    this.pauseBtn.classList.toggle('active', this.paused);
+  }
+
+  private applySettings(st: Settings): void {
+    this.speedBtn.textContent = speedLabel(st.speed);
+    this.root.classList.toggle('lefty', st.lefty);
   }
 
   /** Short message that fades after a few seconds. */
@@ -275,6 +319,8 @@ export class Hud {
   }
 
   destroy(): void {
+    this.unsubscribe();
+    this.root.classList.remove('lefty');
     this.root.innerHTML = '';
   }
 }

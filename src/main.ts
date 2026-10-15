@@ -1,3 +1,4 @@
+import { audio, installAudioUnlock } from './ui/audio';
 import { GAME_MODES, type GameMode } from './sim/modes';
 import { FACTION_IDS } from './sim/techs';
 import './style.css';
@@ -71,8 +72,11 @@ function pickFactions(players: number, mine: string): string[] {
   return Array.from({ length: players }, (_, i) => (i === 0 && (FACTION_IDS as string[]).includes(mine) ? mine : any()));
 }
 
+const TUTORIAL_SEED = 2401;
+
 function boot(): void {
   installErrorLog();
+  installAudioUnlock();
   installTheme();
   blockBrowserGestures();
   lockLandscape();
@@ -108,7 +112,7 @@ function boot(): void {
     game.hud.onErrors = () => showErrorLog(document.body);
     setErrorContext(() => game?.world.time);
     // Automated browser tests drive the match through this handle.
-    if (params.has('test')) (window as unknown as { __game: Game }).__game = game;
+    if (params.has('test')) Object.assign(window, { __game: game, __audio: audio });
     fps = new FpsCounter(hud.querySelector('#fps')!);
     hud.hidden = false;
   };
@@ -124,7 +128,24 @@ function boot(): void {
       onStart: (_opts, map, s) =>
         start(map, { treaty: s.treaty, ai: map.starts.map((_, i) => (i === 0 ? null : s.difficulty)), mode: s.mode, factions: pickFactions(map.starts.length, s.faction) }),
       onLoad: (slot) => void loadFrom(slot),
+      onTutorial: startTutorial,
     });
+  }
+
+  /** The guided first match: a small, quiet map and an enemy who waits. */
+  function startTutorial() {
+    const map = generateMap({ type: 'heartland', size: 'skirmish', players: 2, seed: TUTORIAL_SEED });
+    start(map, { ai: [null, null], tutorial: true, mode: 'standard', factions: ['highland', 'steppe'] });
+    const g = game as Game | null;
+    if (!g) return;
+    g.onTutorialDone = (next) => {
+      if (next === 'menu') return toSetup();
+      // Straight into a real match against a Normal opponent.
+      game?.destroy();
+      game = null;
+      const m = generateMap({ type: 'heartland', size: 'standard', players: 2, seed: randomSeed() });
+      start(m, { ai: [null, 'normal'], mode: 'standard', factions: pickFactions(2, 'random') });
+    };
   }
 
   /** Saves the match to a slot; the autosave goes quietly. */
@@ -167,13 +188,13 @@ function boot(): void {
   // Autosave every minute of play, and whenever the app goes to the background
   // (a phone may kill a backgrounded tab without warning).
   setInterval(() => {
-    if (game && !game.hud.paused) void saveTo('auto');
+    if (game && !game.hud.paused && !game.setup.tutorial) void saveTo('auto');
   }, AUTOSAVE_MS);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && game) void saveTo('auto');
+    if (document.visibilityState === 'hidden' && game && !game.setup.tutorial) void saveTo('auto');
   });
   window.addEventListener('pagehide', () => {
-    if (game) void saveTo('auto');
+    if (game && !game.setup.tutorial) void saveTo('auto');
   });
 
   if (params.has('ships')) {
@@ -199,6 +220,7 @@ function boot(): void {
       mode: urlMode,
       factions: pickFactions(fromUrl.players, params.get('faction') ?? 'random'),
     });
+  else if (params.has('tutorial')) startTutorial();
   else toSetup();
 
   let last = performance.now();

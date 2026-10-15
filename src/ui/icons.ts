@@ -48,6 +48,13 @@ export const ICONS = {
     <circle cx="2" cy="7" r="1.4" fill="#f2c94c" stroke="${INK}" stroke-width=".8"/>
     <circle cx="12" cy="4" r="1.4" fill="#f2c94c" stroke="${INK}" stroke-width=".8"/>
     <circle cx="22" cy="7" r="1.4" fill="#f2c94c" stroke="${INK}" stroke-width=".8"/>`),
+  gear: svg(`
+    <path d="M10.3 2h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L2 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8z" fill="#c8962a" stroke="#2a1606" stroke-width="1.1" stroke-linejoin="round"/>
+    <circle cx="12" cy="12" r="3.4" fill="#2a1606"/>`),
+  pause: svg(`
+    <path d="M7 5h3.4v14H7zM13.6 5H17v14h-3.4z" fill="#f1d48a" stroke="#2a1606" stroke-width="1.2" stroke-linejoin="round"/>`),
+  play: svg(`
+    <path d="M7.5 4.5l11 7.5-11 7.5z" fill="#f1d48a" stroke="#2a1606" stroke-width="1.2" stroke-linejoin="round"/>`),
   menu: svg(`
     <path d="M5 7h14M5 12h14M5 17h14" stroke="#2a1606" stroke-width="4" stroke-linecap="round"/>
     <path d="M5 7h14M5 12h14M5 17h14" stroke="#f1d48a" stroke-width="2.2" stroke-linecap="round"/>`),

@@ -1,4 +1,5 @@
 // Turns gestures into selection changes and player commands.
+import { audio } from '../ui/audio';
 import { carried, isRelic } from '../sim/modes';
 import type { Camera } from '../render/camera';
 import type { Effect } from '../render/renderer';
@@ -35,6 +36,9 @@ export interface Placing {
   /** Wall mode: the planned segments (gates marked) and the line being dragged. */
   wall?: { kind: 'palisade' | 'stone'; tiles: Array<{ x: number; y: number; gate: boolean }>; line: { x0: number; y0: number; x1: number; y1: number } | null };
 }
+
+/** Orders acknowledged with a chirp. */
+const ORDER_SOUNDS = new Set<Command['type']>(['move', 'gather', 'help', 'garrison', 'unload', 'build', 'buildWall', 'rally']);
 
 export class Controller {
   readonly selection = new Set<number>();
@@ -79,6 +83,8 @@ export class Controller {
     this.selection.clear();
     for (const id of ids) this.selection.add(id);
     this.changed();
+    const e = ids.length ? this.world.get(ids[0]) : undefined;
+    if (e && e.kind !== 'resource' && e.owner === this.host.player) audio.play(e.kind === 'unit' && !UNIT_DEFS[e.type].gatherer ? 'selectSoldier' : 'select');
   }
 
   deselect(): void {
@@ -534,6 +540,8 @@ export class Controller {
 
   private issue(cmd: Command): void {
     this.world.issue(this.host.player, cmd);
+    if (cmd.type === 'attack' || cmd.type === 'attackGround') audio.play('attackOrder');
+    else if (ORDER_SOUNDS.has(cmd.type)) audio.play('order');
   }
 
   private ring(x: number, y: number, color: string): void {

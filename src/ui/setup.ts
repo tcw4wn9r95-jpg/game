@@ -6,6 +6,7 @@ import { mapImage } from './mapImage';
 import { type SlotId, listSaves } from './saves';
 import { DIFFICULTIES, type Difficulty } from '../sim/ai/opponent';
 import { showSlots } from './slotPanel';
+import { settings as appSettings, showSettings, updateSettings } from './settings';
 import { GAME_MODES, type GameMode, MODE_NAMES } from '../sim/modes';
 import { FACTIONS, FACTION_IDS, type FactionId } from '../sim/techs';
 import { UNIT_DEFS } from '../sim/entities';
@@ -61,6 +62,8 @@ export interface SetupHooks {
   onStart(opts: MapOptions, map: GameMap, settings: MatchSettings): void;
   /** Resume a saved match (the setup screen has already gone). */
   onLoad(slot: SlotId): void;
+  /** Start the guided first match (the setup screen has already gone). */
+  onTutorial(): void;
 }
 
 /** New-match screen with a live preview of the generated map. Removes itself on start. */
@@ -107,9 +110,11 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
         <div class="map-desc"></div>
         <div class="seed-row"><span class="seed"></span><button class="icon-btn" aria-label="New map">${ICONS.dice}</button></div>
         <button class="btn btn-gold start">Start Match</button>
-        <div class="load-row" hidden>
+        <div class="load-row">
           <button class="btn btn-wood continue" hidden>Continue</button>
-          <button class="btn btn-wood load">Load Game</button>
+          <button class="btn btn-wood load" hidden>Load</button>
+          <button class="btn btn-wood tutorial">Tutorial</button>
+          <button class="icon-btn settings-btn" aria-label="Settings">${ICONS.gear}</button>
         </div>
       </section>
     </div>
@@ -195,10 +200,22 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
     hooks.onLoad(slot);
   };
   el.querySelector('.continue')!.addEventListener('click', () => leave('auto'));
+  el.querySelector('.tutorial')!.addEventListener('click', () => {
+    cancelAnimationFrame(pending);
+    el.remove();
+    updateSettings({ tutorialSeen: true });
+    hooks.onTutorial();
+  });
+  el.querySelector('.settings-btn')!.addEventListener('click', () => showSettings(document.body));
+  // First time here: point at the tutorial.
+  if (!appSettings.tutorialSeen) {
+    el.querySelector('.tutorial')!.classList.add('tut-glow');
+    el.querySelector('[data-v=note]')!.textContent = 'New to Hearth & Crown? Try the Tutorial first: about ten minutes.';
+  }
   el.querySelector('.load')!.addEventListener('click', () => showSlots(document.body, 'load', leave, () => {}));
   void listSaves().then((saves) => {
     if (!Object.values(saves).some(Boolean)) return;
-    el.querySelector<HTMLElement>('.load-row')!.hidden = false;
+    el.querySelector<HTMLElement>('.load')!.hidden = false;
     el.querySelector<HTMLElement>('.continue')!.hidden = !saves.auto;
   });
 
