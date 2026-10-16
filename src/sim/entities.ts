@@ -63,6 +63,8 @@ export interface UnitDef {
   carry?: number;
   /** Only this faction can train it (unique units). */
   faction?: string;
+  /** Attack the counter bonuses multiply (Blacksmith upgrades add on top, unmultiplied). */
+  baseAttack?: number;
 }
 
 export type UnitClass =

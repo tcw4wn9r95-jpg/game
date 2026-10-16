@@ -91,8 +91,13 @@ export function damageOf(a: UnitDef, target: Unit | Building, w?: World): number
   } else if (w) ({ melee, pierce } = buildingArmor(w, target));
   else (melee = BUILDING_DEFS[target.type].meleeArmor), (pierce = BUILDING_DEFS[target.type].pierceArmor);
   const armor = a.attackType === 'melee' ? melee : pierce;
+  // Counter bonuses multiply the unit's own weapon, not the Blacksmith's improvements to it:
+  // otherwise every upgrade would also make counters (spears on horses, arrows on infantry)
+  // hit harder still, and late-game matchups turn into one-sided wipes.
+  const base = Math.min(a.baseAttack ?? a.attack, a.attack);
+  const hit = base * mult + (a.attack - base);
   // Against buildings: Siege Engineers' multiplier and Sappers' flat bonus.
-  const vsBuilding = target.kind === 'building' ? (a.attack * mult + (a.buildingAttack ?? 0)) * (a.buildingMult ?? 1) : a.attack * mult;
+  const vsBuilding = target.kind === 'building' ? (hit + (a.buildingAttack ?? 0)) * (a.buildingMult ?? 1) : hit;
   return Math.max(1, vsBuilding - armor);
 }
 

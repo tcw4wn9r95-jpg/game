@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { damageOf } from '../src/sim/combat';
+import { completeTech, unitStats } from '../src/sim/techs';
 import { UNIT_DEFS, type Unit, type UnitType } from '../src/sim/entities';
 import { Feature, type GameMap } from '../src/sim/terrain';
 import { TICK_RATE, World } from '../src/sim/world';
@@ -96,10 +97,24 @@ describe('combat: counters (M4 acceptance)', () => {
     expect(damageOf(UNIT_DEFS.spearman, scout)).toBe(12.5);
     // Archer vs militia: 4 x 2 - 1 pierce armour.
     expect(damageOf(UNIT_DEFS.archer, militia)).toBe(7);
-    // Skirmisher vs archer: 2 x 2.5.
-    expect(damageOf(UNIT_DEFS.skirmisher, archer)).toBe(5);
+    // Skirmisher vs archer: 2 x 3.
+    expect(damageOf(UNIT_DEFS.skirmisher, archer)).toBe(6);
     // Never less than 1.
     expect(damageOf(UNIT_DEFS.villager, w.spawnUnit('knight', 1, 8, 5))).toBe(1);
+  });
+
+  it('Blacksmith upgrades add flat damage; only line upgrades feed the counter bonus', () => {
+    const w = new World(flatMap(), { spawnStarts: false });
+    const knight = w.spawnUnit('knight', 1, 5, 5);
+    const base = damageOf(unitStats(w, 0, 'spearman'), knight, w); // 5 x 2.5 - 2
+    expect(base).toBe(10.5);
+    completeTech(w, 0, 'forging');
+    completeTech(w, 0, 'iron_casting');
+    // +2 attack from the Blacksmith: +2 damage, not +5.
+    expect(damageOf(unitStats(w, 0, 'spearman'), knight, w)).toBe(12.5);
+    // Pikeman: its own +1 is part of the weapon, so it is multiplied.
+    completeTech(w, 0, 'pikeman');
+    expect(damageOf(unitStats(w, 0, 'spearman'), knight, w)).toBe(15);
   });
 });
 

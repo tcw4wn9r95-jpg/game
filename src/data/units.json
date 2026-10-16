@@ -134,7 +134,7 @@
     },
     "trainTime": 22,
     "attack": 2,
-    "reload": 3.0,
+    "reload": 2.5,
     "attackType": "pierce",
     "meleeArmor": 0,
     "pierceArmor": 3,
@@ -146,7 +146,7 @@
       "skirmisher"
     ],
     "bonus": {
-      "archer": 2.5
+      "archer": 3.0
     },
     "stance": "aggressive",
     "description": "Javelin thrower with a wicker shield, cheap and hard to hurt with arrows.",
@@ -155,7 +155,7 @@
   },
   "scout": {
     "name": "Scout",
-    "hp": 45,
+    "hp": 50,
     "speed": 2.1,
     "los": 8,
     "radius": 0.32,
@@ -164,7 +164,7 @@
       "food": 80
     },
     "trainTime": 30,
-    "attack": 3,
+    "attack": 4,
     "reload": 2.0,
     "attackType": "melee",
     "meleeArmor": 0,
@@ -683,15 +683,15 @@
     "pop": 1,
     "reload": 2.1,
     "attackType": "pierce",
-    "meleeArmor": 0,
-    "pierceArmor": 1,
+    "meleeArmor": 1,
+    "pierceArmor": 2,
     "range": 4,
     "bonus": {
       "spear": 1.2
     },
     "stance": "aggressive",
     "name": "Horse Archer",
-    "hp": 55,
+    "hp": 65,
     "speed": 1.45,
     "los": 6,
     "radius": 0.4,
@@ -720,11 +720,11 @@
     "pierceArmor": 0,
     "range": 7,
     "bonus": {
-      "infantry": 1.2
+      "infantry": 1.6
     },
     "stance": "aggressive",
     "name": "Arbalest Guard",
-    "hp": 40,
+    "hp": 45,
     "speed": 0.95,
     "los": 8,
     "radius": 0.22,

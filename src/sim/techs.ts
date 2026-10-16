@@ -135,7 +135,7 @@ export function baseMods(faction?: FactionId | string): PlayerMods {
 
 function rawMods(): PlayerMods {
   const units = {} as Record<UnitType, UnitDef>;
-  for (const k of Object.keys(UNIT_DEFS) as UnitType[]) units[k] = { ...UNIT_DEFS[k], bonus: { ...UNIT_DEFS[k].bonus } };
+  for (const k of Object.keys(UNIT_DEFS) as UnitType[]) units[k] = { ...UNIT_DEFS[k], bonus: { ...UNIT_DEFS[k].bonus }, baseAttack: UNIT_DEFS[k].attack };
   return {
     units,
     gather: {},
@@ -165,7 +165,12 @@ function applyList(m: PlayerMods, effects: TechEffect[]): void {
         for (const k of Object.keys(m.units) as UnitType[]) {
           const d = m.units[k];
           if (!(e.units?.includes(k) || e.classes?.some((c) => d.classes.includes(c)))) continue;
-          if (e.attack && d.attack > 0) d.attack += e.attack;
+          if (e.attack && d.attack > 0) {
+            d.attack += e.attack;
+            // A unit's own line upgrade (Swordsman, Pikeman...) improves the weapon the counter
+            // bonus scales with; Blacksmith upgrades for whole classes add flat damage on top.
+            if (e.units?.includes(k)) d.baseAttack = (d.baseAttack ?? 0) + e.attack;
+          }
           if (e.meleeArmor) d.meleeArmor += e.meleeArmor;
           if (e.pierceArmor) d.pierceArmor += e.pierceArmor;
           if (e.range && d.range > 0) d.range += e.range;

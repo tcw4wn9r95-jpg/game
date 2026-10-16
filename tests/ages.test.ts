@@ -93,7 +93,7 @@ describe('ages and technologies', () => {
     const before = damageOf(unitStats(w, 0, 'militia'), foe, w);
     w.issue(0, { type: 'research', id: smith.id, tech: 'forging' });
     run(w, 51);
-    expect(damageOf(unitStats(w, 0, 'militia'), foe, w)).toBe(before + 1.5); // +1 attack x 1.5 vs infantry
+    expect(damageOf(unitStats(w, 0, 'militia'), foe, w)).toBe(before + 1); // +1 flat: Blacksmith upgrades don't scale the counter bonus
     // Loom: villagers gain HP and armour, existing ones included.
     const v = [...w.units(0)].find((u) => u.type === 'villager')!;
     w.issue(0, { type: 'research', id: tc(w).id, tech: 'loom' });
