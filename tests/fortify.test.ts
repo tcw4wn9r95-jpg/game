@@ -166,3 +166,65 @@ describe('gates', () => {
     expect([...w.buildings(0)].filter((b) => b.type === 'stone_wall')).toHaveLength(20);
   });
 });
+
+describe('the town bell', () => {
+  /** A Town Center, a tower, a grove of trees and villagers chopping it. */
+  function village(n: number) {
+    const map = flatMap();
+    for (let y = 6; y < 16; y++)
+      for (let x = 30; x < 34; x++) {
+        map.feature[y * map.size + x] = 1;
+        map.amount[y * map.size + x] = 200;
+      }
+    const w = new World(map, { spawnStarts: false });
+    rich(w, 0);
+    const tc = w.placeBuilding('town_center', 0, 8, 8, true);
+    const tower = w.placeBuilding('watch_tower', 0, 24, 8, true);
+    const vs = Array.from({ length: n }, (_, k) => w.spawnUnit('villager', 0, 26.5 + (k % 4) * 0.7, 9.5 + Math.floor(k / 4) * 0.7));
+    vs.forEach((v, k) => w.issue(0, { type: 'gather', ids: [v.id], target: { kind: 'tile', x: 30 + (k % 2), y: 6 + (k % 10) } }));
+    run(w, 20);
+    return { w, tc, tower, vs };
+  }
+
+  it('sends every villager into shelter, then back to what they were doing', () => {
+    const { w, tc, tower, vs } = village(18);
+    expect(vs.every((v) => v.order?.type === 'gather' || v.order?.type === 'dropoff')).toBe(true);
+    w.issue(0, { type: 'bell', on: true });
+    run(w, 40);
+    expect(w.players[0].bell).toBe(true);
+    expect(vs.every((v) => v.inside === tc.id || v.inside === tower.id)).toBe(true);
+    // The nearest shelter (the tower, by the trees) fills first.
+    expect(tower.garrison).toHaveLength(5);
+    expect(tc.garrison).toHaveLength(13);
+    w.issue(0, { type: 'bell', on: false });
+    run(w, 1);
+    expect(vs.every((v) => !v.inside)).toBe(true);
+    expect(tc.garrison).toHaveLength(0);
+    run(w, 30);
+    // Back to chopping wood.
+    const wood = vs.filter((v) => (v.order?.type === 'gather' && v.order.res === 'wood') || (v.order?.type === 'dropoff' && v.carry?.res === 'wood'));
+    expect(wood.length).toBe(18);
+  });
+
+  it('villagers with no room crowd round the Town Center', () => {
+    const { w, tc, vs } = village(24);
+    w.issue(0, { type: 'bell', on: true });
+    run(w, 40);
+    const out = vs.filter((v) => !v.inside);
+    expect(out).toHaveLength(4);
+    for (const v of out) expect(Math.hypot(v.x - (tc.x + 1.5), v.y - (tc.y + 1.5))).toBeLessThan(6);
+  });
+
+  it('survives a save while ringing', async () => {
+    const { loadWorld, saveWorld } = await import('../src/sim/save');
+    const { w } = village(6);
+    w.issue(0, { type: 'bell', on: true });
+    run(w, 30);
+    const back = loadWorld(JSON.parse(JSON.stringify(saveWorld(w))));
+    expect(back.players[0].bell).toBe(true);
+    back.issue(0, { type: 'bell', on: false });
+    for (let i = 0; i < 30 * TICK_RATE; i++) back.step();
+    const vs = [...back.units(0)];
+    expect(vs.every((v) => !v.inside && v.order?.type !== undefined)).toBe(true);
+  });
+});

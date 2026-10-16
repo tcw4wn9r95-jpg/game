@@ -152,7 +152,7 @@ export class CommandCenter {
       this.tab = null;
       this.page = 0;
     }
-    const sig = `${this.ctl.version}|${this.tab}|${this.page}|${this.ctl.placing ? 'p' : ''}|${p.age}|${p.techs.length}`;
+    const sig = `${this.ctl.version}|${this.tab}|${this.page}|${this.ctl.placing ? 'p' : ''}|${p.age}|${p.techs.length}|${p.bell ? 1 : 0}`;
     if (sig !== this.shown) {
       this.shown = sig;
       this.rebuild();
@@ -405,6 +405,24 @@ export class CommandCenter {
         run: () => this.ctl.command({ type: 'train', id: b.id, unit }),
         disabled: () => locked || Object.entries(cost).some(([k, v]) => res[k as Res] < v),
         tip: () => tipHtml(`Train ${u.name}`, `${u.description}<br>${u.trainTime}s · ${u.hp} HP${matchup(u)}${locked ? `<br><i>Requires the ${AGES[u.age].name} Age.</i>` : ''}`, cost),
+      });
+    }
+    // The town bell, right after the villager: it's for emergencies.
+    if (b.type === 'town_center') {
+      const ringing = () => !!this.world.players[this.player].bell;
+      actions.push({
+        icon: ICONS.bell,
+        label: 'Town Bell',
+        active: ringing,
+        caption: ringing() ? 'All clear' : 'Ring',
+        run: () => this.ctl.command({ type: 'bell', on: !ringing() }),
+        tip: () =>
+          tipHtml(
+            ringing() ? 'All Clear' : 'Ring the Town Bell',
+            ringing()
+              ? 'Ring again to send the villagers back out to what they were doing.'
+              : 'Every villager runs for the nearest Town Center, tower or Castle (each one inside adds an arrow). Ring again and they go back to work.',
+          ),
       });
     }
     // Research: everything not yet done whose age is now or next (ages: only the next one).

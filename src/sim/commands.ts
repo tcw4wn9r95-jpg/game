@@ -4,7 +4,7 @@ import { setStance } from './combat';
 import { canBoard, setPacked, unload } from './siege';
 import { canBuild, findResource, gatherOrder, isBuilder, isGatherer, setOrder, sourceOf } from './economy';
 import { FlowField } from './flowfield';
-import { WALL_TYPES, canShelter, placeWall, setGateLock, shelterRoom, ungarrison } from './fortify';
+import { WALL_TYPES, canShelter, placeWall, setGateLock, shelterRoom, townBell, ungarrison } from './fortify';
 import { buildingCost, buildingMaxHp, unitStats } from './techs';
 import { canEngage, landRegion, startFerry, transportsNear } from './naval';
 import { BUILDING_DEFS, type BuildingType, type GatherTarget, type Stance, UNIT_DEFS, type Unit, type UnitType, isShip, navOf } from './entities';
@@ -36,7 +36,9 @@ export type Command =
   | { type: 'attackGround'; ids: number[]; x: number; y: number }
   | { type: 'pack'; ids: number[]; packed: boolean }
   /** Transports: sail to the shore by this point and land everyone aboard. */
-  | { type: 'unload'; ids: number[]; x: number; y: number };
+  | { type: 'unload'; ids: number[]; x: number; y: number }
+  /** The town bell: villagers to shelter (on), or back to work (off). */
+  | { type: 'bell'; on: boolean };
 
 export function applyCommand(w: World, player: number, cmd: Command): void {
   const ids = 'ids' in cmd ? cmd.ids : [];
@@ -125,6 +127,9 @@ export function applyCommand(w: World, player: number, cmd: Command): void {
       }
       return;
     }
+    case 'bell':
+      townBell(w, player, cmd.on);
+      return;
     case 'ungarrison': {
       const b = w.building(cmd.id);
       if (b && b.owner === player) ungarrison(w, b);

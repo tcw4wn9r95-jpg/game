@@ -48,6 +48,10 @@ export const ICONS = {
     <circle cx="2" cy="7" r="1.4" fill="#f2c94c" stroke="${INK}" stroke-width=".8"/>
     <circle cx="12" cy="4" r="1.4" fill="#f2c94c" stroke="${INK}" stroke-width=".8"/>
     <circle cx="22" cy="7" r="1.4" fill="#f2c94c" stroke="${INK}" stroke-width=".8"/>`),
+  bell: svg(`
+    <path d="M12 2.5c.9 0 1.6.7 1.6 1.6v.6c3 .8 4.7 3.4 4.7 6.7v3.2l1.9 2.7c.4.6 0 1.4-.7 1.4H4.5c-.7 0-1.1-.8-.7-1.4l1.9-2.7v-3.2c0-3.3 1.7-5.9 4.7-6.7v-.6c0-.9.7-1.6 1.6-1.6z" fill="#e2b84a" stroke="#2a1606" stroke-width="1.2" stroke-linejoin="round"/>
+    <path d="M8.2 11c.2-2 1.3-3.4 3-3.9" stroke="#fff3c4" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+    <circle cx="12" cy="20.2" r="2" fill="#8a5f1c" stroke="#2a1606" stroke-width="1"/>`),
   gear: svg(`
     <path d="M10.3 2h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L2 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8z" fill="#c8962a" stroke="#2a1606" stroke-width="1.1" stroke-linejoin="round"/>
     <circle cx="12" cy="12" r="3.4" fill="#2a1606"/>`),

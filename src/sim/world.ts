@@ -65,6 +65,8 @@ export interface PlayerState {
   defeated: boolean;
   /** Faction (bonuses and unique unit); empty for none. */
   faction: string;
+  /** The town bell is ringing: villagers are sheltering. */
+  bell?: boolean;
 }
 
 export type SimEvent =
@@ -84,7 +86,9 @@ export type SimEvent =
   /** The match is over: this team won. */
   | { type: 'victory'; owner: number; team: number; reason: VictoryReason }
   /** A Domination site changed hands, a Wonder was finished, a relic came home... (for alerts). */
-  | { type: 'mode'; owner: number; message: string; x: number; y: number };
+  | { type: 'mode'; owner: number; message: string; x: number; y: number }
+  /** The town bell rang (villagers to shelter) or sounded the all clear. */
+  | { type: 'bell'; owner: number; on: boolean };
 
 /** Game state, advanced only by step(); input and AI both act through issue(). */
 export class World {

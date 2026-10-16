@@ -374,7 +374,8 @@ export class Controller {
     // Generous hit box: about 22 CSS px around the figure so fingers can hit it.
     const tolX = Math.max(0.45 * UNIT_K * Z, 22);
     for (const e of world.entities.values()) {
-      if (e.kind !== 'unit') continue;
+      // Units inside a building or aboard a ship aren't on the map to tap: the tap is for their shelter.
+      if (e.kind !== 'unit' || e.inside) continue;
       if (e.owner !== this.host.player && !fog.isVisible(e.x, e.y)) continue;
       const p = camera.tileToScreen(e.x, e.y);
       const h = Math.max(unitHeight(e.type) * UNIT_K * Z, 26);

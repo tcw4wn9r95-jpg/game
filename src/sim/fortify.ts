@@ -64,16 +64,74 @@ function enter(u: Unit, b: Building): void {
 export function ungarrison(w: World, b: Building): void {
   for (const id of b.garrison) {
     const u = w.unit(id);
-    if (!u) continue;
-    u.inside = 0;
-    const spot = w.grid.nearestWalkable(b.x + b.size / 2, b.y + b.size + 0.5, -1, b.size + 6, u.owner);
-    if (spot) {
-      u.x = u.px = spot.x + 0.5 + (w.rng.next() - 0.5) * 0.4;
-      u.y = u.py = spot.y + 0.5 + (w.rng.next() - 0.5) * 0.4;
-    }
-    u.guard = { x: u.x, y: u.y };
+    if (u) stepOut(w, b, u);
   }
   b.garrison = [];
+}
+
+/** One unit leaves a building (the caller updates the garrison list). */
+function stepOut(w: World, b: Building, u: Unit): void {
+  u.inside = 0;
+  const spot = w.grid.nearestWalkable(b.x + b.size / 2, b.y + b.size + 0.5, -1, b.size + 6, u.owner);
+  if (spot) {
+    u.x = u.px = spot.x + 0.5 + (w.rng.next() - 0.5) * 0.4;
+    u.y = u.py = spot.y + 0.5 + (w.rng.next() - 0.5) * 0.4;
+  }
+  u.guard = { x: u.x, y: u.y };
+}
+
+// ---------- the town bell ----------
+
+/**
+ * The Town Center's bell. Ringing it sends every villager to the nearest
+ * Town Center, tower or Castle with room (those left over gather at the Town
+ * Center), remembering what each was doing; ringing it again lets them out
+ * and sets them back to it.
+ */
+export function townBell(w: World, player: number, on: boolean): void {
+  const p = w.players[player];
+  if (!p || !!p.bell === on) return;
+  p.bell = on;
+  w.events.push({ type: 'bell', owner: player, on });
+  const villagers = [...w.units(player)].filter((u) => UNIT_DEFS[u.type].gatherer && !UNIT_DEFS[u.type].naval);
+  if (!on) {
+    for (const u of villagers) {
+      const saved = u.bell;
+      if (!saved) continue;
+      u.bell = null;
+      const b = u.inside ? w.building(u.inside) : undefined;
+      if (b) {
+        b.garrison = b.garrison.filter((id) => id !== u.id);
+        stepOut(w, b, u);
+      }
+      setOrder(u, saved.order);
+      u.resume = saved.resume;
+    }
+    return;
+  }
+  const shelters = [...w.buildings(player)].filter((b) => b.complete && BUILDING_DEFS[b.type].garrison);
+  const room = new Map(shelters.map((b) => [b.id, shelterRoom(b)]));
+  const centre = (b: Building) => ({ x: b.x + b.size / 2, y: b.y + b.size / 2 });
+  const dist = (u: Unit, b: Building) => distToRect(u.x, u.y, b.x, b.y, b.size);
+  // Those nearest shelter are placed first, so the far-flung don't take the close spots.
+  const outside = villagers.filter((u) => !u.inside).sort((a, c) => Math.min(...shelters.map((b) => dist(a, b))) - Math.min(...shelters.map((b) => dist(c, b))));
+  for (const u of outside) {
+    u.bell = { order: u.order, resume: u.resume };
+    const free = shelters.filter((b) => (room.get(b.id) ?? 0) > 0 && canShelter(b, u)).sort((a, c) => dist(u, a) - dist(u, c))[0];
+    if (free) {
+      room.set(free.id, room.get(free.id)! - 1);
+      setOrder(u, { type: 'garrison', id: free.id });
+      u.resume = null;
+      continue;
+    }
+    // No room anywhere: crowd round the nearest Town Center.
+    const tc = shelters.filter((b) => b.type === 'town_center').sort((a, c) => dist(u, a) - dist(u, c))[0];
+    if (tc) {
+      const c = centre(tc);
+      setOrder(u, { type: 'move', x: c.x, y: tc.y + tc.size + 0.7 });
+      u.resume = null;
+    }
+  }
 }
 
 // ---------- repair ----------

@@ -251,6 +251,11 @@ export class Game {
         }
       }
       if (ev.owner !== this.player) continue;
+      if (ev.type === 'bell') {
+        audio.play(ev.on ? 'alertWall' : 'bell');
+        this.hud.toast(ev.on ? 'The town bell rings: villagers take shelter!' : 'All clear: villagers back to work');
+        continue;
+      }
       if (ev.type === 'hit' && ev.by !== this.player && ev.by >= 0) {
         // Distinct horns: the town, the walls, the fleet.
         const t = this.world.get(ev.id);

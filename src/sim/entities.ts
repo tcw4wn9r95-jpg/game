@@ -209,6 +209,8 @@ export interface Unit {
   faith: number;
   /** Transports ferrying a group: who is coming aboard, where they board, and where they are going. */
   ferry: Ferry | null;
+  /** Villagers sheltering at the town bell: what they were doing, to go back to it. */
+  bell?: { order: Order | null; resume: Order | null } | null;
 }
 
 export interface Ferry {
