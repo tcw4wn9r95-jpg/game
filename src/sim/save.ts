@@ -5,7 +5,7 @@
 import { BUILDING_DEFS, type Entity } from './entities';
 import type { Projectile } from './combat';
 import { type PlayerState, World } from './world';
-import { baseMods, applyEffects } from './techs';
+import { baseMods, applyEffects, buildingMaxHp } from './techs';
 import type { GameMap } from './terrain';
 import type { GameMode, ModeState, VictoryReason } from './modes';
 
@@ -137,6 +137,12 @@ export function loadWorld(d: SaveData): World {
     fog.explored.set(unpack(f.explored) as Uint8Array);
     if (f.revealed) fog.revealAll();
   });
+  // Older saves: buildings finished while construction capped them at base HP (below a
+  // faction or research bonus) stand at exactly that value; give them their full health.
+  for (const b of w.buildings()) {
+    const max = buildingMaxHp(w, b);
+    if (b.complete && max > BUILDING_DEFS[b.type].hp && Math.abs(b.hp - BUILDING_DEFS[b.type].hp) < 0.01) b.hp = max;
+  }
   inner.updatePopulation();
   inner.updateVision();
   return w;

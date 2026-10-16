@@ -14,7 +14,7 @@ import {
   navOf,
 } from './entities';
 import { garrisonThink, repairThink } from './fortify';
-import { buildingCost, unitStats } from './techs';
+import { buildingCost, buildingMaxHp, unitStats } from './techs';
 import { boardThink, readyToMove } from './siege';
 import { ferryThink, landingGoal, unloadThink } from './naval';
 import { relicGoal, relicThink } from './modes';
@@ -559,7 +559,10 @@ export function constructionTick(w: World): void {
     const before = b.progress;
     const speed = w.players[b.owner]?.mods.buildSpeed ?? 1;
     b.progress = Math.min(1, b.progress + (DT / def.buildTime) * ((n + 2) / 3) * speed);
-    b.hp = Math.min(def.hp, b.hp + (b.progress - before) * def.hp);
+    // Grows toward its real maximum (faction bonus, Masonry, tower upgrades), not the base HP,
+    // or a new building would stand finished but looking damaged.
+    const max = buildingMaxHp(w, b);
+    b.hp = Math.min(max, b.hp + (b.progress - before) * max);
     if (b.progress >= 1) {
       b.complete = true;
       w.events.push({ type: 'built', owner: b.owner, id: b.id });

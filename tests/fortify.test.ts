@@ -228,3 +228,17 @@ describe('the town bell', () => {
     expect(vs.every((v) => !v.inside && v.order?.type !== undefined)).toBe(true);
   });
 });
+
+describe('construction', () => {
+  it('finishes buildings at full health even with HP bonuses (Mountain Throne)', () => {
+    const w = new World(flatMap(), { spawnStarts: false, factions: ['mountain', 'steppe'] });
+    rich(w, 0);
+    const v = w.spawnUnit('villager', 0, 12.5, 12.5);
+    w.issue(0, { type: 'build', ids: [v.id], building: 'house', x: 14, y: 12 });
+    run(w, 60);
+    const house = [...w.buildings(0)].find((b) => b.type === 'house')!;
+    expect(house.complete).toBe(true);
+    expect(buildingMaxHp(w, house)).toBeGreaterThan(550);
+    expect(house.hp).toBe(buildingMaxHp(w, house));
+  });
+});
