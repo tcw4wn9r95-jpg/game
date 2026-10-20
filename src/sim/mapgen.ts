@@ -31,7 +31,43 @@ export function generateMap(opts: MapOptions): GameMap {
   return new MapBuilder(opts).build();
 }
 
+/**
+ * How this particular map is made: one of several layouts for its type, and
+ * the size and spread of its forests, hills and bases. Rolled from the seed,
+ * so no two maps of a type share a template; fairness rules (resources at
+ * every base, walkable routes between bases) still hold for all of them.
+ */
+interface Look {
+  layout: string;
+  startR: number;
+  /** Bases drift this share of their spacing around the circle. */
+  jitter: number;
+  cx: number;
+  cy: number;
+  forest: 'clumps' | 'belts' | 'groves' | 'mixed';
+  forestBias: number;
+  forestScale: number;
+  hillLow: number;
+  hillScale: number;
+  dirt: number;
+  /** The tree line behind each base: turned and widened. */
+  arcTurn: number;
+  arcWidth: number;
+  /** Its distance from the base and depth. */
+  arcR: number;
+  arcDepth: number;
+  ponds: number;
+}
+
+const LAYOUTS: Record<string, string[]> = {
+  heartland: ['river', 'fork', 'twin', 'marsh', 'bend'],
+  coastal: ['straight', 'bay', 'gulf', 'isles'],
+  lakes: ['central', 'scattered', 'twin', 'ring'],
+  islands: ['classic', 'scattered', 'big', 'chain'],
+};
+
 class MapBuilder {
+  private readonly look: Look;
   private readonly N: number;
   private readonly cfg: (typeof data.sizes)[MapSize];
   private readonly rng: Rng;
@@ -54,6 +90,7 @@ class MapBuilder {
     this.shapeNoise = new Noise(this.rng);
     this.hillNoise = new Noise(this.rng);
     this.forestNoise = new Noise(this.rng);
+    this.look = this.rollLook();
     const n = this.N * this.N;
     this.reserved = new Uint8Array(n);
     this.map = {
@@ -74,6 +111,7 @@ class MapBuilder {
     this.placeStarts();
     this.shapeWater();
     this.clearStartAreas();
+    if (this.opts.type !== 'islands') this.bridgeCutOffStarts();
     this.shapeElevation();
     this.paintGround();
     this.starts.forEach((s, i) => this.placeStartResources(s, i));
@@ -83,6 +121,30 @@ class MapBuilder {
     if (this.opts.type !== 'islands') this.ensureStartsConnected();
     this.map.starts = this.starts;
     return this.map;
+  }
+
+  private rollLook(): Look {
+    const r = () => this.rng.next();
+    const pick = <T>(xs: readonly T[]) => xs[Math.floor(r() * xs.length)];
+    const islands = this.opts.type === 'islands';
+    return {
+      layout: pick(LAYOUTS[this.opts.type]),
+      startR: (islands ? 0.33 : 0.36) + (r() - 0.5) * (islands ? 0.04 : 0.08),
+      jitter: r() * 0.09,
+      cx: 0.5 + (r() - 0.5) * 0.06,
+      cy: 0.5 + (r() - 0.5) * 0.06,
+      forest: pick(['clumps', 'belts', 'groves', 'mixed'] as const),
+      forestBias: (r() - 0.5) * 0.06,
+      forestScale: 9 + r() * 7,
+      hillLow: 0.54 + r() * 0.14,
+      hillScale: 9 + r() * 12,
+      dirt: 0.66 + r() * 0.12,
+      arcTurn: (r() - 0.5) * 1.6,
+      arcWidth: 0.7 + r() * 0.7,
+      arcR: 13 + r() * 4,
+      arcDepth: 3 + r() * 2.5,
+      ponds: 0.3 + r() * 1.9,
+    };
   }
 
   // ---------- helpers ----------
@@ -135,20 +197,22 @@ class MapBuilder {
     const { N } = this;
     const p = this.opts.players;
     const a0 = this.rng.next() * TAU;
+    const L = this.look;
     const pts: Array<[number, number]> = [];
     if (this.opts.type === 'coastal') {
       // Sea lies in direction a0; players spread over the landward half circle.
       const cx = 0.5 - 0.02 * Math.cos(a0), cy = 0.5 - 0.02 * Math.sin(a0);
       for (let i = 0; i < p; i++) {
-        const a = a0 + Math.PI / 2 + (i * Math.PI) / (p - 1);
-        pts.push([cx + 0.32 * Math.cos(a), cy + 0.32 * Math.sin(a)]);
+        const a = a0 + Math.PI / 2 + (i * Math.PI) / (p - 1) + (this.rng.next() - 0.5) * L.jitter * 2;
+        const r = 0.29 + L.jitter * 0.5 + (this.rng.next() - 0.5) * 0.03;
+        pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
       }
       this.seaAngle = a0;
     } else {
-      const r = this.opts.type === 'islands' ? 0.33 : 0.36;
       for (let i = 0; i < p; i++) {
-        const a = a0 + (i * TAU) / p;
-        pts.push([0.5 + r * Math.cos(a), 0.5 + r * Math.sin(a)]);
+        const a = a0 + (i * TAU) / p + (this.rng.next() - 0.5) * 2 * L.jitter * (TAU / p);
+        const r = L.startR + (this.rng.next() - 0.5) * 0.03;
+        pts.push([L.cx + r * Math.cos(a), L.cy + r * Math.sin(a)]);
       }
     }
     const lo = 12, hi = N - 13;
@@ -161,21 +225,82 @@ class MapBuilder {
   // ---------- 2. water ----------
 
   private shapeWater() {
+    const L = this.look, N = this.N, r = () => this.rng.next();
     switch (this.opts.type) {
-      case 'heartland':
-        this.carveRiver();
-        this.addPonds(Math.round((this.N * this.N) / 20000));
-        return;
-      case 'coastal': {
-        const proj = (nx: number, ny: number) => (nx - 0.5) * Math.cos(this.seaAngle) + (ny - 0.5) * Math.sin(this.seaAngle);
-        this.fillWhere((nx, ny, n) => proj(nx, ny) > 0.15 + (n - 0.5) * 0.12);
-        this.addOffshoreIsles(Math.round((this.N * this.N) / 16000), (nx, ny) => proj(nx, ny) > 0.24);
+      case 'heartland': {
+        const ponds = (k: number) => this.addPonds(Math.round(((N * N) / 20000) * L.ponds * k));
+        if (L.layout === 'twin') {
+          // Two rivers with a strip of land between them.
+          const gap = (0.09 + r() * 0.05) * N;
+          this.carveRiver(gap, 0.85);
+          this.carveRiver(-gap, 0.85);
+        } else if (L.layout === 'fork') {
+          this.carveRiver(0, 1, true);
+        } else if (L.layout === 'marsh') {
+          // A narrow river through boggy ground: shallows walk, pools don't.
+          this.carveRiver(0, 0.7);
+          this.addMarsh(Math.round((N * N) / 2600));
+          ponds(1.5);
+          return;
+        } else if (L.layout === 'bend') {
+          this.carveRiver(0, 1.25, false, 2.2);
+        } else this.carveRiver(0, 0.8 + r() * 0.5);
+        ponds(1);
         return;
       }
-      case 'lakes':
-        this.fillWhere((nx, ny, n) => Math.hypot(nx - 0.5, ny - 0.5) < 0.19 + (n - 0.5) * 0.1);
-        this.addPonds(Math.round((this.N * this.N) / 9000));
+      case 'coastal': {
+        const proj = (nx: number, ny: number) => (nx - 0.5) * Math.cos(this.seaAngle) + (ny - 0.5) * Math.sin(this.seaAngle);
+        const perp = (nx: number, ny: number) => -(nx - 0.5) * Math.sin(this.seaAngle) + (ny - 0.5) * Math.cos(this.seaAngle);
+        const edge = 0.12 + r() * 0.08, wob = 0.08 + r() * 0.12;
+        if (L.layout === 'bay') {
+          // The coast curves round a great bay.
+          const R = 0.5 + r() * 0.25, c = edge + R;
+          this.fillWhere((nx, ny, n) => Math.hypot(proj(nx, ny) - c, perp(nx, ny)) < R + (n - 0.5) * wob);
+        } else if (L.layout === 'gulf') {
+          // A long inlet reaching inland between the bases.
+          const w = 0.035 + r() * 0.03, reach = -0.02 - r() * 0.06, lean = (r() - 0.5) * 0.3;
+          this.fillWhere(
+            (nx, ny, n) =>
+              proj(nx, ny) > edge + (n - 0.5) * wob || (Math.abs(perp(nx, ny) - lean * (proj(nx, ny) - edge)) < w + (n - 0.5) * 0.04 && proj(nx, ny) > reach),
+          );
+        } else this.fillWhere((nx, ny, n) => proj(nx, ny) > edge + (n - 0.5) * wob);
+        const isles = L.layout === 'isles' ? 3 : 1;
+        this.addOffshoreIsles(Math.round(((N * N) / 16000) * isles), (nx, ny) => proj(nx, ny) > edge + 0.08);
         return;
+      }
+      case 'lakes': {
+        if (L.layout === 'scattered') {
+          this.addLakes(3 + Math.floor(r() * 3), (0.05 + r() * 0.04) * N);
+        } else if (L.layout === 'twin') {
+          // Two lakes either side of the line between the bases.
+          const a = Math.atan2(this.starts[1].y - this.starts[0].y, this.starts[1].x - this.starts[0].x) + Math.PI / 2;
+          const d = 0.16 + r() * 0.08, rr = 0.1 + r() * 0.04;
+          for (const side of [-1, 1]) {
+            const lx = L.cx + Math.cos(a) * d * side, ly = L.cy + Math.sin(a) * d * side;
+            this.fillWhere((nx, ny, n) => Math.hypot(nx - lx, ny - ly) < rr + (n - 0.5) * 0.08);
+          }
+        } else if (L.layout === 'ring') {
+          // A ring of water round a central isle, broken by land bridges.
+          const R = 0.15 + r() * 0.04, w = 0.03 + r() * 0.015, gaps = 2 + Math.floor(r() * 3), g0 = r() * TAU;
+          this.fillWhere((nx, ny, n) => {
+            const d = Math.hypot(nx - L.cx, ny - L.cy);
+            if (Math.abs(d - R) > w + (n - 0.5) * 0.03) return false;
+            const a = Math.atan2(ny - L.cy, nx - L.cx) - g0;
+            const k = ((((a / TAU) * gaps) % 1) + 1) % 1;
+            return k > 0.12;
+          });
+        } else {
+          // One great lake, of any size and stretch.
+          const ra = 0.14 + r() * 0.09, rb = ra * (0.65 + r() * 0.5), rot = r() * Math.PI;
+          this.fillWhere((nx, ny, n) => {
+            const dx = nx - L.cx, dy = ny - L.cy;
+            const u = dx * Math.cos(rot) + dy * Math.sin(rot), v = -dx * Math.sin(rot) + dy * Math.cos(rot);
+            return Math.hypot(u / ra, v / rb) < 1 + (n - 0.5) * 0.5;
+          });
+        }
+        this.addPonds(Math.round(((N * N) / 9000) * L.ponds));
+        return;
+      }
       case 'islands':
         return this.shapeIslands();
     }
@@ -227,7 +352,8 @@ class MapBuilder {
       }
   }
 
-  private carveRiver() {
+  /** A river between the teams: shifted `offset` tiles off the middle, `width` times as wide, with a branch, or extra winding. */
+  private carveRiver(offset = 0, width = 1, fork = false, wind = 1) {
     const { N } = this;
     const p = this.opts.players;
     const centroid = (team: number) => {
@@ -235,11 +361,11 @@ class MapBuilder {
       return { x: ss.reduce((a, s) => a + s.x, 0) / ss.length, y: ss.reduce((a, s) => a + s.y, 0) / ss.length };
     };
     const ca = centroid(0), cb = centroid(1);
-    const mx = (ca.x + cb.x) / 2, my = (ca.y + cb.y) / 2;
     let nx = ca.x - cb.x, ny = ca.y - cb.y;
     const len = Math.hypot(nx, ny) || 1;
     nx /= len;
     ny /= len;
+    const mx = (ca.x + cb.x) / 2 + nx * offset, my = (ca.y + cb.y) / 2 + ny * offset;
     const tx = -ny, ty = nx;
     const scale = N / 112;
 
@@ -254,13 +380,94 @@ class MapBuilder {
       for (let x = 0; x < N; x++) {
         const dx = x + 0.5 - mx, dy = y + 0.5 - my;
         const t = dx * tx + dy * ty;
-        const meander = (this.shapeNoise.fbm(t, 0, 22 * scale, 2) - 0.5) * 18 * scale;
+        const meander = (this.shapeNoise.fbm(t, offset * 7, 22 * scale, 2) - 0.5) * 18 * scale * wind;
         const d = dx * nx + dy * ny - meander;
-        const halfWidth = 1.7 + this.shapeNoise.fbm(t, 50, 9, 1) * 1.3;
+        const halfWidth = (1.7 + this.shapeNoise.fbm(t, 50 + offset, 9, 1) * 1.3) * width;
         if (Math.abs(d) > halfWidth) continue;
         this.waterOrFord(x, y, fords.some((f) => Math.abs(t - f) < 3));
       }
-    if (N >= 200) this.carveTributary(mx, my, nx, ny, tx, ty, scale);
+    if (fork || (N >= 200 && offset === 0 && this.rng.next() < 0.6)) this.carveTributary(mx, my, nx, ny, tx, ty, scale);
+  }
+
+  /** Boggy ground: patches of walkable shallows away from the bases. */
+  private addMarsh(count: number) {
+    const { N } = this;
+    for (let k = 0, tries = 0; k < count && tries < count * 40; tries++) {
+      const cx = this.rng.int(6, N - 7), cy = this.rng.int(6, N - 7);
+      if (this.minStartDist(cx, cy) < data.start.cityRadius + 4) continue;
+      this.blob(cx, cy, 2 + this.rng.next() * 3, (i) => {
+        if (this.map.terrain[i] !== Terrain.Deep) this.map.terrain[i] = Terrain.Shallow;
+      });
+      k++;
+    }
+  }
+
+  /** Several lakes of about radius r, clear of the bases and of each other. */
+  private addLakes(count: number, r: number) {
+    const { N } = this;
+    const placed: Point[] = [];
+    for (let k = 0, tries = 0; k < count && tries < count * 80; tries++) {
+      const rr = r * (0.7 + this.rng.next() * 0.6);
+      const cx = this.rng.int(Math.ceil(rr) + 4, N - Math.ceil(rr) - 5), cy = this.rng.int(Math.ceil(rr) + 4, N - Math.ceil(rr) - 5);
+      if (this.minStartDist(cx, cy) < data.start.cityRadius + rr) continue;
+      if (placed.some((q) => Math.hypot(q.x - cx, q.y - cy) < rr * 2 + 10)) continue;
+      this.blob(cx, cy, rr, (i) => (this.map.terrain[i] = Terrain.Deep));
+      placed.push({ x: cx, y: cy });
+      k++;
+    }
+  }
+
+  /**
+   * Random water must never cut a base off by land: walk from the first base,
+   * and lay a ford straight across to any base it can't reach.
+   */
+  private bridgeCutOffStarts() {
+    const { N } = this;
+    const reach = () => {
+      const seen = new Uint8Array(N * N);
+      const s0 = this.starts[0];
+      const stack = [this.idx(s0.x, s0.y)];
+      seen[stack[0]] = 1;
+      while (stack.length) {
+        const i = stack.pop()!;
+        const x = i % N, y = (i / N) | 0;
+        for (const [dx, dy] of NEIGHBORS4) {
+          const nx = x + dx, ny = y + dy;
+          if (!this.inside(nx, ny)) continue;
+          const j = this.idx(nx, ny);
+          if (seen[j] || this.map.terrain[j] === Terrain.Deep) continue;
+          seen[j] = 1;
+          stack.push(j);
+        }
+      }
+      return seen;
+    };
+    for (let pass = 0; pass < this.starts.length; pass++) {
+      const seen = reach();
+      const cut = this.starts.find((s) => !seen[this.idx(s.x, s.y)]);
+      if (!cut) return;
+      let best: Point | null = null, bd = Infinity;
+      for (let y = 0; y < N; y += 2)
+        for (let x = 0; x < N; x += 2) {
+          if (!seen[this.idx(x, y)]) continue;
+          const d = Math.hypot(x - cut.x, y - cut.y);
+          if (d < bd) (bd = d), (best = { x, y });
+        }
+      if (!best) return;
+      const steps = Math.ceil(bd * 2);
+      for (let k = 0; k <= steps; k++) {
+        const x = Math.round(cut.x + ((best.x - cut.x) * k) / steps), y = Math.round(cut.y + ((best.y - cut.y) * k) / steps);
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!this.inside(x + dx, y + dy)) continue;
+            const i = this.idx(x + dx, y + dy);
+            if (this.map.terrain[i] === Terrain.Deep) {
+              this.map.terrain[i] = Terrain.Shallow;
+              this.reserved[i] = 1;
+            }
+          }
+      }
+    }
   }
 
   private waterOrFord(x: number, y: number, ford: boolean) {
@@ -322,9 +529,16 @@ class MapBuilder {
     const { N } = this;
     const p = this.opts.players;
     // Room for a large city, capped so huge maps stay mostly sea.
-    const playerR = Math.min(p <= 2 ? 0.21 : p === 3 ? 0.19 : 0.17, 44 / N);
+    const L = this.look;
+    const big = L.layout === 'big' ? 1.12 : L.layout === 'scattered' ? 0.92 : 1;
+    const playerR = Math.min(p <= 2 ? 0.21 : p === 3 ? 0.19 : 0.17, 44 / N) * big * (0.95 + this.rng.next() * 0.1);
     const islands: Array<{ x: number; y: number; r: number }> = this.starts.map((s) => ({ x: s.x / N, y: s.y / N, r: playerR }));
-    islands.push({ x: 0.5, y: 0.5, r: 0.085 });
+    if (L.layout !== 'scattered') islands.push({ x: L.cx, y: L.cy, r: L.layout === 'big' ? 0.11 : 0.06 + this.rng.next() * 0.04 });
+    if (L.layout === 'chain') {
+      // A chain of small isles stepping across the middle.
+      const a = this.rng.next() * Math.PI;
+      for (const k of [-2, -1, 1, 2]) islands.push({ x: L.cx + Math.cos(a) * k * 0.09, y: L.cy + Math.sin(a) * k * 0.09, r: 0.035 });
+    }
     const angles = this.starts.map((s) => Math.atan2(s.y / N - 0.5, s.x / N - 0.5));
     for (let i = 0; i < p; i++) {
       let a1 = angles[i], a2 = angles[(i + 1) % p];
@@ -333,7 +547,7 @@ class MapBuilder {
       islands.push({ x: 0.5 + 0.4 * Math.cos(mid), y: 0.5 + 0.4 * Math.sin(mid), r: 0.055 });
     }
     // Scattered neutral isles fill the bigger seas.
-    const extra = Math.round((N * N) / 5000);
+    const extra = Math.round(((N * N) / 5000) * (L.layout === 'scattered' ? 1.8 : 0.6 + this.rng.next() * 0.8));
     for (let k = 0, tries = 0; k < extra && tries < extra * 60; tries++) {
       const r = (5 + this.rng.next() * 8) / N;
       const x = 0.05 + this.rng.next() * 0.9, y = 0.05 + this.rng.next() * 0.9;
@@ -346,7 +560,7 @@ class MapBuilder {
     for (let y = 0; y < N; y++)
       for (let x = 0; x < N; x++) {
         const nx = (x + 0.5) / N, ny = (y + 0.5) / N;
-        const wobble = (this.shapeNoise.fbm(x, y, 10) - 0.5) * 0.07;
+        const wobble = (this.shapeNoise.fbm(x, y, 10) - 0.5) * (0.05 + (L.hillScale / 21) * 0.05);
         let best = -1, bf = 0;
         islands.forEach((isl, k) => {
           const f = isl.r - Math.hypot(nx - isl.x, ny - isl.y) + wobble;
@@ -411,8 +625,8 @@ class MapBuilder {
         const i = this.idx(x, y);
         if (!this.isLand(i)) continue;
         if (this.minStartDist(x, y) < data.start.clearRadius + 3 || this.waterWithin(x, y, 2)) continue;
-        const h = this.hillNoise.fbm(x, y, 14);
-        el[i] = h > 0.7 ? 2 : h > 0.6 ? 1 : 0;
+        const h = this.hillNoise.fbm(x, y, this.look.hillScale);
+        el[i] = h > this.look.hillLow + 0.1 ? 2 : h > this.look.hillLow ? 1 : 0;
       }
     // No sheer two-level cliffs.
     for (let y = 0; y < N; y++)
@@ -434,7 +648,7 @@ class MapBuilder {
         if (this.waterWithin(x, y, 1) && t[i] !== Terrain.Shallow) {
           // Fords keep grassy banks so they read as crossings, not beaches.
           if (!this.reserved[i] || this.opts.type !== 'heartland') t[i] = Terrain.Sand;
-        } else if (this.forestNoise.fbm(x + 300, y + 300, 7) > 0.72) {
+        } else if (this.forestNoise.fbm(x + 300, y + 300, 7) > this.look.dirt) {
           t[i] = Terrain.Dirt;
         }
       }
@@ -524,9 +738,10 @@ class MapBuilder {
   private placeStartResources(s: Point, owner: number) {
     const st = data.start, am = data.amounts, scale = this.cfg.resourceScale;
     // Main forest line: an arc behind the base, facing away from the map centre.
-    const away = Math.atan2(s.y - this.N / 2, s.x - this.N / 2);
-    for (let a = -1.3; a <= 1.3; a += 0.035)
-      for (let d = 15; d <= 19; d += 0.7) {
+    const L = this.look;
+    const away = Math.atan2(s.y - this.N / 2, s.x - this.N / 2) + L.arcTurn;
+    for (let a = -1.3 * L.arcWidth; a <= 1.3 * L.arcWidth; a += 0.035)
+      for (let d = L.arcR; d <= L.arcR + L.arcDepth; d += 0.7) {
         const x = Math.round(s.x + d * Math.cos(away + a)), y = Math.round(s.y + d * Math.sin(away + a));
         if (this.okFor(x, y, owner) && this.forestNoise.fbm(x, y, 3) > 0.32) this.setFeature(x, y, Feature.Tree, am.tree);
       }
@@ -560,13 +775,29 @@ class MapBuilder {
 
   private placeForests() {
     const { N } = this;
-    const threshold = this.opts.type === 'heartland' ? 0.6 : 0.62;
+    const L = this.look;
+    const threshold = (this.opts.type === 'heartland' ? 0.6 : 0.62) + L.forestBias;
+    const wooded = (x: number, y: number): boolean => {
+      const n = this.forestNoise.fbm(x, y, L.forestScale);
+      switch (L.forest) {
+        case 'belts':
+          // Long belts of woodland along the noise ridges.
+          return 1 - Math.abs(n * 2 - 1) > 0.9 - L.forestBias;
+        case 'groves':
+          // Many small woods.
+          return this.forestNoise.fbm(x + 500, y + 500, L.forestScale * 0.45) > threshold + 0.05;
+        case 'mixed':
+          return n > threshold + 0.04 || this.forestNoise.fbm(x + 500, y + 500, L.forestScale * 0.4) > threshold + 0.1;
+        default:
+          return n > threshold;
+      }
+    };
     for (let y = 0; y < N; y++)
       for (let x = 0; x < N; x++) {
         const i = this.idx(x, y);
         if (!this.free(x, y) || this.map.terrain[i] === Terrain.Sand) continue;
         if (this.minStartDist(x, y) < data.start.cityRadius) continue;
-        if (this.forestNoise.fbm(x, y, 12) > threshold) this.setFeature(x, y, Feature.Tree, data.amounts.tree);
+        if (wooded(x, y)) this.setFeature(x, y, Feature.Tree, data.amounts.tree);
       }
   }
 
@@ -590,8 +821,9 @@ class MapBuilder {
           }
         }
     };
-    place(Feature.Gold, this.cfg.extraGold, 5, data.amounts.goldTile * scale);
-    place(Feature.Stone, this.cfg.extraStone, 4, data.amounts.stoneTile * scale);
+    const vary = (n: number) => Math.max(1, Math.round(n * (0.7 + this.rng.next() * 0.6)));
+    place(Feature.Gold, vary(this.cfg.extraGold), 4 + this.rng.int(0, 2), data.amounts.goldTile * scale);
+    place(Feature.Stone, vary(this.cfg.extraStone), 3 + this.rng.int(0, 2), data.amounts.stoneTile * scale);
   }
 
   private clearTreesAround(x: number, y: number, r: number) {

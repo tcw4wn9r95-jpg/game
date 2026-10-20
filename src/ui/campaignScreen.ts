@@ -37,7 +37,7 @@ export function unlocked(id: string, p = load()): boolean {
   const c = CAMPAIGNS.find((x) => x.chapters.includes(id));
   if (!c) return false;
   const i = c.chapters.indexOf(id);
-  return i === 0 || !!p.done[c.chapters[i - 1]];
+  return c.open || i === 0 || !!p.done[c.chapters[i - 1]];
 }
 
 /** The chapter after this one in its campaign. */

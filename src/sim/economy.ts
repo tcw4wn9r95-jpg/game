@@ -341,7 +341,11 @@ function gather(w: World, u: Unit, o: Extract<Order, { type: 'gather' }>): void 
     const old = o.target;
     const ox = old.kind === 'tile' ? old.x + 0.5 : u.x, oy = old.kind === 'tile' ? old.y + 0.5 : u.y;
     if (o.source === 'farm') return finishWork(w, u); // the field is gone; don't wander to another one
-    const next = findResource(w, u, [o.source as Source], ox, oy);
+    // Woodcutters and miners walk on to the next stand or seam; foragers stay close.
+    const meat = o.source === 'sheep' || o.source === 'deer';
+    const reach = o.source === 'tree' ? 20 : o.source === 'gold' || o.source === 'stone' || meat ? 16 : economy.searchRadius;
+    // Shepherds who run out of sheep go hunting.
+    const next = findResource(w, u, meat ? ['sheep', 'deer'] : [o.source as Source], ox, oy, reach);
     if (!next) return finishWork(w, u);
     o.target = next;
     u.path = null;

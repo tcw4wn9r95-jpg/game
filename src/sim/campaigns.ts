@@ -11,6 +11,8 @@ export interface CampaignDef {
   length: string;
   blurb: string;
   chapters: string[];
+  /** Every chapter playable from the start (stand-alone challenges). */
+  open?: boolean;
 }
 
 const min = (m: number) => m * 60;
@@ -270,10 +272,250 @@ const lastBastion: ScenarioDef = {
   plan: bastionPlan,
 };
 
-registerScenarios([firstHearth, raidersAtTheFord, watchfort, saltAndTimber, saintsBones, usurper, lastBastion]);
+// ---------- The Salt Isles (naval) ----------
+
+const landfall: ScenarioDef = {
+  id: 'isles-1',
+  campaign: 'isles',
+  title: 'Landfall',
+  length: 'About 20 minutes',
+  briefing: [
+    'The Salt Isles are ruled from the sea. A pirate lord on the far island taxes every boat that sails, and his harbour is the root of it.',
+    'Burn his harbour. Build warships at your Dock, sink what sails against you, and destroy every enemy Dock.',
+  ],
+  map: { type: 'islands', size: 'skirmish', seed: 7701 },
+  factions: ['coastal', 'highland'],
+  player: { resources: { food: 600, wood: 1500, gold: 500, stone: 200 }, age: 1, units: [['villager', 6]], buildings: [['dock', 1], ['house', 3], ['lumber_camp', 1]] },
+  enemy: { kind: 'ai', difficulty: 'easy', age: 1, buildings: [['dock', 2]] },
+  plan: () => ({
+    objectives: [{ kind: 'destroy', types: ['dock'], label: "Destroy every enemy Dock" }],
+    lose: [{ kind: 'lose', type: 'town_center', label: 'Your Town Center has fallen' }],
+    waves: [],
+    messages: [
+      { at: 5, text: 'Galleys outshoot fishing boats and Docks. Fire Ships burn galleys up close.' },
+      { at: 420, text: 'The pirates are building warships of their own. Strike before their fleet grows.' },
+    ],
+  }),
+};
+
+const seaLanes: ScenarioDef = {
+  id: 'isles-2',
+  campaign: 'isles',
+  title: 'The Sea Lanes',
+  length: 'About 25 minutes',
+  briefing: [
+    'With the harbour burned, the islanders look to you. But a fleet must be fed and crewed, and the Merchant Houses across the strait want the trade for themselves.',
+    'Build a navy of eight warships and bring in the catch to feed it, while the Merchant Houses test your shores.',
+  ],
+  map: { type: 'islands', size: 'standard', seed: 7702 },
+  factions: ['coastal', 'steppe'],
+  player: { resources: { food: 800, wood: 1500, gold: 700, stone: 300 }, age: 1, units: [['villager', 8], ['fishing_ship', 2]], buildings: [['dock', 1], ['house', 4], ['mill', 1], ['lumber_camp', 1]] },
+  enemy: { kind: 'ai', difficulty: 'normal', age: 1 },
+  plan: () => ({
+    objectives: [
+      { kind: 'train', types: ['galley', 'fire_ship', 'demolition_raft', 'siege_barge'], count: 8, label: 'Have 8 warships' },
+      { kind: 'gather', amounts: { food: 3000 }, label: 'Bring in 3000 food' },
+    ],
+    lose: [{ kind: 'lose', type: 'town_center', label: 'Your Town Center has fallen' }],
+    waves: [],
+    messages: [{ at: 5, text: 'Fish traps and fishing ships keep a fleet fed. Guard them: warships hunt boats.' }],
+  }),
+};
+
+const seaKing: ScenarioDef = {
+  id: 'isles-3',
+  campaign: 'isles',
+  title: 'The Sea King',
+  length: 'About 45 minutes',
+  briefing: [
+    'The Merchant Houses have crowned an admiral and called every hull to war. Only one fleet will leave the Salt Isles.',
+    'Win the war: take the sea, then carry your army across and bring their island down.',
+  ],
+  map: { type: 'islands', size: 'standard', seed: 7703 },
+  factions: ['coastal', 'mountain'],
+  player: { resources: { food: 1000, wood: 1500, gold: 800, stone: 400 }, age: 1, units: [['villager', 10]], buildings: [['dock', 1], ['house', 5], ['barracks', 1]] },
+  enemy: { kind: 'ai', difficulty: 'hard', age: 1 },
+  plan: () => ({
+    objectives: [{ kind: 'win', label: 'Defeat the Merchant Houses' }],
+    lose: [],
+    waves: [],
+    messages: [{ at: 5, text: 'Transport Ships carry armies over the water: gather soldiers by the shore and send them across.' }],
+  }),
+};
+
+// ---------- The Banner War (Domination) ----------
+
+const crossings: ScenarioDef = {
+  id: 'banner-1',
+  campaign: 'banner',
+  title: 'Hold the Crossings',
+  length: 'About 20 minutes',
+  briefing: [
+    'Two barons quarrel over the river valley. The king will give it to whoever holds its crossings: three banner sites by the fords.',
+    'Take the sites and keep them. Each one held scores points; reach the target first, or hold them all for three minutes.',
+  ],
+  map: { type: 'heartland', size: 'skirmish', seed: 8801 },
+  mode: 'domination',
+  factions: ['steppe', 'highland'],
+  player: { resources: { food: 600, wood: 500, gold: 300, stone: 300 }, units: [['villager', 4], ['scout', 2], ['militia', 4]], buildings: [['barracks', 1], ['house', 3]] },
+  enemy: { kind: 'ai', difficulty: 'easy' },
+  plan: () => ({
+    objectives: [{ kind: 'win', label: 'Win on points, or hold every site for 3 minutes' }],
+    lose: [],
+    waves: [],
+    messages: [{ at: 5, text: 'Stand soldiers by a banner for 20 seconds to take it. A tower beside it speeds the capture.' }],
+  }),
+};
+
+const fieldOfBanners: ScenarioDef = {
+  id: 'banner-2',
+  campaign: 'banner',
+  title: 'Field of Banners',
+  length: 'About 35 minutes',
+  briefing: [
+    'The quarrel has become a war, fought across the lake country for five banner sites. The rival baron has hired seasoned captains.',
+    'Hold more of the field than he does for longer. Fortify what you take: towers and Castles near a site make it hard to lose.',
+  ],
+  map: { type: 'lakes', size: 'standard', seed: 8802 },
+  mode: 'domination',
+  factions: ['mountain', 'coastal'],
+  player: { resources: { food: 800, wood: 800, gold: 500, stone: 600 }, age: 1, units: [['villager', 8], ['scout', 1], ['spearman', 4]], buildings: [['barracks', 1], ['house', 4]] },
+  enemy: { kind: 'ai', difficulty: 'normal', age: 1 },
+  plan: () => ({
+    objectives: [{ kind: 'win', label: 'Win on points, or hold every site for 3 minutes' }],
+    lose: [],
+    waves: [],
+    messages: [{ at: 5, text: 'Five sites: two near each base, one in the middle. The middle one decides most wars.' }],
+  }),
+};
+
+// ---------- Trials (stand-alone challenges) ----------
+
+const hungryWinter: ScenarioDef = {
+  id: 'trial-winter',
+  campaign: 'trials',
+  title: 'The Hungry Winter',
+  length: '15 minutes, against the clock',
+  briefing: [
+    'The harvest failed and the snows came early. The granaries must hold 2500 food before the passes close, or the town will not see spring.',
+    'Gather 2500 food in 15 minutes. Farms, fish, game and berries all count. Plan your workers well.',
+  ],
+  map: { type: 'lakes', size: 'skirmish', seed: 9901 },
+  factions: ['highland', 'steppe'],
+  player: { resources: { food: 200, wood: 800, gold: 200, stone: 100 }, units: [['villager', 6]], buildings: [['mill', 1], ['house', 3]] },
+  enemy: { kind: 'none' },
+  plan: () => ({
+    objectives: [{ kind: 'gather', amounts: { food: 2500 }, label: 'Gather 2500 food' }],
+    lose: [{ kind: 'timeout', seconds: min(15), label: 'Winter came before the granaries were full' }],
+    waves: [],
+    messages: [
+      { at: 5, text: 'Villagers cost food, but every one you add gathers more. Farms last; berries and game are quick.' },
+      { at: min(10), text: 'Five minutes left. The passes are closing.' },
+    ],
+  }),
+};
+
+/** Ironwood: a smaller town with no castle, holding out in the lake country. */
+function ironwoodPlan(): Plan {
+  const waves: Wave[] = [];
+  const at = [3.5, 5.5, 7.5, 9.5, 11.5, 13.5, 15.5, 17.5, 19.5, 21.5, 23];
+  at.forEach((m, i) => {
+    const s = i / (at.length - 1);
+    const n = (base: number, grow: number) => Math.round(base + grow * s);
+    const units: Partial<Record<UnitType, number>> = { militia: n(3, 7), archer: n(2, 6) };
+    if (s > 0.2) units.scout = n(1, 4);
+    if (s > 0.35) units.spearman = n(1, 5);
+    if (s > 0.5) units.knight = n(1, 4);
+    if (s > 0.6) units.ram = s > 0.85 ? 2 : 1;
+    if (s > 0.75) units.mangonel = 1;
+    waves.push({
+      at: min(m),
+      units,
+      from: i % 3 === 2 ? -1 : i % 2,
+      techs: i === 5 ? ['forging', 'fletching', 'scale_mail'] : i === 8 ? ['age2', 'iron_casting', 'bodkin_arrow', 'swordsman'] : [],
+      text: i === 0 ? 'Raiders come out of the woods!' : s > 0.6 ? 'A war-host with rams comes through the trees!' : 'More raiders are coming!',
+    });
+  });
+  return {
+    objectives: [{ kind: 'survive', seconds: min(25), label: 'Hold out for 25 minutes' }],
+    lose: [{ kind: 'lose', type: 'town_center', label: 'The Town Center of Ironwood has fallen' }],
+    waves,
+    messages: [
+      { at: 5, text: 'No Castle here, only what you build. Palisades are cheap; stone walls hold. Towers by the Town Center add arrows.' },
+      { at: min(22), text: 'Three minutes to dawn. Hold!' },
+    ],
+  };
+}
+
+const ironwood: ScenarioDef = {
+  id: 'trial-ironwood',
+  campaign: 'trials',
+  title: 'Ironwood Holdfast',
+  length: 'About 25 minutes',
+  briefing: [
+    'Ironwood is a timber town in the lake country, without a castle or a garrison. Raiders have learned that, and they are coming.',
+    'Hold the Town Center for 25 minutes against raids from the forests. Your treasury is modest; spend it well.',
+  ],
+  map: { type: 'lakes', size: 'standard', seed: 9902 },
+  factions: ['highland', 'steppe'],
+  player: { resources: { food: 1500, wood: 2000, gold: 800, stone: 800 }, age: 1, units: [['villager', 14], ['militia', 4], ['archer', 4]], buildings: [['barracks', 1], ['archery_range', 1], ['house', 6], ['lumber_camp', 1], ['mill', 1], ['mining_camp', 1]] },
+  enemy: { kind: 'horde' },
+  plan: ironwoodPlan,
+};
+
+const wonderRace: ScenarioDef = {
+  id: 'trial-wonder',
+  campaign: 'trials',
+  title: 'The Wonder Race',
+  length: 'About 45 minutes',
+  briefing: [
+    'Two rich cities, one prize: the king has promised his crown to whoever raises the greatest monument. Your rival is as rich as you, and does not intend to lose.',
+    'Build a Wonder and keep it standing for 8 minutes, or stop your rival from doing the same and win by conquest.',
+  ],
+  map: { type: 'heartland', size: 'standard', seed: 9903 },
+  factions: ['mountain', 'coastal'],
+  player: { resources: { food: 3000, wood: 3000, gold: 3000, stone: 3000 }, age: 3, units: [['villager', 30], ['knight', 4], ['archer', 6]], buildings: [['house', 10], ['barracks', 1], ['archery_range', 1], ['stable', 1], ['mill', 1], ['lumber_camp', 1], ['mining_camp', 2]] },
+  enemy: { kind: 'ai', difficulty: 'hard', age: 3, resources: { food: 3000, wood: 3000, gold: 3000, stone: 3000 }, units: [['villager', 30]], buildings: [['house', 10], ['barracks', 1], ['stable', 1], ['mill', 1], ['lumber_camp', 1], ['mining_camp', 2]] },
+  plan: () => ({
+    objectives: [{ kind: 'win', label: 'Win: a Wonder that stands 8 minutes, or conquest' }],
+    lose: [],
+    waves: [],
+    messages: [
+      { at: 5, text: 'A Wonder takes 1000 of everything and a long time to build. Put many villagers on it, and guard them.' },
+      { at: min(20), text: 'Spies report your rival is gathering stone. Watch for his Wonder.' },
+    ],
+  }),
+};
+
+const kingslayer: ScenarioDef = {
+  id: 'trial-king',
+  campaign: 'trials',
+  title: 'Kingslayer',
+  length: 'About 15 minutes',
+  briefing: [
+    'A tyrant hides in his Castle across the valley. His soldiers are few, his walls are not. Your knights are waiting for the word.',
+    'Slay the enemy King. Keep yours alive.',
+  ],
+  map: { type: 'heartland', size: 'skirmish', seed: 9904 },
+  mode: 'regicide',
+  factions: ['steppe', 'mountain'],
+  player: { resources: { food: 800, wood: 800, gold: 800, stone: 300 }, age: 2, units: [['knight', 8], ['spearman', 6], ['archer', 6], ['ram', 2]], buildings: [['barracks', 1], ['stable', 1], ['siege_workshop', 1], ['house', 5]] },
+  enemy: { kind: 'ai', difficulty: 'easy', age: 2, units: [['spearman', 6], ['archer', 6]] },
+  plan: () => ({
+    objectives: [{ kind: 'win', label: 'Slay the enemy King' }],
+    lose: [],
+    waves: [],
+    messages: [{ at: 5, text: 'Rams break Castles. When the Castle falls the King runs: hunt him down.' }],
+  }),
+};
+
+registerScenarios([firstHearth, raidersAtTheFord, watchfort, saltAndTimber, saintsBones, usurper, lastBastion, landfall, seaLanes, seaKing, crossings, fieldOfBanners, hungryWinter, ironwood, wonderRace, kingslayer]);
 
 export const CAMPAIGNS: CampaignDef[] = [
   { id: 'ember', title: 'The Ember Road', length: 'Short · 3 chapters · about 50 min', blurb: 'Found a town in an empty valley and see off the riders who prey on it.', chapters: ['ember-1', 'ember-2', 'ember-3'] },
   { id: 'march', title: 'Crown of the March', length: 'Long · 3 chapters · about 1 h 40 min', blurb: 'A young queen, a rival duke, and a war for the crown of a poor, proud land.', chapters: ['march-1', 'march-2', 'march-3'] },
   { id: 'bastion', title: 'The Last Bastion', length: 'One chapter · 20 to 45 min', blurb: 'A rich town, a few minutes of peace, then the Grey Horde. Keep the Castle standing.', chapters: ['bastion-1'] },
+  { id: 'isles', title: 'The Salt Isles', length: 'Medium · 3 chapters · about 1 h 30 min', blurb: 'An island realm ruled from the sea: burn the pirate harbour, build a navy, win the war at sea.', chapters: ['isles-1', 'isles-2', 'isles-3'] },
+  { id: 'banner', title: 'The Banner War', length: 'Short · 2 chapters · about 55 min', blurb: 'Two barons, a valley and its banner sites. Take them, fortify them, hold them.', chapters: ['banner-1', 'banner-2'] },
+  { id: 'trials', title: 'Trials', length: 'Challenges · 4 · 15 to 45 min each', blurb: 'Stand-alone tests, all open: a race against winter, a timber-town siege, a Wonder race, a royal hunt.', chapters: ['trial-winter', 'trial-ironwood', 'trial-wonder', 'trial-king'], open: true },
 ];

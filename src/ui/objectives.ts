@@ -27,6 +27,7 @@ export class ObjectivesCard {
     if (!def) return;
     const plan = planOf(st);
     const wave = nextWaveIn(w);
+    const limit = plan.lose.find((l) => l.kind === 'timeout');
     const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
     const rows = plan.objectives
       .map((o) => {
@@ -39,6 +40,7 @@ export class ObjectivesCard {
       <div class="tut-head"><span class="tut-step">Objectives</span><button class="tut-fold" data-a="fold" aria-label="Fold">–</button></div>
       <div class="tut-title">${def.title}</div>
       <ul class="obj-list">${rows}</ul>
+      ${limit && limit.kind === 'timeout' ? `<div class="obj-wave ${limit.seconds - w.time < 60 ? 'soon' : ''}">Time left <b>${clock(Math.max(0, limit.seconds - w.time))}</b></div>` : ''}
       ${wave !== null ? `<div class="obj-wave ${wave < 30 ? 'soon' : ''}">${st.wave === 0 ? 'The enemy arrives in' : 'Next wave in'} <b>${clock(wave)}</b></div>` : ''}`;
     if (html === this.shown) return;
     this.shown = html;

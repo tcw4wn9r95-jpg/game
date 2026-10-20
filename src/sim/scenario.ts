@@ -29,7 +29,9 @@ export type LoseCondition =
   | { kind: 'keep'; label: string }
   /** Every building of this type is gone. */
   | { kind: 'lose'; type: BuildingType; label: string }
-  | { kind: 'villagers'; below: number; label: string };
+  | { kind: 'villagers'; below: number; label: string }
+  /** The objectives must be met before this time. */
+  | { kind: 'timeout'; seconds: number; label: string };
 
 export interface Wave {
   at: number;
@@ -155,7 +157,7 @@ function applySetup(w: World, owner: number, s: Setup): void {
   if (s.resources) Object.assign(p.resources, s.resources);
   for (let a = 1; a <= (s.age ?? 0); a++) completeTech(w, owner, (['age2', 'age3', 'age4'] as TechId[])[a - 1]);
   for (const t of s.techs ?? []) completeTech(w, owner, t);
-  for (const [type, n] of s.buildings ?? []) for (let k = 0; k < n; k++) placeNear(w, owner, type, 4, 16);
+  for (const [type, n] of s.buildings ?? []) for (let k = 0; k < n; k++) placeNear(w, owner, type, 4, BUILDING_DEFS[type].shore ? 40 : 16);
   const tc = townCenter(w, owner);
   const sx = tc ? tc.x + tc.size / 2 : w.map.starts[owner].x, sy = tc ? tc.y + tc.size + 1 : w.map.starts[owner].y + 2;
   for (const [type, n] of s.units ?? [])
@@ -173,6 +175,17 @@ function placeNear(w: World, owner: number, type: BuildingType, minR: number, ma
   const c = tc ? { x: tc.x + 1, y: tc.y + 1 } : w.map.starts[owner];
   const size = BUILDING_DEFS[type].size;
   const N = w.map.size;
+  if (BUILDING_DEFS[type].shore) {
+    // Shore spots are a thin strip: look at every tile in reach, nearest first.
+    let best: { x: number; y: number } | null = null, bd = Infinity;
+    for (let y = Math.floor(c.y - maxR); y <= c.y + maxR; y++)
+      for (let x = Math.floor(c.x - maxR); x <= c.x + maxR; x++) {
+        const d = Math.hypot(x - c.x, y - c.y);
+        if (d < minR || d > maxR || d >= bd) continue;
+        if (fits(w, x, y, size, true) && w.besideWater(x, y, size) && onIsland(w, owner, x, y)) (bd = d), (best = { x, y });
+      }
+    return best ? w.placeBuilding(type, owner, best.x, best.y, true) : null;
+  }
   // Toward the middle of the map first: that's where trouble comes from.
   const toward = Math.atan2(N / 2 - c.y, N / 2 - c.x);
   for (let r = minR; r <= maxR; r++)
@@ -184,16 +197,28 @@ function placeNear(w: World, owner: number, type: BuildingType, minR: number, ma
   return null;
 }
 
-/** Open, dry land with a one-tile clear margin (so nothing walls itself in). */
-function fits(w: World, x: number, y: number, size: number): boolean {
+/** Open, dry land with a one-tile clear margin (so nothing walls itself in); on the shore, water may border it. */
+function fits(w: World, x: number, y: number, size: number, shore = false): boolean {
   const { map, grid } = w;
   for (let ty = y - 1; ty <= y + size; ty++)
     for (let tx = x - 1; tx <= x + size; tx++) {
       if (!grid.inside(tx, ty)) return false;
       const i = ty * map.size + tx;
-      if (map.terrain[i] === Terrain.Deep || map.terrain[i] === Terrain.Shallow || grid.building[i] || map.feature[i] !== Feature.None) return false;
+      const rim = tx < x || ty < y || tx >= x + size || ty >= y + size;
+      const wet = map.terrain[i] === Terrain.Deep || map.terrain[i] === Terrain.Shallow;
+      if (grid.building[i] || map.feature[i] !== Feature.None) return false;
+      if (wet && !(shore && rim)) return false;
     }
   return true;
+}
+
+/** On the same landmass as the owner's Town Center (a Dock for another island is no use). */
+function onIsland(w: World, owner: number, x: number, y: number): boolean {
+  const tc = townCenter(w, owner);
+  if (!tc) return true;
+  const home = w.grid.component(tc.x + 1, tc.y + tc.size, owner);
+  for (let ty = y - 1; ty <= y + 3; ty++) for (let tx = x - 1; tx <= x + 3; tx++) if (w.grid.isWalkable(tx, ty, owner) && w.grid.component(tx, ty, owner) === home) return true;
+  return false;
 }
 
 /** Where invaders come from: the empty enemy start and two far edges of the map, all reachable on foot. */
@@ -254,7 +279,9 @@ export function scenarioTick(w: World): void {
         ? st.keep > 0 && !w.building(st.keep)
         : l.kind === 'lose'
           ? st.had.includes(l.type) && ![...w.buildings(ME)].some((b) => b.type === l.type)
-          : [...w.units(ME)].filter((u) => UNIT_DEFS[u.type].gatherer && !UNIT_DEFS[u.type].naval).length < l.below;
+          : l.kind === 'timeout'
+            ? t >= l.seconds
+            : [...w.units(ME)].filter((u) => UNIT_DEFS[u.type].gatherer && !UNIT_DEFS[u.type].naval).length < l.below;
     if (lost) {
       st.outcome = l.label;
       w.declareWinner(w.players[FOE].team, 'objectives');

@@ -164,11 +164,13 @@ describe('M2 acceptance', () => {
     ];
     let next = 0;
     const foodJob = new Set<number>();
+    const berryJob = new Set<number>();
     for (const [count, sources] of jobs) {
       const t = findResource(w, probe, sources, cx, cy, 40) as GatherTarget;
       expect(t).not.toBeNull();
       const ids = vs.slice(next, next + count).map((v) => v.id);
       if (sources.some((s) => s === 'berries' || s === 'sheep')) ids.forEach((id) => foodJob.add(id));
+      if (sources.includes('berries')) ids.forEach((id) => berryJob.add(id));
       next += count;
       w.issue(0, { type: 'gather', ids, target: t });
     }
@@ -197,9 +199,9 @@ describe('M2 acceptance', () => {
     expect(p.resources.gold - start.gold).toBeGreaterThan(250);
     expect(p.resources.stone - start.stone).toBeGreaterThan(150);
     expect(p.resources.food - start.food).toBeGreaterThan(400);
-    // Idle only when the resource they were sent to is used up nearby; woodcutters and miners never run dry here.
+    // Idle only when the food they were sent to is used up nearby; woodcutters and miners never run dry here.
     const idle = vs.filter((v) => !v.order);
     expect(idle.filter((v) => !foodJob.has(v.id))).toEqual([]);
-    for (const v of idle) expect(findResource(w, v, ['berries', 'sheep', 'deer'], v.x, v.y)).toBeNull();
+    for (const v of idle) expect(findResource(w, v, berryJob.has(v.id) ? ['berries'] : ['sheep', 'deer'], v.x, v.y)).toBeNull();
   });
 });

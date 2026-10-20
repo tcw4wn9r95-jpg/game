@@ -28,6 +28,9 @@ describe('campaigns', () => {
         const st = w.scenario!;
         expect([...w.buildings(0)].some((b) => b.type === 'town_center'), id).toBe(true);
         if (def.player.keep) expect(w.building(st.keep)?.type, id).toBe(def.player.keep);
+        // Every building asked for was placed, docks on the shore.
+        for (const [type, n] of def.player.buildings ?? []) expect([...w.buildings(0)].filter((b) => b.type === type).length, `${id} ${type}`).toBeGreaterThanOrEqual(n);
+        for (const b of w.buildings()) if (b.type === 'dock') expect(w.besideWater(b.x, b.y, b.size), id).toBe(true);
         if (def.enemy.kind === 'ai') expect([...w.buildings(1)].length, id).toBeGreaterThan(0);
         else expect([...w.units(1)].length + [...w.buildings(1)].length, id).toBe(0);
         if (def.enemy.kind === 'horde') expect(st.spawns.length, id).toBeGreaterThanOrEqual(1);
@@ -117,5 +120,23 @@ describe('campaigns', () => {
     expect(plan('30').waves.length).toBeGreaterThan(plan('20').waves.length);
     const size = (v: string) => Object.values(plan(v).waves.at(-2)!.units).reduce((a, b) => a + (b ?? 0), 0);
     expect(size('30')).toBeGreaterThan(Object.values(plan('30').waves[0].units).reduce((a, b) => a + (b ?? 0), 0));
+  });
+});
+
+describe('campaign extras', () => {
+  it('a time limit loses the chapter when it runs out', () => {
+    const { w } = start('trial-winter');
+    run(w, 15 * 60 + 3, () => w.winner !== null);
+    expect(w.winner).toBe(w.players[1].team);
+    expect(w.scenario!.outcome).toMatch(/Winter/);
+  }, 60000);
+
+  it('the Trials are all open from the start; other campaigns unlock in order', async () => {
+    const { unlocked } = await import('../src/ui/campaignScreen');
+    const empty = { done: {} };
+    for (const id of ['trial-winter', 'trial-ironwood', 'trial-wonder', 'trial-king']) expect(unlocked(id, empty)).toBe(true);
+    expect(unlocked('isles-1', empty)).toBe(true);
+    expect(unlocked('isles-2', empty)).toBe(false);
+    expect(unlocked('isles-2', { done: { 'isles-1': 600 } })).toBe(true);
   });
 });
