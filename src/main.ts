@@ -1,3 +1,6 @@
+import { markDone, nextChapter, showCampaigns } from './ui/campaignScreen';
+import { SCENARIOS } from './sim/scenario';
+import './sim/campaigns';
 import { showSplash } from './ui/splash';
 import { audio, installAudioUnlock } from './ui/audio';
 import { GAME_MODES, type GameMode } from './sim/modes';
@@ -130,7 +133,45 @@ function boot(): void {
         start(map, { treaty: s.treaty, ai: map.starts.map((_, i) => (i === 0 ? null : s.difficulty)), mode: s.mode, factions: pickFactions(map.starts.length, s.faction) }),
       onLoad: (slot) => void loadFrom(slot),
       onTutorial: startTutorial,
+      onCampaigns: () => openCampaigns(),
     });
+  }
+
+  /** The campaign screen (over the menu backdrop). */
+  function openCampaigns(focus?: string) {
+    game?.destroy();
+    game = null;
+    hud.hidden = true;
+    showCampaigns(document.body, { onStart: startChapter, onBack: toSetup }, focus);
+  }
+
+  /** Plays a campaign chapter on its own map, with its own opponent. */
+  function startChapter(id: string, variant: string) {
+    const def = SCENARIOS.get(id);
+    if (!def) return;
+    document.querySelector('.setup')?.remove();
+    game?.destroy();
+    game = null;
+    const map = generateMap({ type: def.map.type, size: def.map.size, players: 2, seed: def.map.seed });
+    start(map, { ai: [null, def.enemy.kind === 'ai' ? def.enemy.difficulty : null], scenario: { id, variant } });
+    hookChapter();
+  }
+
+  /** What happens when a chapter (new or loaded) ends. */
+  function hookChapter() {
+    const g = game as Game | null;
+    const st = g?.world.scenario;
+    if (!g || !st) return;
+    g.onChapterEnd = (won) => {
+      const def = SCENARIOS.get(st.id)!;
+      if (won) markDone(st.id, g.world.time);
+      const next = nextChapter(st.id);
+      g.hud.chapterEnd(won, def.title, st.outcome ?? (won ? 'Victory' : 'Defeat'), g.world.time, {
+        next: next ? () => startChapter(next, '') : undefined,
+        retry: () => startChapter(st.id, st.variant),
+        campaigns: () => openCampaigns(next ?? st.id),
+      });
+    };
   }
 
   /** The guided first match: a small, quiet map and an enemy who waits. */
@@ -174,6 +215,7 @@ function boot(): void {
       game?.destroy();
       game = null;
       start(world, { ai: (rec.data.ai as Array<Difficulty | null> | undefined) ?? world.players.map((_, i) => (i === 0 ? null : 'normal')) });
+      hookChapter();
       const g = game as Game | null;
       if (g) {
         if (rec.meta.camera) g.restoreCamera(rec.meta.camera);

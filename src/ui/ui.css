@@ -1993,3 +1993,279 @@ button.clock.active {
     display: none;
   }
 }
+
+/* ---------- Campaigns ---------- */
+
+.menu-grid .campaigns-btn {
+  grid-column: 1 / -1;
+  border-image-source: var(--frame-thin);
+  background: linear-gradient(180deg, #7a3a14, #4a1e08);
+  color: #ffe3a6;
+}
+
+.campaigns .setup-main {
+  width: min(100%, 900px);
+}
+
+.camp-left {
+  width: 38%;
+  min-width: 220px;
+}
+
+.camp-right {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.camp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.camp-card {
+  display: grid;
+  gap: 2px;
+  padding: 7px 10px;
+  text-align: left;
+  border: 5px solid transparent;
+  border-image: var(--frame-thin) 7 / 5px stretch;
+  background: #150d05;
+  background-origin: border-box;
+  color: var(--cream);
+  cursor: pointer;
+  filter: saturate(0.6) brightness(0.85);
+}
+
+.camp-card.on {
+  filter: none;
+  box-shadow: 0 0 0 2px rgba(255, 220, 130, 0.55), 0 0 14px rgba(255, 200, 90, 0.4);
+}
+
+.camp-name {
+  font: 700 14px/1.1 var(--title-font);
+  color: var(--gold-hi);
+}
+
+.camp-len {
+  font: 700 10px/1 var(--title-font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.camp-blurb {
+  font: 400 12px/1.25 'Alegreya Sans', sans-serif;
+  color: rgba(246, 234, 208, 0.82);
+}
+
+.camp-pips {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.camp-pips i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1px solid rgba(214, 168, 73, 0.6);
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.camp-pips i.open {
+  background: rgba(214, 168, 73, 0.35);
+}
+
+.camp-pips i.done {
+  background: #e8b84a;
+}
+
+.chap-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.chap-tab {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px;
+  border: 1px solid rgba(214, 168, 73, 0.4);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--cream);
+  font: 700 12px/1.1 var(--title-font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chap-tab span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.chap-tab.on {
+  background: linear-gradient(180deg, #ffe9a6, #d9a743 55%, #b8862f);
+  color: var(--ink-dark);
+}
+
+.chap-tab.locked {
+  opacity: 0.55;
+}
+
+.chap-tab.done:not(.on) {
+  color: #9fe07a;
+}
+
+.chap-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 2px 0;
+}
+
+.chap-title {
+  font: 700 18px/1.1 var(--title-font);
+  color: var(--gold-hi);
+}
+
+.chap-len {
+  margin: 2px 0 4px;
+  font: 700 10px/1 var(--title-font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.chap-brief p {
+  margin: 0 0 6px;
+  font: 400 13px/1.32 'Alegreya Sans', sans-serif;
+  color: rgba(246, 234, 208, 0.9);
+}
+
+.chap-note {
+  margin-top: 3px;
+  font-size: 12px;
+  color: rgba(246, 234, 208, 0.7);
+}
+
+.chap-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.chap-actions .btn-gold {
+  flex: 1;
+}
+
+.chap-actions .btn[disabled] {
+  filter: grayscale(1) brightness(0.6);
+}
+
+.obj-list {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.obj-list li {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font: 400 13px/1.3 'Alegreya Sans', sans-serif;
+}
+
+.obj-list li i {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--gold);
+  border-radius: 2px;
+  font: normal 700 11px/12px sans-serif;
+  text-align: center;
+  color: #9fe07a;
+  transform: translateY(2px);
+}
+
+.obj-list li.done span {
+  color: rgba(246, 234, 208, 0.55);
+  text-decoration: line-through;
+}
+
+.obj-list b {
+  color: #ffe9a6;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.obj-wave {
+  margin-top: 5px;
+  font: 700 13px/1 'Alegreya Sans', sans-serif;
+  color: #ffb08a;
+}
+
+.obj-wave.soon {
+  animation: pulse-chip 1s ease-in-out infinite;
+}
+
+.obj-card {
+  width: min(280px, 36vw);
+}
+
+.toast.story {
+  max-width: min(520px, 70vw);
+  font-style: italic;
+  border-color: rgba(214, 168, 73, 0.7);
+}
+
+@media (max-height: 430px) {
+  .camp-card {
+    padding: 4px 8px;
+  }
+  .camp-blurb {
+    font-size: 11px;
+    line-height: 1.18;
+  }
+  .chap-title {
+    font-size: 15px;
+  }
+  .chap-brief p {
+    font-size: 12px;
+    line-height: 1.25;
+    margin-bottom: 4px;
+  }
+  .obj-list li {
+    font-size: 12px;
+  }
+  .obj-card {
+    width: min(300px, 40vw);
+  }
+}
+
+/* With a lesson or objectives card on the left, messages use the space beside it. */
+#hud.has-card .toasts {
+  left: calc(var(--safe-l) + 16px + min(300px, 40vw));
+  right: calc(var(--safe-r) + 8px);
+  transform: none;
+}
+
+#hud.has-card .toast.story {
+  max-width: 100%;
+}
+
+@media (max-height: 430px) {
+  .camp-blurb {
+    display: none;
+  }
+}

@@ -57,6 +57,7 @@ export class Tutorial {
     this.card = document.createElement('div');
     this.card.className = 'tut-card frame';
     host.hudRoot.appendChild(this.card);
+    host.hudRoot.classList.add('has-card');
     this.card.addEventListener('click', (e) => {
       const a = (e.target as HTMLElement).closest<HTMLElement>('[data-a]')?.dataset.a;
       if (a === 'next') this.advance();
@@ -232,6 +233,7 @@ export class Tutorial {
   }
 
   destroy(): void {
+    this.host.hudRoot.classList.remove('has-card');
     this.glow([]);
     this.card.remove();
   }

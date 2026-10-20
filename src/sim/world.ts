@@ -27,6 +27,7 @@ import { SpatialHash } from './spatial';
 import { type PlayerMods, type TechId, baseMods, buildingMaxHp, unitStats } from './techs';
 import { type GameMap, Terrain } from './terrain';
 import { type GameMode, type ModeState, type VictoryReason, modeTick, newModeState, setupMode } from './modes';
+import { type ScenarioDef, type ScenarioState, setupScenario } from './scenario';
 
 export { DT, RESOURCE_KINDS, TICK_MS, TICK_RATE, type ResourceKind } from './constants';
 
@@ -88,7 +89,9 @@ export type SimEvent =
   /** A Domination site changed hands, a Wonder was finished, a relic came home... (for alerts). */
   | { type: 'mode'; owner: number; message: string; x: number; y: number }
   /** The town bell rang (villagers to shelter) or sounded the all clear. */
-  | { type: 'bell'; owner: number; on: boolean };
+  | { type: 'bell'; owner: number; on: boolean }
+  /** A campaign message: a story beat, or (alarm) an invasion on its way. */
+  | { type: 'scenario'; owner: number; text: string; alarm?: boolean; x?: number; y?: number };
 
 /** Game state, advanced only by step(); input and AI both act through issue(). */
 export class World {
@@ -118,6 +121,8 @@ export class World {
   readonly mode: GameMode;
   /** Wonder and relic clocks, Domination sites and score. */
   modeState: ModeState;
+  /** The campaign chapter being played, if any. */
+  scenario: ScenarioState | null = null;
   nextProjectileId = 1;
   private nextId = 1;
   private pending: Array<{ player: number; cmd: Command }> = [];
@@ -126,7 +131,7 @@ export class World {
 
   constructor(
     readonly map: GameMap,
-    opts: { spawnStarts?: boolean; teams?: number[]; factions?: string[]; mode?: GameMode } = {},
+    opts: { spawnStarts?: boolean; teams?: number[]; factions?: string[]; mode?: GameMode; scenario?: { def: ScenarioDef; variant: string } } = {},
   ) {
     this.mode = opts.mode ?? 'standard';
     this.modeState = newModeState(map.starts.length);
@@ -159,6 +164,7 @@ export class World {
     if (opts.spawnStarts !== false) {
       map.starts.forEach((s, p) => this.spawnStart(p, s.x, s.y));
       setupMode(this);
+      if (opts.scenario) setupScenario(this, opts.scenario.def, opts.scenario.variant);
     }
     this.updatePopulation();
     this.updateVision();
@@ -453,7 +459,8 @@ export class World {
     for (const b of this.buildings()) if (CONQUEST_BUILDINGS.has(b.type) && b.complete) alive[b.owner] = true;
     for (const u of this.units()) if (!UNIT_DEFS[u.type].gatherer) alive[u.owner] = true;
     this.players.forEach((p, i) => {
-      if (p.defeated || alive[i]) return;
+      // A campaign's invaders aren't conquered just because a wave has been beaten.
+      if (p.defeated || alive[i] || (this.scenario?.noConquest && i !== 0)) return;
       p.defeated = true;
       this.events.push({ type: 'defeated', owner: i });
     });

@@ -64,6 +64,8 @@ export interface SetupHooks {
   onLoad(slot: SlotId): void;
   /** Start the guided first match (the setup screen has already gone). */
   onTutorial(): void;
+  /** Open the campaigns (the setup screen has already gone). */
+  onCampaigns(): void;
 }
 
 /** New-match screen with a live preview of the generated map. Removes itself on start. */
@@ -111,6 +113,7 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
         <div class="seed-row"><span class="seed"></span><button class="icon-btn" aria-label="New map">${ICONS.dice}</button></div>
         <button class="btn btn-gold start">Start Match</button>
         <div class="menu-grid">
+          <button class="btn btn-wood btn-small campaigns-btn">Campaigns</button>
           <button class="btn btn-wood btn-small continue" hidden>Continue</button>
           <button class="btn btn-wood btn-small load" hidden>Load</button>
           <button class="btn btn-wood btn-small tutorial">Tutorial</button>
@@ -219,6 +222,11 @@ export function showSetup(root: HTMLElement, hooks: SetupHooks): void {
     hooks.onTutorial();
   });
   el.querySelector('.settings-btn')!.addEventListener('click', () => showSettings(document.body));
+  el.querySelector('.campaigns-btn')!.addEventListener('click', () => {
+    cancelAnimationFrame(pending);
+    el.remove();
+    hooks.onCampaigns();
+  });
   // First time here: point at the tutorial.
   if (!appSettings.tutorialSeen) {
     el.querySelector('.tutorial')!.classList.add('tut-glow');

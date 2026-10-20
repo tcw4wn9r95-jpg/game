@@ -8,6 +8,7 @@ import { type PlayerState, World } from './world';
 import { baseMods, applyEffects, buildingMaxHp } from './techs';
 import type { GameMap } from './terrain';
 import type { GameMode, ModeState, VictoryReason } from './modes';
+import type { ScenarioState } from './scenario';
 
 export const SAVE_VERSION = 1;
 
@@ -31,6 +32,7 @@ export interface SaveData {
   mode?: GameMode;
   modeState?: ModeState;
   victoryReason?: VictoryReason | null;
+  scenario?: ScenarioState | null;
 }
 
 // ---------- typed arrays <-> base64 ----------
@@ -93,6 +95,7 @@ export function saveWorld(w: World): SaveData {
     mode: w.mode,
     modeState: w.modeState,
     victoryReason: w.victoryReason,
+    scenario: w.scenario,
   };
 }
 
@@ -126,6 +129,7 @@ export function loadWorld(d: SaveData): World {
   w.winner = d.winner ?? null;
   w.victoryReason = d.victoryReason ?? null;
   if (d.modeState) w.modeState = d.modeState;
+  w.scenario = d.scenario ?? null;
   d.players.forEach((p, i) => {
     const mods = baseMods(p.faction);
     for (const t of p.techs) applyEffects(mods, t);

@@ -271,6 +271,40 @@ export class Hud {
     }
   }
 
+  /** A campaign message: a story beat that lingers a little longer than a toast. */
+  story(message: string): void {
+    const t = el('div', 'toast frame story');
+    t.textContent = message;
+    this.toasts.appendChild(t);
+    while (this.toasts.children.length > 3) this.toasts.firstElementChild!.remove();
+    setTimeout(() => t.classList.add('fade'), 6500);
+    setTimeout(() => t.remove(), 7100);
+  }
+
+  /** End of a campaign chapter: on to the next, try again, or back to the campaigns. */
+  chapterEnd(won: boolean, title: string, detail: string, time: number, actions: { next?: () => void; retry: () => void; campaigns: () => void }): void {
+    const bg = el('div', 'panel-backdrop');
+    bg.innerHTML = `
+      <div class="panel frame end-panel ${won ? 'won' : 'lost'}">
+        <h2 class="panel-title">${won ? 'Chapter Complete' : 'Defeat'}</h2>
+        <div class="end-detail"><b>${title}</b><br>${detail}. Time ${formatClock(time)}.</div>
+        ${won && actions.next ? '<button class="btn btn-gold" data-a="next">Next Chapter</button>' : ''}
+        ${!won ? '<button class="btn btn-gold" data-a="retry">Try Again</button>' : ''}
+        <button class="btn btn-wood" data-a="campaigns">Campaigns</button>
+        <button class="btn btn-wood btn-small" data-a="watch">${won ? 'Look Around' : 'Keep Watching'}</button>
+      </div>`;
+    const on = (a: string, f?: () => void) =>
+      bg.querySelector(`[data-a=${a}]`)?.addEventListener('click', () => {
+        bg.remove();
+        f?.();
+      });
+    on('next', actions.next);
+    on('retry', actions.retry);
+    on('campaigns', actions.campaigns);
+    on('watch');
+    this.root.appendChild(bg);
+  }
+
   /** End of the match: Victory or Defeat, with the option to keep watching. */
   endScreen(won: boolean, time: number, reason = ''): void {
     const bg = el('div', 'panel-backdrop');

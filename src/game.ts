@@ -20,6 +20,9 @@ const PLAYER_NAMES = ['Blue', 'Red', 'Gold', 'Green'];
 import type { SaveMeta } from './ui/saves';
 import { settings } from './ui/settings';
 import { Tutorial } from './ui/tutorial';
+import { ObjectivesCard } from './ui/objectives';
+import './sim/campaigns';
+import { SCENARIOS } from './sim/scenario';
 import { type Sfx, audio } from './ui/audio';
 import type { SimEvent } from './sim/world';
 
@@ -47,6 +50,8 @@ export interface MatchSetup {
   factions?: string[];
   /** The guided first match. */
   tutorial?: boolean;
+  /** A campaign chapter (new matches; a loaded one carries it in the world). */
+  scenario?: { id: string; variant: string };
 }
 
 /** One match: owns the world, camera, renderer, input controller and HUD. */
@@ -69,7 +74,13 @@ export class Game {
 
   constructor(source: GameMap | World, private readonly view: View, hudRoot: HTMLElement, debug: DebugFlags, setup?: Partial<MatchSetup>) {
     const fresh = !(source instanceof World);
-    this.world = source instanceof World ? source : new World(source, { mode: setup?.mode, factions: setup?.factions });
+    const chapter = setup?.scenario ? SCENARIOS.get(setup.scenario.id) : undefined;
+    this.world =
+      source instanceof World
+        ? source
+        : chapter
+          ? new World(source, { mode: chapter.mode, factions: chapter.factions, scenario: { def: chapter, variant: setup!.scenario!.variant } })
+          : new World(source, { mode: setup?.mode, factions: setup?.factions });
     const map = this.world.map;
     this.setup = { ai: setup?.ai ?? map.starts.map((_, i) => (i === 0 && !debug.aiVsAi ? null : 'normal')), treaty: setup?.treaty ?? 0, tutorial: setup?.tutorial };
     if (fresh && this.setup.treaty) this.world.peaceUntil = this.setup.treaty * 60;
@@ -105,6 +116,7 @@ export class Game {
     this.hud.onKing = () => this.findKing(false);
     this.hud.onKingShelter = () => this.findKing(true);
     this.bench = debug.bench ? new Bench(this.camera, map.size, hudRoot.querySelector('#bench')!) : null;
+    if (this.world.scenario) this.objectives = new ObjectivesCard(hudRoot, this.world);
     if (this.setup.tutorial) {
       this.tutorial = new Tutorial({
         world: this.world,
@@ -121,6 +133,9 @@ export class Game {
   }
 
   readonly tutorial: Tutorial | null = null;
+  private readonly objectives: ObjectivesCard | null = null;
+  /** Set by the app: a campaign chapter ended (won or lost). */
+  onChapterEnd: (won: boolean) => void = () => {};
   /** Set by the app: the tutorial was finished or skipped. */
   onTutorialDone: (next: 'menu' | 'match') => void = () => {};
 
@@ -216,6 +231,20 @@ export class Game {
       if (ev.type === 'death') this.renderer.addDeath(ev, this.deaths++, nowS);
       else if (ev.type === 'destroyed') this.renderer.addRuin(ev, nowS);
       if (ev.type === 'converted' && ev.from === this.player) this.alert('A unit was converted by an enemy monk!', ev.x, ev.y, nowS, true, 'convert');
+      if (ev.type === 'victory' && this.world.scenario) {
+        const won = ev.team === this.world.players[this.player].team;
+        audio.play(won ? 'victory' : 'defeat');
+        this.onChapterEnd(won);
+        continue;
+      }
+      if (ev.type === 'scenario') {
+        if (ev.alarm) this.alert(ev.text, ev.x ?? 0, ev.y ?? 0, nowS, true, 'alertTown');
+        else {
+          this.hud.story(ev.text);
+          audio.play('step');
+        }
+        continue;
+      }
       if (ev.type === 'victory') {
         const won = ev.team === this.world.players[this.player].team;
         audio.play(won ? 'victory' : 'defeat');
@@ -300,6 +329,7 @@ export class Game {
     this.hud.update(this.world, this.player, c.idleVillagers().length, c.idleMilitary().length);
     this.panel.update();
     this.tutorial?.update(nowS);
+    this.objectives?.update(nowS);
   }
 
   /** A save of the match: the world, and a summary for the slot list. */
@@ -307,7 +337,9 @@ export class Game {
     const m = this.world.map;
     return {
       meta: {
-        title: `${MAP_NAMES[m.type]} · ${m.sizeName[0].toUpperCase()}${m.sizeName.slice(1)}`,
+        title: this.world.scenario
+          ? `Campaign · ${SCENARIOS.get(this.world.scenario.id)?.title ?? ''}`
+          : `${MAP_NAMES[m.type]} · ${m.sizeName[0].toUpperCase()}${m.sizeName.slice(1)}`,
         time: this.world.time,
         age: this.world.players[this.player].age,
         savedAt: Date.now(),
@@ -334,6 +366,7 @@ export class Game {
 
   destroy(): void {
     this.tutorial?.destroy();
+    this.objectives?.destroy();
     this.minimap.destroy();
     this.renderer.dispose();
     this.controller.destroy();

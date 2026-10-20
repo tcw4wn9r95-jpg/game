@@ -8,12 +8,13 @@ import { Rng } from './rng';
 import { Feature, Terrain } from './terrain';
 import type { Goal } from './pathfinding';
 import type { World } from './world';
+import { scenarioTick } from './scenario';
 
 export type GameMode = 'standard' | 'regicide' | 'domination';
 export const GAME_MODES: GameMode[] = ['standard', 'regicide', 'domination'];
 export const MODE_NAMES: Record<GameMode, string> = { standard: 'Standard', regicide: 'Regicide', domination: 'Domination' };
 
-export type VictoryReason = 'conquest' | 'wonder' | 'relics' | 'regicide' | 'domination' | 'sites';
+export type VictoryReason = 'conquest' | 'wonder' | 'relics' | 'regicide' | 'domination' | 'sites' | 'objectives';
 export const VICTORY_TEXT: Record<VictoryReason, string> = {
   conquest: 'by conquest',
   wonder: 'by Wonder',
@@ -21,6 +22,7 @@ export const VICTORY_TEXT: Record<VictoryReason, string> = {
   regicide: 'by slaying the King',
   domination: 'on points',
   sites: 'by holding every site',
+  objectives: 'on the objectives',
 };
 
 /** Seconds a Wonder or every relic must be held to win. */
@@ -198,6 +200,7 @@ export function modeTick(w: World): void {
   relicCheck(w);
   if (w.mode === 'regicide') regicideCheck(w);
   if (w.mode === 'domination') dominationTick(w);
+  if (w.scenario) scenarioTick(w);
 }
 
 // ---------- Wonders ----------
